@@ -1,0 +1,169 @@
+﻿:root {
+  --brand-900: #112337;
+  --brand-700: #1c3f5f;
+  --accent: #f2b84b;
+  --paper: #f7f9fc;
+}
+
+body {
+  background: radial-gradient(circle at top right, #d7e7ff 0%, var(--paper) 45%, #eef2f7 100%);
+  min-height: 100vh;
+}
+
+.app-header {
+  background: linear-gradient(130deg, var(--brand-900), var(--brand-700));
+}
+
+.login-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.login-card {
+  width: min(420px, 92vw);
+  border-radius: 1.25rem;
+}
+
+.loading-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.report-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.report-card {
+  min-height: 78px;
+}
+
+.chart-block {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.line-chart {
+  width: 100%;
+  height: 220px;
+}
+
+.chart-axis {
+  stroke: #e2e8f0;
+  stroke-width: 1;
+}
+
+.chart-line {
+  fill: none;
+  stroke: #1c3f5f;
+  stroke-width: 2.5;
+}
+
+.chart-area {
+  fill: rgba(47, 110, 160, 0.12);
+}
+
+.chart-point {
+  fill: #1c3f5f;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.chart-label {
+  font-size: 10px;
+  fill: #475569;
+}
+
+.chart-value {
+  font-size: 11px;
+  fill: #0f172a;
+}
+
+.nav-pills .nav-link.active {
+  background-color: var(--brand-700);
+}
+
+.card {
+  border-radius: 1rem;
+}
+
+.table thead th {
+  background-color: #f1f5fb;
+}
+
+.badge {
+  letter-spacing: 0.06em;
+}
+
+.btn-primary {
+  --bs-btn-bg: var(--brand-700);
+  --bs-btn-border-color: var(--brand-700);
+  --bs-btn-hover-bg: var(--brand-900);
+  --bs-btn-hover-border-color: var(--brand-900);
+}
+
+#alert-container .alert {
+  margin-bottom: 0;
+}
+
+.odontograma-svg {
+  width: 100%;
+  height: auto;
+  min-height: 520px;
+}
+
+.odonto-section-label {
+  font-size: 12px;
+  font-weight: 700;
+  fill: #1f2937;
+}
+
+.odonto-tooth-label {
+  font-size: 8px;
+  font-weight: 600;
+  fill: #0f172a;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+}
+
+
+.odonto-face {
+  fill: #ffffff;
+  stroke: #334155;
+  stroke-width: 0.9;
+  cursor: pointer;
+}
+
+.odonto-face.state-sano { fill: #ffffff; }
+.odonto-face.state-existente { fill: #ff4d4d; }
+.odonto-face.state-requerido { fill: #4d79ff; }
+.odonto-face.state-corona { fill: #fcd34d; }
+.odonto-face.state-protesis_fija { fill: #cbd5ff; }
+.odonto-face.state-protesis_removible { fill: #9dd6c8; }
+.odonto-face.state-ausente { fill: #e2e8f0; }
+
+.odonto-tooth-outline {
+  fill: none;
+  stroke: #475569;
+  stroke-width: 0.9;
+}
+
+.odonto-tooth-outline.active {
+  stroke: #1c3f5f;
+  stroke-width: 1.8;
+}
+
+.odonto-separator {
+  stroke: #94a3b8;
+  stroke-dasharray: 3 3;
+}

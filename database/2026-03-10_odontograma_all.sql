@@ -1,0 +1,18 @@
+-- Odontograma con meta (sarro / periodontal)
+CREATE TABLE IF NOT EXISTS odontograma (
+  id SERIAL PRIMARY KEY,
+  paciente_id INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
+  diente SMALLINT NOT NULL,
+  cara VARCHAR(20) NOT NULL,
+  estado VARCHAR(50) NOT NULL,
+  fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (paciente_id, diente, cara)
+);
+
+CREATE TABLE IF NOT EXISTS odontograma_meta (
+  id SERIAL PRIMARY KEY,
+  paciente_id INTEGER NOT NULL UNIQUE REFERENCES pacientes(id) ON DELETE CASCADE,
+  sarro BOOLEAN NOT NULL DEFAULT FALSE,
+  periodontal BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

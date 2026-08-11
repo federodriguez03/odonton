@@ -1,118 +1,1249 @@
-<!DOCTYPE html>
+﻿<!doctype html>
 <html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Odonton - Sistema de Gestión Odontológica</title>
-    
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="css/styles.css">
-</head>
-<body>
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-primary sticky-top">
-        <div class="container-fluid">
-            <a class="navbar-brand fw-bold" href="/">
-                <i class="bi bi-tooth"></i> Odonton
-            </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Odonton | Gestion</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/styles/main.css" />
+  </head>
+  <body>
+    <section id="loading-screen" class="loading-screen d-none">
+      <div class="text-center">
+        <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+        <p class="text-secondary mb-0">Validando sesión...</p>
+      </div>
+    </section>
+
+    <section id="login-screen" class="login-screen">
+      <div class="login-card card shadow-sm border-0">
+        <div class="card-body p-4">
+          <div class="mb-3 text-center">
+            <div class="login-brand mb-3">
+              <img src="/src/assets/Logo Odonton.jpg" alt="Odonton" />
+            </div>
+            <span class="badge bg-light text-dark text-uppercase">Sistema Odontologico</span>
+            <h2 class="h4 mt-2 mb-0">Iniciar sesión</h2>
+            <p class="text-secondary mb-0">Accedé al panel operativo</p>
+          </div>
+          <div id="login-error" class="alert alert-danger d-none" role="alert"></div>
+          <form id="login-form">
+            <div class="mb-3">
+              <label for="login-email" class="form-label">Email</label>
+              <input id="login-email" name="email" autocomplete="email" type="email" class="form-control" placeholder="usuario@dominio.com" required />
+            </div>
+            <div class="mb-3">
+              <label for="login-password" class="form-label">Contraseña</label>
+              <input id="login-password" name="password" autocomplete="current-password" type="password" class="form-control" placeholder="********" required />
+            </div>
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" id="remember-email" />
+              <label class="form-check-label" for="remember-email">Recordar email</label>
+            </div>
+            <button id="login-submit" class="btn btn-primary w-100" type="submit">Ingresar</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <div id="app-shell" class="app-shell d-none">
+      <aside class="app-sidebar">
+        <div class="brand-block">
+          <div class="brand-logo">
+            <img src="/src/assets/Logo Odonton.jpg" alt="Odonton" />
+          </div>
+          <div>
+            <div class="sidebar-title">Odonton</div>
+            <div class="sidebar-subtitle">Panel administrativo</div>
+          </div>
+        </div>
+
+        <ul class="nav flex-column nav-vertical" id="main-tabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="dashboard-tab" data-section="dashboard" type="button">
+              <i class="bi bi-grid-1x2-fill"></i> Dashboard
             </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/">Inicio</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="pages/login.html" id="loginBtn">Iniciar Sesión</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="pacientes-tab" data-section="pacientes" type="button">
+              <i class="bi bi-people-fill"></i> Pacientes
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="turnos-tab" data-section="turnos" type="button">
+              <i class="bi bi-calendar-check-fill"></i> Turnos
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="prestaciones-tab" data-section="prestaciones" type="button">
+              <i class="bi bi-clipboard2-pulse"></i> Tratamientos
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="historia-tab" data-section="historia" type="button">
+              <i class="bi bi-file-medical-fill"></i> Historia clinica
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="pagos-tab" data-section="pagos" type="button">
+              <i class="bi bi-credit-card-2-front-fill"></i> Pagos
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="reportes-tab" data-section="reportes" type="button">
+              <i class="bi bi-bar-chart-fill"></i> Reportes
+            </button>
+          </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="estadisticas-tab" data-section="estadisticas" type="button">
+                <i class="bi bi-graph-up-arrow"></i> Estadisticas
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link" id="configuracion-tab" data-section="configuracion" type="button">
+                <i class="bi bi-gear-fill"></i> Configuracion
+              </button>
+            </li>
+          </ul>
+      </aside>
 
-    <!-- Hero Section -->
-    <section class="hero bg-light py-5">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-lg-6">
-                    <h1 class="display-4 fw-bold mb-4">Gestión Inteligente para tu Consultorio</h1>
-                    <p class="lead mb-4">Sistema web completo para organizar turnos, pacientes, historial clínico y facturación.</p>
-                    <div class="d-flex gap-3">
-                        <a href="pages/login.html" class="btn btn-primary btn-lg">
-                            <i class="bi bi-box-arrow-right"></i> Iniciar Sesión
-                        </a>
-                    </div>
-                </div>
-                <div class="col-lg-6 text-center">
-                    <i class="bi bi-hospital" style="font-size: 200px; color: #0d6efd; opacity: 0.1;"></i>
-                </div>
+      <div class="app-content">
+        <div class="topbar">
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-light text-dark text-uppercase">Sistema Odontologico</span>
+            <h1 class="h5 topbar-title mb-0">Panel Operativo</h1>
+          </div>
+          <div class="topbar-actions">
+            <div class="text-end">
+              <div id="user-name" class="fw-semibold"></div>
+              <div id="user-email" class="text-muted small"></div>
             </div>
+            <button id="logout-btn" class="btn btn-outline-secondary btn-sm" type="button">Salir</button>
+          </div>
         </div>
-    </section>
 
-    <!-- Features Section -->
-    <section class="py-5">
-        <div class="container">
-            <h2 class="text-center mb-5">Características principales</h2>
+        <main class="content-area">
+        <div id="alert-container" class="mb-3"></div>
+
+      <section id="section-dashboard">
+        <div class="row g-4">
+          <div class="col-12">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+              <div>
+                <h2 class="h5 mb-0">Resumen general</h2>
+                <small class="text-secondary">Indicadores clave del consultorio</small>
+              </div>
+              <span class="badge bg-light text-dark">Actualizado hoy</span>
+            </div>
+          </div>
+          <div class="col-sm-6 col-xl-3">
+            <div class="stat-card">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="stat-title">Pacientes registrados</div>
+                <div class="stat-icon"><i class="bi bi-people"></i></div>
+              </div>
+              <div class="stat-value" id="stat-pacientes">-</div>
+            </div>
+          </div>
+          <div class="col-sm-6 col-xl-3">
+            <div class="stat-card">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="stat-title">Turnos del dia</div>
+                <div class="stat-icon"><i class="bi bi-calendar-event"></i></div>
+              </div>
+              <div class="stat-value" id="stat-turnos-hoy">-</div>
+            </div>
+          </div>
+          <div class="col-sm-6 col-xl-3">
+            <div class="stat-card">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="stat-title">Tratamientos realizados</div>
+                <div class="stat-icon"><i class="bi bi-clipboard-check"></i></div>
+              </div>
+              <div class="stat-value" id="stat-tratamientos">-</div>
+            </div>
+          </div>
+          <div class="col-sm-6 col-xl-3">
+            <div class="stat-card">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="stat-title">Ingresos del mes</div>
+                <div class="stat-icon"><i class="bi bi-currency-dollar"></i></div>
+              </div>
+              <div class="stat-value" id="stat-ingresos">-</div>
+            </div>
+          </div>
+
+          <div class="col-lg-8">
+            <div class="card border-0 shadow-sm h-100">
+              <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <h3 class="h6 mb-0">Atenciones por mes</h3>
+                  <span class="text-secondary small">Ultimos 6 meses</span>
+                </div>
+                <canvas id="chart-atenciones" height="140"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="card border-0 shadow-sm h-100">
+              <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <h3 class="h6 mb-0">Tratamientos mas realizados</h3>
+                </div>
+                <canvas id="chart-tratamientos" height="200"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <h3 class="h6 mb-0">Ingresos por mes</h3>
+                  <span class="text-secondary small">Basado en turnos realizados</span>
+                </div>
+                <canvas id="chart-ingresos" height="120"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-pacientes" class="d-none">
+        <div class="row g-4">
+          <div class="col-12">
+            <div class="card shadow-sm border-0">
+              <div class="card-body">
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+                  <h2 class="h5 mb-0">Listado de pacientes</h2>
+                <div class="d-flex flex-wrap gap-2">
+                  <button
+                    class="btn btn-outline-success"
+                    type="button"
+                    id="turnos-process-reminders"
+                  >
+                    <i class="bi bi-whatsapp me-1"></i>Procesar recordatorios
+                  </button>
+                  <button
+                    class="btn btn-primary"
+                    type="button"
+                      data-bs-toggle="modal"
+                      data-bs-target="#paciente-modal"
+                      id="open-create-modal"
+                    >
+                      + Nuevo paciente
+                    </button>
+                    <form id="search-form" class="d-flex gap-2">
+                      <input id="search-q" class="form-control" placeholder="Buscar por nombre/apellido" />
+                      <input id="search-dni" class="form-control" placeholder="DNI exacto" />
+                      <select id="search-sort" class="form-select">
+                        <option value="apellido:asc">Apellido (A-Z)</option>
+                        <option value="apellido:desc">Apellido (Z-A)</option>
+                        <option value="dni:asc">DNI (asc)</option>
+                        <option value="dni:desc">DNI (desc)</option>
+                        <option value="created_at:desc">Alta (mas reciente)</option>
+                        <option value="created_at:asc">Alta (mas antigua)</option>
+                      </select>
+                      <button class="btn btn-outline-primary" type="submit">Buscar</button>
+                      <button id="clear-search" class="btn btn-outline-secondary" type="button">Limpiar</button>
+                    </form>
+                  </div>
+                </div>
+
+                <div class="table-responsive">
+                  <table class="table align-middle" id="pacientes-table">
+                    <thead>
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Apellido</th>
+                        <th>DNI</th>
+                        <th>Contacto</th>
+                        <th class="text-end">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="pacientes-tbody"></tbody>
+                  </table>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                  <small id="pagination-meta" class="text-secondary"></small>
+                  <div class="btn-group">
+                    <button id="prev-page" class="btn btn-outline-secondary" type="button">Anterior</button>
+                    <button id="next-page" class="btn btn-outline-secondary" type="button">Siguiente</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-turnos" class="d-none">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+              <h2 class="h5 mb-0">Agenda de turnos</h2>
+              <div class="d-flex flex-wrap gap-2">
+                <button
+                  class="btn btn-primary"
+                  type="button"
+                  data-bs-toggle="modal"
+                  data-bs-target="#turno-modal"
+                  id="open-create-turno-modal"
+                >
+                  + Nuevo turno
+                </button>
+                <form id="turnos-filter-form" class="d-flex flex-wrap gap-2">
+                  <select id="turnos-quick-range" class="form-select">
+                    <option value="">Rango manual</option>
+                    <option value="hoy">Hoy</option>
+                    <option value="semana">Esta semana</option>
+                  </select>
+                  <select id="turnos-filter-estado" class="form-select">
+                    <option value="">Todos los estados</option>
+                    <option value="solicitado">Solicitado</option>
+                    <option value="programado">Programado</option>
+                    <option value="confirmado">Confirmado</option>
+                    <option value="reprogramado">Reprogramado</option>
+                    <option value="cancelado">Cancelado</option>
+                    <option value="rechazado">Rechazado</option>
+                    <option value="realizado">Realizado</option>
+                  </select>
+                  <input id="turnos-filter-paciente" class="form-control" placeholder="DNI, nombre o apellido" />
+                  <input id="turnos-filter-desde" type="date" class="form-control" />
+                  <input id="turnos-filter-hasta" type="date" class="form-control" />
+                  <button class="btn btn-outline-primary" type="submit">Filtrar</button>
+                  <button id="turnos-clear-filters" class="btn btn-outline-secondary" type="button">Limpiar</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Paciente</th>
+                    <th>Prestacion</th>
+                    <th>Profesional</th>
+                      <th>Inicio</th>
+                      <th>Fin</th>
+                      <th>Estado</th>
+                      <th>WhatsApp</th>
+                      <th class="text-end">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="turnos-tbody"></tbody>
+              </table>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center gap-2">
+              <small id="turnos-pagination-meta" class="text-secondary"></small>
+              <div class="btn-group">
+                <button id="turnos-prev-page" class="btn btn-outline-secondary" type="button">Anterior</button>
+                <button id="turnos-next-page" class="btn btn-outline-secondary" type="button">Siguiente</button>
+              </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+              <h3 class="h6 mb-0">Agenda (grilla por horas)</h3>
+              <div class="btn-group" role="group" aria-label="Modo de agenda">
+                <button id="calendar-mode-day" type="button" class="btn btn-outline-primary btn-sm active">Diaria</button>
+                <button id="calendar-mode-week" type="button" class="btn btn-outline-primary btn-sm">Semanal</button>
+              </div>
+            </div>
+
+            <section id="calendar-week-section" class="d-none">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <h4 class="h6 mb-0">Vista semanal</h4>
+                <div class="d-flex align-items-center gap-2">
+                  <button id="calendar-prev-week" class="btn btn-outline-secondary btn-sm" type="button">Semana anterior</button>
+                  <button id="calendar-today-week" class="btn btn-outline-primary btn-sm" type="button">Semana actual</button>
+                  <button id="calendar-next-week" class="btn btn-outline-secondary btn-sm" type="button">Semana siguiente</button>
+                </div>
+              </div>
+              <small id="calendar-week-label" class="text-secondary d-block mb-2"></small>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle" id="calendar-week-table">
+                  <thead id="calendar-week-head"></thead>
+                  <tbody id="calendar-week-body"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section id="calendar-day-section">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <h4 class="h6 mb-0">Vista diaria</h4>
+                <div class="d-flex align-items-center gap-2">
+                  <button id="calendar-prev-day" class="btn btn-outline-secondary btn-sm" type="button">Dia anterior</button>
+                  <button id="calendar-today-day" class="btn btn-outline-primary btn-sm" type="button">Hoy</button>
+                  <button id="calendar-next-day" class="btn btn-outline-secondary btn-sm" type="button">Dia siguiente</button>
+                </div>
+              </div>
+              <small id="calendar-day-label" class="text-secondary d-block mb-2"></small>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered align-middle" id="calendar-day-table">
+                  <thead id="calendar-day-head"></thead>
+                  <tbody id="calendar-day-body"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-prestaciones" class="d-none">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+              <h2 class="h5 mb-0">Prestaciones disponibles</h2>
+              <div class="d-flex align-items-center gap-2">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="prestaciones-toggle-inactivas" />
+                  <label class="form-check-label" for="prestaciones-toggle-inactivas">Mostrar inactivas</label>
+                </div>
+                <button class="btn btn-primary" type="button" id="open-prestacion-modal">
+                  + Nueva prestacion
+                </button>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th>Nombre</th>
+                    <th>Duracion</th>
+                    <th>Precio base</th>
+                    <th>Estado</th>
+                    <th class="text-end">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="prestaciones-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-reportes" class="d-none">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+              <div>
+                <h2 class="h5 mb-1">Reportes de atencion y facturacion</h2>
+                <small id="reportes-rango" class="text-secondary"></small>
+              </div>
+            </div>
+
+            <form id="reportes-form" class="row g-2 align-items-end mb-3">
+              <div class="col-md-3">
+                <label class="form-label" for="reportes-desde">Fecha desde</label>
+                <input id="reportes-desde" type="date" class="form-control" required />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="reportes-hasta">Fecha hasta</label>
+                <input id="reportes-hasta" type="date" class="form-control" required />
+              </div>
+              <div class="col-md-3">
+                <div class="form-check mt-4">
+                  <input class="form-check-input" type="checkbox" id="reportes-detalle" />
+                  <label class="form-check-label" for="reportes-detalle">Incluir detalle de turnos</label>
+                </div>
+              </div>
+              <div class="col-md-3 d-grid">
+                <button class="btn btn-primary" type="submit">Generar reporte</button>
+              </div>
+            </form>
+
+            <div class="d-flex flex-wrap gap-2 mb-3">
+              <button id="reportes-export-csv" class="btn btn-outline-secondary btn-sm" type="button">
+                Exportar CSV
+              </button>
+              <button id="reportes-export-pdf" class="btn btn-outline-secondary btn-sm" type="button">
+                Exportar PDF
+              </button>
+            </div>
+
+            <div id="reportes-resumen" class="report-cards"></div>
+
+            <hr class="my-4" />
+
+            <h3 class="h6">Resumen por prestacion</h3>
+            <div class="table-responsive mb-4">
+              <table class="table align-middle">
+                <thead>
+                  <tr>
+                    <th>Prestacion</th>
+                    <th>Cantidad</th>
+                    <th>Ingresos estimados</th>
+                  </tr>
+                </thead>
+                <tbody id="reportes-prestaciones-tbody"></tbody>
+              </table>
+            </div>
+
+            <div id="reportes-turnos-wrap" class="d-none">
+              <h3 class="h6">Detalle de turnos</h3>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Paciente</th>
+                      <th>DNI</th>
+                      <th>Prestacion</th>
+                      <th>Estado</th>
+                      <th>Precio base</th>
+                    </tr>
+                  </thead>
+                  <tbody id="reportes-turnos-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-estadisticas" class="d-none">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+              <div>
+                <h2 class="h5 mb-1">Estadisticas del consultorio</h2>
+                <small id="estadisticas-rango" class="text-secondary"></small>
+              </div>
+            </div>
+
+            <form id="estadisticas-form" class="row g-2 align-items-end mb-3">
+              <div class="col-md-3">
+                <label class="form-label" for="estadisticas-desde">Fecha desde</label>
+                <input id="estadisticas-desde" type="date" class="form-control" required />
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="estadisticas-hasta">Fecha hasta</label>
+                <input id="estadisticas-hasta" type="date" class="form-control" required />
+              </div>
+              <div class="col-md-3 d-grid">
+                <button class="btn btn-primary" type="submit">Generar estadisticas</button>
+              </div>
+            </form>
+
+            <div id="estadisticas-resumen" class="report-cards mb-4"></div>
+
             <div class="row g-4">
-                <div class="col-md-6 col-lg-3">
-                    <div class="card text-center h-100">
-                        <div class="card-body">
-                            <i class="bi bi-calendar-event text-primary mb-3" style="font-size: 2rem;"></i>
-                            <h5 class="card-title">Gestión de Turnos</h5>
-                            <p class="card-text">Agenda inteligente con disponibilidad horaria automática.</p>
-                        </div>
-                    </div>
+              <div class="col-lg-6">
+                <h3 class="h6">Turnos por dia</h3>
+                <div id="chart-turnos" class="chart-block">
+                  <svg class="line-chart" id="chart-turnos-svg" aria-label="Turnos por dia"></svg>
                 </div>
-                <div class="col-md-6 col-lg-3">
-                    <div class="card text-center h-100">
-                        <div class="card-body">
-                            <i class="bi bi-people text-success mb-3" style="font-size: 2rem;"></i>
-                            <h5 class="card-title">Gestión de Pacientes</h5>
-                            <p class="card-text">Base de datos completa con historial clínico.</p>
-                        </div>
-                    </div>
+              </div>
+              <div class="col-lg-6">
+                <h3 class="h6">Nuevos pacientes por dia</h3>
+                <div id="chart-pacientes" class="chart-block">
+                  <svg class="line-chart" id="chart-pacientes-svg" aria-label="Nuevos pacientes por dia"></svg>
                 </div>
-                <div class="col-md-6 col-lg-3">
-                    <div class="card text-center h-100">
-                        <div class="card-body">
-                            <i class="bi bi-chat-left text-info mb-3" style="font-size: 2rem;"></i>
-                            <h5 class="card-title">WhatsApp Integrado</h5>
-                            <p class="card-text">Recordatorios automáticos y confirmaciones.</p>
-                        </div>
-                    </div>
+              </div>
+              <div class="col-12">
+                <h3 class="h6">Top prestaciones</h3>
+                <div class="table-responsive">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Prestacion</th>
+                        <th>Cantidad</th>
+                        <th>Ingresos estimados</th>
+                      </tr>
+                    </thead>
+                    <tbody id="estadisticas-prestaciones-tbody"></tbody>
+                  </table>
                 </div>
-                <div class="col-md-6 col-lg-3">
-                    <div class="card text-center h-100">
-                        <div class="card-body">
-                            <i class="bi bi-file-earmark-pdf text-danger mb-3" style="font-size: 2rem;"></i>
-                            <h5 class="card-title">Reportes</h5>
-                            <p class="card-text">Estadísticas y facturación en PDF.</p>
-                        </div>
-                    </div>
-                </div>
+              </div>
             </div>
+          </div>
         </div>
-    </section>
+      </section>
 
-    <!-- Footer -->
-    <footer class="bg-dark text-white py-4 mt-5">
-        <div class="container text-center">
-            <p class="mb-0">&copy; 2026 Odonton - Sistema de Gestión Odontológica</p>
+      <section id="section-historia" class="d-none">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <div class="empty-state">
+              <div class="empty-icon"><i class="bi bi-file-medical"></i></div>
+              <div>
+                <h2 class="h5 mb-1">Historia clinica</h2>
+                <p class="text-secondary mb-3">Este modulo estara disponible proximamente.</p>
+                <div class="d-flex flex-wrap gap-2">
+                  <span class="badge bg-light text-dark">Resumen de antecedentes</span>
+                  <span class="badge bg-light text-dark">Evolucion por paciente</span>
+                  <span class="badge bg-light text-dark">Documentacion clinica</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-    </footer>
+      </section>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Custom JS -->
-    <script src="js/main.js"></script>
-</body>
+      <section id="section-pagos" class="d-none">
+          <div class="row g-4">
+            <div class="col-lg-5">
+              <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                  <div>
+                    <h2 class="h5 mb-1">Registrar pago</h2>
+                    <p class="text-secondary small mb-0">Elegí un paciente y aplicá el cobro a un concepto pendiente.</p>
+                  </div>
+                  <span class="badge bg-light text-dark">Caja</span>
+                </div>
+                <form id="pago-form">
+                  <div class="mb-2">
+                    <label class="form-label" for="pago-paciente">Paciente</label>
+                    <select id="pago-paciente" class="form-select" required></select>
+                  </div>
+                  <div class="payment-summary-card mb-3">
+                    <div class="payment-summary-head">
+                      <div>
+                        <div class="small text-secondary text-uppercase">Estado de cuenta</div>
+                        <div class="payment-summary-total" id="pago-deuda-total">$ 0.00</div>
+                      </div>
+                      <span class="badge text-bg-light border" id="pago-conceptos-count">0 conceptos</span>
+                    </div>
+                    <div id="pago-conceptos" class="payment-concepts-list">
+                      <div class="payment-empty-copy">Selecciona un paciente para ver conceptos pendientes.</div>
+                    </div>
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label" for="pago-turno">Turno (opcional)</label>
+                    <input id="pago-turno" class="form-control" placeholder="ID de turno" />
+                  </div>
+                    <div class="mb-2">
+                      <label class="form-label" for="pago-monto">Monto</label>
+                      <input id="pago-monto" type="number" min="1" step="0.01" class="form-control" required />
+                      <div id="pago-monto-ayuda" class="payment-field-help">Selecciona un concepto pendiente y te sugerimos el importe exacto.</div>
+                    </div>
+                  <div class="mb-2">
+                    <label class="form-label" for="pago-metodo">Metodo</label>
+                    <select id="pago-metodo" class="form-select" required>
+                      <option value="efectivo">Efectivo</option>
+                      <option value="tarjeta">Tarjeta</option>
+                      <option value="transferencia">Transferencia</option>
+                    </select>
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label" for="pago-estado">Estado</label>
+                    <select id="pago-estado" class="form-select" required>
+                      <option value="pagado">Pagado</option>
+                      <option value="pendiente">Pendiente</option>
+                      <option value="parcial">Parcial</option>
+                    </select>
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label" for="pago-fecha">Fecha de pago</label>
+                    <input id="pago-fecha" type="date" class="form-control" />
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="pago-observaciones">Observaciones</label>
+                    <textarea id="pago-observaciones" class="form-control" rows="3"></textarea>
+                  </div>
+                  <button id="pago-submit" class="btn btn-primary w-100" type="submit">Registrar pago</button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+            <div class="col-12">
+              <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+                  <div>
+                    <h2 class="h5 mb-0">Pagos registrados</h2>
+                    <small class="text-secondary">Filtra por paciente o rango de fechas. El saldo muestra lo pendiente del turno asociado.</small>
+                  </div>
+                </div>
+
+                <form id="pagos-filter-form" class="row g-2 align-items-end mb-3">
+                  <div class="col-md-5">
+                    <label class="form-label" for="pagos-filter-paciente">Paciente</label>
+                    <select id="pagos-filter-paciente" class="form-select"></select>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label" for="pagos-filter-desde">Desde</label>
+                    <input id="pagos-filter-desde" type="date" class="form-control" />
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label" for="pagos-filter-hasta">Hasta</label>
+                    <input id="pagos-filter-hasta" type="date" class="form-control" />
+                  </div>
+                  <div class="col-md-1 d-grid">
+                    <button class="btn btn-outline-primary" type="submit">Ver</button>
+                  </div>
+                </form>
+
+                <div class="table-responsive">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Paciente</th>
+                        <th>DNI</th>
+                        <th>Concepto</th>
+                        <th>Monto</th>
+                        <th>Metodo</th>
+                        <th>Estado</th>
+                        <th>Saldo</th>
+                        <th class="text-end">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody id="pagos-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-configuracion" class="d-none">
+        <div class="row g-4">
+          <div class="col-lg-4">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                  <div>
+                    <h2 class="h5 mb-1">Consultorio</h2>
+                    <p class="text-secondary small mb-0">Datos base para WhatsApp y agenda.</p>
+                  </div>
+                  <span class="badge bg-light text-dark">Admin</span>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="config-nombre-consultorio">Nombre del consultorio</label>
+                  <input id="config-nombre-consultorio" class="form-control" />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="config-whatsapp-numero">Celular del consultorio</label>
+                  <input id="config-whatsapp-numero" class="form-control" placeholder="+549..." />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="config-autogestion-keywords">Palabras clave para autogestión</label>
+                  <textarea
+                    id="config-autogestion-keywords"
+                    class="form-control"
+                    rows="3"
+                    placeholder="turno, turnito, cita, consulta"
+                  ></textarea>
+                  <div class="form-text">Separá cada palabra o frase con coma.</div>
+                </div>
+                <div class="mb-0">
+                  <label class="form-label" for="config-timezone">Zona horaria</label>
+                  <input id="config-timezone" class="form-control" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-lg-8">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                  <div>
+                    <h2 class="h5 mb-1">Dias y horarios de atencion</h2>
+                    <p class="text-secondary small mb-0">Se aplican al alta y reprogramacion de turnos.</p>
+                  </div>
+                </div>
+                <div class="table-responsive">
+                  <table class="table align-middle">
+                    <thead>
+                      <tr>
+                        <th>Dia</th>
+                        <th>Activo</th>
+                        <th>Desde</th>
+                        <th>Hasta</th>
+                      </tr>
+                    </thead>
+                    <tbody id="config-horarios-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+                  <div>
+                    <h2 class="h5 mb-1">WhatsApp Web</h2>
+                    <p class="text-secondary small mb-0">Escaneá el QR para conectar el WhatsApp del consultorio.</p>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2">
+                    <button id="config-whatsapp-refresh-btn" class="btn btn-outline-secondary btn-sm" type="button">
+                      <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                    </button>
+                    <button id="config-whatsapp-init-btn" class="btn btn-outline-primary btn-sm" type="button">
+                      <i class="bi bi-play-circle me-1"></i>Iniciar
+                    </button>
+                    <button id="config-whatsapp-reset-btn" class="btn btn-outline-danger btn-sm" type="button">
+                      <i class="bi bi-qr-code me-1"></i>Nuevo QR
+                    </button>
+                    <button id="config-whatsapp-logout-btn" class="btn btn-outline-dark btn-sm" type="button">
+                      <i class="bi bi-box-arrow-right me-1"></i>Cerrar sesión
+                    </button>
+                  </div>
+                </div>
+
+                <div class="row g-3 align-items-center">
+                  <div class="col-md-auto">
+                    <div class="whatsapp-qr-box">
+                      <canvas id="config-whatsapp-qr" class="d-none" width="240" height="240"></canvas>
+                      <div id="config-whatsapp-qr-empty" class="text-center text-secondary small">
+                        QR no disponible
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-md">
+                    <div class="mb-2">
+                      <span id="config-whatsapp-status-badge" class="badge bg-secondary">Desconectado</span>
+                    </div>
+                    <p id="config-whatsapp-status-text" class="text-secondary mb-2">Sin actividad reciente.</p>
+                    <p class="small text-secondary mb-0">
+                      Desde WhatsApp: Dispositivos vinculados > Vincular dispositivo.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                  <div>
+                    <h2 class="h5 mb-1">Mensajes automaticos</h2>
+                    <p class="text-secondary small mb-0">Variables disponibles: <code>{paciente}</code>, <code>{prestacion}</code>, <code>{fecha}</code>, <code>{hora}</code>, <code>{turno_id}</code>, <code>{consultorio}</code>, <code>{whatsapp_consultorio}</code>, <code>{enlace_reprogramacion}</code>.</p>
+                  </div>
+                </div>
+                <div id="config-mensajes-wrap" class="row g-3"></div>
+                <div class="d-flex justify-content-end mt-4">
+                  <button id="config-save-btn" class="btn btn-primary" type="button">
+                    <i class="bi bi-save me-1"></i>Guardar configuracion
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+        </main>
+      </div>
+    </div>
+
+    <div class="modal fade" id="paciente-modal" tabindex="-1" aria-labelledby="paciente-modal-label" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="paciente-modal-label">Nuevo paciente</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="create-paciente-form">
+            <div class="modal-body">
+              <input type="hidden" id="paciente-id" name="id" />
+              <div class="mb-2">
+                <label class="form-label" for="nombre">Nombre</label>
+                <input id="nombre" name="nombre" class="form-control" required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="apellido">Apellido</label>
+                <input id="apellido" name="apellido" class="form-control" required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="dni">DNI</label>
+                <input id="dni" name="dni" class="form-control" required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="telefono">Telefono</label>
+                <input id="telefono" name="telefono" class="form-control" />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="email">Email</label>
+                <input id="email" name="email" type="email" class="form-control" />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="nacionalidad">Nacionalidad</label>
+                <input id="nacionalidad" name="nacionalidad" class="form-control" />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="domicilio">Domicilio</label>
+                <input id="domicilio" name="domicilio" class="form-control" />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="fecha_nacimiento">Fecha de nacimiento</label>
+                <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" class="form-control" />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="observaciones">Observaciones</label>
+                <textarea id="observaciones" name="observaciones" rows="2" class="form-control"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit" id="paciente-submit-btn">Guardar paciente</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="ficha-modal" tabindex="-1" aria-labelledby="ficha-modal-label" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="ficha-modal-label">Ficha clinica</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="ficha-modal-content">
+            <p class="text-secondary mb-0">Cargando...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="odontograma-modal" tabindex="-1" aria-labelledby="odontograma-modal-label" aria-hidden="true">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="odontograma-modal-label">Odontograma</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p class="text-secondary mb-2" id="odontograma-paciente-info">Cargando...</p>
+            <div class="odontograma-legend mb-3">
+              <span class="badge text-bg-light border">Sano</span>
+              <span class="badge bg-danger">Prestacion existente</span>
+              <span class="badge bg-primary">Prestacion requerida</span>
+              <span class="badge bg-warning text-dark">Corona</span>
+              <span class="badge text-bg-secondary">Prótesis fija</span>
+              <span class="badge text-bg-info">Prótesis removible</span>
+              <span class="badge bg-dark">Diente ausente (X)</span>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+              <label class="form-label mb-0 me-2" for="odonto-denticion">Dentición:</label>
+              <select id="odonto-denticion" class="form-select form-select-sm" style="width: auto;">
+                <option value="permanente">Permanente (adulto)</option>
+                <option value="temporal">Temporal (niño)</option>
+                <option value="mixta">Mixta</option>
+              </select>
+              <button id="odonto-export-pdf" type="button" class="btn btn-outline-secondary btn-sm ms-auto">
+                Exportar PDF
+              </button>
+            </div>
+            <div class="row g-3">
+              <div class="col-lg-9">
+                <div class="border rounded-3 p-2 bg-light-subtle">
+                  <svg id="odontograma-svg" class="odontograma-svg" role="img" aria-label="Odontograma dental SVG"></svg>
+                </div>
+                <div class="d-flex flex-wrap gap-3 mt-2">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="odonto-sarro">
+                    <label class="form-check-label" for="odonto-sarro">Presencia de sarro</label>
+                  </div>
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="odonto-periodontal">
+                    <label class="form-check-label" for="odonto-periodontal">Enfermedad periodontal</label>
+                  </div>
+                  <div class="ms-auto small text-secondary">
+                    Dientes existentes: <strong id="odonto-count-existentes">-</strong>
+                  </div>
+                </div>
+                <div id="odontograma-tooth-details" class="mt-2 small text-secondary"></div>
+              </div>
+              <div class="col-lg-3">
+                <form id="odontograma-form" class="border rounded-3 p-3 h-100">
+                  <h3 class="h6">Edicion de pieza</h3>
+                  <p class="small mb-2">Seleccionada: <strong id="odontograma-pieza-selected">-</strong></p>
+                  <div class="mb-2">
+                    <label class="form-label" for="odonto-estado-clinico">Estado clinico a aplicar</label>
+                    <select id="odonto-estado-clinico" class="form-select" required>
+                      <option value="sano">Sano</option>
+                      <option value="existente">Prestacion existente</option>
+                      <option value="requerido">Prestacion requerida</option>
+                      <option value="corona">Corona</option>
+                      <option value="protesis_fija">Prótesis fija</option>
+                      <option value="protesis_removible">Prótesis removible</option>
+                      <option value="ausente">Diente ausente / a extraer</option>
+                    </select>
+                  </div>
+                  <div class="mb-3">
+                    <label class="form-label" for="odonto-observaciones">Observaciones</label>
+                    <textarea id="odonto-observaciones" class="form-control" rows="4"></textarea>
+                  </div>
+                  <button id="odontograma-save-btn" class="btn btn-primary w-100" type="submit" disabled>Guardar pieza</button>
+                  <small class="text-secondary d-block mt-2">
+                    Clic sobre cada cara para alternar estado.
+                  </small>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="tratamiento-modal" tabindex="-1" aria-labelledby="tratamiento-modal-label" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="tratamiento-modal-label">Registrar tratamiento</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="tratamiento-form">
+            <div class="modal-body">
+              <input type="hidden" id="tratamiento-paciente-id" />
+              <div class="mb-2">
+                <label class="form-label" for="tratamiento-diente">Diente (FDI)</label>
+                <input id="tratamiento-diente" class="form-control" placeholder="Ej: 16" required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="tratamiento-tipo">Tipo</label>
+                <input id="tratamiento-tipo" class="form-control" placeholder="obturacion, endodoncia, etc." required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="tratamiento-observaciones">Observaciones</label>
+                <textarea id="tratamiento-observaciones" class="form-control" rows="2"></textarea>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="tratamiento-fecha">Fecha</label>
+                <input id="tratamiento-fecha" type="date" class="form-control" />
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit">Guardar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="protesis-modal" tabindex="-1" aria-labelledby="protesis-modal-label" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="protesis-modal-label">Registrar prótesis</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="protesis-form">
+            <div class="modal-body">
+              <input type="hidden" id="protesis-paciente-id" />
+              <div class="mb-2">
+                <label class="form-label" for="protesis-tipo">Tipo</label>
+                <input id="protesis-tipo" class="form-control" placeholder="corona, puente, parcial..." required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="protesis-clase">Clasificación</label>
+                <select id="protesis-clase" class="form-select">
+                  <option value="fija">Prótesis fija</option>
+                  <option value="removible">Prótesis removible</option>
+                </select>
+              </div>
+              <div class="mb-2" id="protesis-dientes-group">
+                <label class="form-label" for="protesis-dientes">Dientes (FDI, separados por coma)</label>
+                <input id="protesis-dientes" class="form-control" placeholder="Ej: 13,14,15" />
+              </div>
+              <div class="mb-2 d-none" id="protesis-arcada-group">
+                <label class="form-label" for="protesis-arcada">Arcada</label>
+                <select id="protesis-arcada" class="form-select">
+                  <option value="superior">Superior</option>
+                  <option value="inferior">Inferior</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="protesis-fecha">Fecha</label>
+                <input id="protesis-fecha" type="date" class="form-control" />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="protesis-descripcion">Descripción</label>
+                <textarea id="protesis-descripcion" class="form-control" rows="2"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit">Guardar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="turno-modal" tabindex="-1" aria-labelledby="turno-modal-label" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="turno-modal-label">Nuevo turno</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="create-turno-form">
+            <div class="modal-body">
+              <div class="mb-2">
+                <label class="form-label" for="turno-paciente-id">Paciente</label>
+                <select id="turno-paciente-id" name="pacienteId" class="form-select" required>
+                  <option value="">Seleccionar paciente</option>
+                </select>
+                <button type="button" class="btn btn-link px-0 mt-1" id="turno-go-pacientes">Paciente no registrado? Ir a Pacientes</button>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="turno-profesional-id">Profesional</label>
+                <select id="turno-profesional-id" name="profesionalId" class="form-select" required>
+                  <option value="">Seleccionar profesional</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="turno-prestacion-id">Prestacion</label>
+                <select id="turno-prestacion-id" name="prestacionId" class="form-select" required>
+                  <option value="">Seleccionar prestacion</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="turno-duracion">Duracion (minutos, opcional)</label>
+                <input id="turno-duracion" name="duracionMinutos" type="number" min="15" class="form-control" />
+                <small class="text-secondary">Si se deja vacio se usa la duracion sugerida de la prestacion.</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="turno-fecha-dia">Dia</label>
+                <input id="turno-fecha-dia" name="fechaDia" type="date" class="form-control" required />
+                <input id="turno-fecha-inicio" name="fechaHoraInicio" type="hidden" required />
+                <input id="turno-fecha-fin" name="fechaHoraFin" type="hidden" />
+              </div>
+              <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                  <label class="form-label mb-0">Horarios disponibles</label>
+                  <small id="turno-disponibilidad-status" class="text-secondary">Elegí profesional, tratamiento y día para ver horarios.</small>
+                </div>
+                <div id="turno-disponibilidad-grid" class="turno-slots-grid"></div>
+                <div class="small text-secondary mt-2">
+                  Horario elegido: <strong id="turno-selected-slot-label">Selecciona un horario disponible</strong>
+                </div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="turno-observaciones">Observaciones</label>
+                <textarea id="turno-observaciones" name="observaciones" rows="2" class="form-control"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit" id="turno-submit-btn" disabled>Guardar turno</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="turno-edit-modal" tabindex="-1" aria-labelledby="turno-edit-modal-label" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="turno-edit-modal-label">Editar turno</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="edit-turno-form">
+            <div class="modal-body">
+              <input type="hidden" id="edit-turno-id" name="id" />
+              <div class="mb-2">
+                <label class="form-label" for="edit-turno-paciente-id">Paciente</label>
+                <select id="edit-turno-paciente-id" name="pacienteId" class="form-select" required>
+                  <option value="">Seleccionar paciente</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="edit-turno-profesional-id">Profesional</label>
+                <select id="edit-turno-profesional-id" name="profesionalId" class="form-select" required>
+                  <option value="">Seleccionar profesional</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="edit-turno-prestacion-id">Prestacion</label>
+                <select id="edit-turno-prestacion-id" name="prestacionId" class="form-select" required>
+                  <option value="">Seleccionar prestacion</option>
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="edit-turno-duracion">Duracion (minutos, opcional)</label>
+                <input id="edit-turno-duracion" name="duracionMinutos" type="number" min="15" class="form-control" />
+                <small class="text-secondary">Si se deja vacio se usa la duracion sugerida de la prestacion.</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="edit-turno-observaciones">Observaciones</label>
+                <textarea id="edit-turno-observaciones" name="observaciones" rows="2" class="form-control"></textarea>
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="edit-turno-fecha-dia">Dia</label>
+                <input id="edit-turno-fecha-dia" name="fechaDia" type="date" class="form-control" required />
+                <input id="edit-turno-fecha-inicio" name="fechaHoraInicio" type="hidden" required />
+              </div>
+              <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center gap-2 mb-2">
+                  <label class="form-label mb-0">Horarios disponibles</label>
+                  <small id="edit-turno-disponibilidad-status" class="text-secondary">Elegí profesional, tratamiento y día para ver horarios.</small>
+                </div>
+                <div id="edit-turno-disponibilidad-grid" class="turno-slots-grid"></div>
+                <div class="small text-secondary mt-2">
+                  Horario elegido: <strong id="edit-turno-selected-slot-label">Selecciona un horario disponible</strong>
+                </div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit" id="edit-turno-submit-btn">Guardar cambios</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="prestacion-modal" tabindex="-1" aria-labelledby="prestacion-modal-label" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="prestacion-modal-label">Nueva prestacion</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <form id="prestacion-form">
+            <div class="modal-body">
+              <div class="mb-2">
+                <label class="form-label" for="prestacion-nombre">Nombre</label>
+                <input id="prestacion-nombre" class="form-control" required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="prestacion-duracion">Duracion (minutos)</label>
+                <input id="prestacion-duracion" type="number" min="15" class="form-control" required />
+              </div>
+              <div class="mb-2">
+                <label class="form-label" for="prestacion-precio">Precio base</label>
+                <input id="prestacion-precio" type="number" min="0" step="0.01" class="form-control" required />
+              </div>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="prestacion-activa" checked />
+                <label class="form-check-label" for="prestacion-activa">Prestacion activa</label>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-primary" type="submit" id="prestacion-submit-btn">Guardar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script type="module" src="/src/pages/dashboard.js"></script>
+    <script type="module" src="/src/js/main.js"></script>
+  </body>
 </html>
