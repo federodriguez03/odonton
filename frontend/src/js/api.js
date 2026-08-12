@@ -102,17 +102,6 @@ export function getFichaClinica(id, params = {}) {
   return request(`/api/pacientes/${id}/ficha-clinica${suffix}`);
 }
 
-export function getOdontograma(id) {
-  return request(`/api/pacientes/${id}/odontograma`);
-}
-
-export function updateOdontogramaPieza(id, piezaNumero, payload) {
-  return request(`/api/pacientes/${id}/odontograma/piezas/${piezaNumero}`, {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
-}
-
 export function getOdontogramaPaciente(pacienteId) {
   return request(`/api/odontograma/${pacienteId}`);
 }

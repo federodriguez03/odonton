@@ -15,7 +15,6 @@ const {
 const {
 	validarEntradaPaciente,
 	validarConsultaPacientes,
-	validarOdontogramaPieza,
 } = require('../middlewares/pacientesMiddleware');
 
 // Crear paciente
@@ -73,33 +72,6 @@ router.get(
 		next();
 	},
 	(require('../controllers/pacientesController').fichaClinica)
-);
-
-// Obtener odontograma completo de paciente
-router.get(
-	'/:id/odontograma',
-	middlewareAutenticacion,
-	autorizarOdontologo,
-	middlewareAuditoria,
-	(req, res, next) => {
-		req.auditAction = 'consultar_odontograma';
-		next();
-	},
-	(require('../controllers/pacientesController').obtenerOdontograma)
-);
-
-// Guardar estado de una pieza del odontograma
-router.put(
-	'/:id/odontograma/piezas/:pieza',
-	middlewareAutenticacion,
-	autorizarOdontologo,
-	validarOdontogramaPieza,
-	middlewareAuditoria,
-	(req, res, next) => {
-		req.auditAction = 'actualizar_odontograma_pieza';
-		next();
-	},
-	(require('../controllers/pacientesController').guardarOdontogramaPieza)
 );
 
 // Obtener detalle de paciente
