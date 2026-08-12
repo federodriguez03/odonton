@@ -1,6 +1,7 @@
 import {
   createPaciente,
   deleteDocumento,
+  downloadDocumento,
   getFichaClinica,
   getDocumentos,
   getOdontogramaPaciente,
@@ -12,7 +13,6 @@ import {
 import { renderAlert } from '../components/alerts.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 const permanentes = {
   superior: [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28],
@@ -373,9 +373,7 @@ function renderDocumentosFicha(documentos = []) {
   }
 
   tbody.innerHTML = documentos
-    .map((doc) => {
-      const downloadUrl = `${API_BASE_URL}/api/documentos/descargar/${doc.id}`;
-      return `
+    .map((doc) => `
         <tr>
           <td>${doc.nombre_archivo}</td>
           <td>${doc.tipo_archivo}</td>
@@ -383,13 +381,12 @@ function renderDocumentosFicha(documentos = []) {
           <td>${formatDate(doc.fecha_subida)}</td>
           <td class="text-end">
             <div class="btn-group">
-              <a class="btn btn-sm btn-outline-primary" href="${downloadUrl}" target="_blank" rel="noreferrer">Descargar</a>
+              <button class="btn btn-sm btn-outline-primary" type="button" data-action="download-doc" data-id="${doc.id}">Descargar</button>
               <button class="btn btn-sm btn-outline-danger" type="button" data-action="delete-doc" data-id="${doc.id}">Eliminar</button>
             </div>
           </td>
         </tr>
-      `;
-    })
+      `)
     .join('');
 }
 
@@ -443,11 +440,22 @@ function bindFichaDocumentos() {
   });
 
   tbody?.addEventListener('click', async (event) => {
-    const button = event.target.closest('button[data-action="delete-doc"]');
+    const button = event.target.closest('button[data-action]');
     if (!button) return;
 
     const id = button.dataset.id;
     if (!id) return;
+
+    if (button.dataset.action === 'download-doc') {
+      try {
+        await downloadDocumento(id);
+      } catch (error) {
+        renderAlert(ui.alertContainer, error.message, 'danger');
+      }
+      return;
+    }
+
+    if (button.dataset.action !== 'delete-doc') return;
 
     try {
       await deleteDocumento(id);

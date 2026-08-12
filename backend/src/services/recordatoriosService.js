@@ -33,24 +33,8 @@ async function procesarRespuestaPaciente({ telefono, phone, mensaje, body, accio
   return processPatientReply(sourcePhone, text);
 }
 
-async function procesarWebhookWhatsapp() {
-  throw new Error('Webhook externo obsoleto. Las respuestas se reciben directamente con whatsapp-web.js.');
-}
-
-async function aplicarReprogramacionConToken() {
-  throw new Error('Reprogramacion por token externo obsoleta. Use el flujo interno del consultorio.');
-}
-
-function iniciarSchedulerRecordatorios() {
-  const { startReminderScheduler } = require('../jobs/reminderScheduler');
-  startReminderScheduler();
-}
-
 module.exports = {
   procesarRecordatoriosAutomaticos,
   enviarRecordatorioManualTurno,
   procesarRespuestaPaciente,
-  procesarWebhookWhatsapp,
-  aplicarReprogramacionConToken,
-  iniciarSchedulerRecordatorios,
 };

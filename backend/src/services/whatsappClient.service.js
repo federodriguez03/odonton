@@ -130,29 +130,6 @@ function isGroupOrStatus(chatId) {
   return value.endsWith('@g.us') || value === 'status@broadcast';
 }
 
-function normalizeIncomingText(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-}
-
-function hasAppointmentIntent(body) {
-  const text = normalizeIncomingText(body);
-  if (!text) return false;
-  return [
-    'turno',
-    'turnito',
-    'cita',
-    'sacar turno',
-    'pedir turno',
-    'reservar turno',
-    'quiero un turno',
-    'necesito un turno',
-  ].some((intent) => text.includes(intent));
-}
-
 function isSafeModeEnabled() {
   return String(process.env.WHATSAPP_SAFE_MODE || '').trim().toLowerCase() === 'true';
 }
@@ -180,6 +157,14 @@ function getPollingIntervalMs() {
   const seconds = Number.parseInt(process.env.WHATSAPP_POLL_INTERVAL_SECONDS || '5', 10);
   const safeSeconds = Number.isFinite(seconds) && seconds >= 3 ? seconds : 5;
   return safeSeconds * 1000;
+}
+
+function isMessagePollingEnabled() {
+  return String(process.env.WHATSAPP_POLLING_ENABLED || '').trim().toLowerCase() === 'true';
+}
+
+function isWhatsAppDebugEnabled() {
+  return String(process.env.WHATSAPP_DEBUG || '').trim().toLowerCase() === 'true';
 }
 
 function getMessageId(message) {
@@ -292,15 +277,17 @@ function stopMessagePolling() {
 }
 
 function startMessagePolling() {
-  if (pollHandle || !client) return;
+  if (pollHandle || !client || !isMessagePollingEnabled()) return;
 
   pollHandle = setInterval(async () => {
     try {
       if (!client || !ready) return;
       await pollRecentMessagesOnce({ limitChats: 20, limitMessages: 5, maxAgeMinutes: 30, process: true });
     } catch (error) {
-      lastError = error.message;
-      console.error('[WHATSAPP WEB] Error en polling de mensajes:', error.message);
+      const message = error?.message || String(error);
+      lastError = message;
+      console.error('[WHATSAPP WEB] Error en polling de mensajes:', message);
+      if (error?.stack) console.error(error.stack);
     }
   }, getPollingIntervalMs());
 
@@ -349,17 +336,20 @@ async function handleIncomingMessage(message, sourceEvent) {
 
     const chatId = from;
     const text = String(message.body).trim();
-    const hasIntent = hasAppointmentIntent(text);
     const {
       hasActiveAutogestionSession,
       processAutogestionMessage,
+      shouldStartAutogestion,
     } = require('./whatsappAutogestion.service');
+    const hasIntent = /^[123]$/.test(text) || await shouldStartAutogestion(text);
     const { hasPendingReminderForPhone, processPatientReply } = require('./whatsappReminder.service');
     const hasSessionContext = hasIntent ? false : await hasActiveAutogestionSession(chatId);
     const hasReminderContext = hasIntent || hasSessionContext ? false : await hasPendingReminderForPhone(chatId);
 
     if (!hasIntent && !hasSessionContext && !hasReminderContext) {
-      console.log('[WHATSAPP WEB] Mensaje ignorado por no tener intencion');
+      if (isWhatsAppDebugEnabled()) {
+        console.log('[WHATSAPP WEB] Mensaje ignorado por no tener intencion');
+      }
       return;
     }
 

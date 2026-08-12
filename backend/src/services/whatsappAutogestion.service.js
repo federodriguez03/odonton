@@ -410,7 +410,8 @@ function menuPrincipalMessage() {
     + '¿En qué podemos ayudarte? Ingresá el número de la opción:\n\n'
     + '1. 📅 Sacar un turno\n'
     + '2. 📅 Reprogramar un turno\n'
-    + '3. ❌ Cancelar un turno';
+    + '3. ❌ Cancelar un turno\n'
+    + '0. Cancelar conversación';
 }
 
 function invalidMenuMessage() {
@@ -418,7 +419,8 @@ function invalidMenuMessage() {
     + 'Por favor, ingresá una opción válida:\n\n'
     + '1. 📅 Sacar un turno\n'
     + '2. 📅 Reprogramar un turno\n'
-    + '3. ❌ Cancelar un turno';
+    + '3. ❌ Cancelar un turno\n'
+    + '0. Cancelar conversación';
 }
 
 function splitNombreApellido(value) {
@@ -1862,8 +1864,14 @@ async function processAutogestionMessage(phone, body) {
       await safeSend(phone, COURTESY_MESSAGE);
       return { handled: true, courtesy: true };
     }
-    if (!isStrictMenuCommand(text)) {
+    const isDirectMenuCommand = isStrictMenuCommand(text);
+    if (!isDirectMenuCommand && !(await shouldStartAutogestion(text))) {
       return { handled: false, codigo: 'NO_AUTOGESTION_COMMAND' };
+    }
+
+    if (!isDirectMenuCommand) {
+      const result = await startAutogestion(phone);
+      return { handled: true, ...result };
     }
 
     session = await createSession(phone, 'esperando_opcion_menu', { mode: 'guided_requests' });
@@ -2016,6 +2024,7 @@ async function startRescheduleFlow(phone, appointmentId) {
 
 module.exports = {
   ensureAutogestionSchema,
+  shouldStartAutogestion,
   processAutogestionMessage,
   processAutogestionNonTextMessage,
   hasActiveAutogestionSession,

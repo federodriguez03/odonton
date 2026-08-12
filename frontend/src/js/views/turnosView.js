@@ -34,6 +34,7 @@ const state = {
   editDisponibilidadLoading: false,
   editSelectedSlot: null,
   editCurrentTurno: null,
+  detailCurrentTurno: null,
 };
 
 const ui = {
@@ -78,6 +79,9 @@ const ui = {
   editSelectedSlotLabel: document.getElementById('edit-turno-selected-slot-label'),
   editSubmitButton: document.getElementById('edit-turno-submit-btn'),
   editObservacionesInput: document.getElementById('edit-turno-observaciones'),
+  detailContent: document.getElementById('turno-detail-content'),
+  detailEditButton: document.getElementById('turno-detail-edit'),
+  detailCancelButton: document.getElementById('turno-detail-cancel'),
   calendarPrevWeekButton: document.getElementById('calendar-prev-week'),
   calendarTodayWeekButton: document.getElementById('calendar-today-week'),
   calendarNextWeekButton: document.getElementById('calendar-next-week'),
@@ -98,6 +102,7 @@ const ui = {
 
 const turnoModalElement = document.getElementById('turno-modal');
 const turnoEditModalElement = document.getElementById('turno-edit-modal');
+const turnoDetailModalElement = document.getElementById('turno-detail-modal');
 
 const turnoModal =
   window.bootstrap && turnoModalElement
@@ -107,6 +112,11 @@ const turnoModal =
 const turnoEditModal =
   window.bootstrap && turnoEditModalElement
     ? window.bootstrap.Modal.getOrCreateInstance(turnoEditModalElement)
+    : null;
+
+const turnoDetailModal =
+  window.bootstrap && turnoDetailModalElement
+    ? window.bootstrap.Modal.getOrCreateInstance(turnoDetailModalElement)
     : null;
 
 function formatDateTime(value) {
@@ -256,6 +266,10 @@ function canEditTurno(turno) {
   return ['solicitado', 'programado', 'confirmado', 'reprogramado', 'reprogramacion_solicitada'].includes(turno?.estado);
 }
 
+function canCancelTurno(turno) {
+  return ['programado', 'confirmado', 'reprogramado', 'reprogramacion_solicitada', 'cancelacion_solicitada'].includes(turno?.estado);
+}
+
 function canRejectSolicitud(turno) {
   return ['solicitado', 'reprogramacion_solicitada', 'cancelacion_solicitada'].includes(turno?.estado);
 }
@@ -319,16 +333,40 @@ function renderCalendarTurnoCard(turno) {
 }
 
 function showCalendarTurnoDetail(turno) {
+  if (!turno || !ui.detailContent) return;
+  state.detailCurrentTurno = turno;
   const estado = getEstadoInfo(turno.estado);
-  const message = [
-    `Turno #${turno.id}`,
-    `Paciente: ${formatPaciente(turno)}`,
-    `Prestación: ${turno?.prestacion?.nombre || '-'}`,
-    `Inicio: ${formatDateTime(turno.fechaHoraInicio || turno.fecha_hora_inicio)}`,
-    `Fin: ${formatDateTime(turno.fechaHoraFin || turno.fecha_hora_fin)}`,
-    `Estado: ${estado.label}`,
-  ].join(' | ');
-  renderAlert(ui.alertContainer, message, 'info');
+  const inicio = turno.fechaHoraInicio || turno.fecha_hora_inicio;
+  const fin = turno.fechaHoraFin || turno.fecha_hora_fin;
+  const observaciones = turno.observaciones || '-';
+
+  ui.detailContent.innerHTML = `
+    <dl class="row mb-0">
+      <dt class="col-sm-4">Paciente</dt>
+      <dd class="col-sm-8">${escapeHtml(formatPaciente(turno))}</dd>
+      <dt class="col-sm-4">Prestación</dt>
+      <dd class="col-sm-8">${escapeHtml(turno?.prestacion?.nombre || '-')}</dd>
+      <dt class="col-sm-4">Fecha</dt>
+      <dd class="col-sm-8">${escapeHtml(formatDateAr(inicio, { year: 'numeric' }))}</dd>
+      <dt class="col-sm-4">Hora de inicio</dt>
+      <dd class="col-sm-8">${escapeHtml(formatTimeAr(inicio))}</dd>
+      <dt class="col-sm-4">Hora de fin</dt>
+      <dd class="col-sm-8">${escapeHtml(formatTimeAr(fin))}</dd>
+      <dt class="col-sm-4">Estado</dt>
+      <dd class="col-sm-8"><span class="badge text-bg-light border">${escapeHtml(estado.label)}</span></dd>
+      <dt class="col-sm-4">Observaciones</dt>
+      <dd class="col-sm-8 text-break">${escapeHtml(observaciones)}</dd>
+    </dl>
+  `;
+
+  if (ui.detailEditButton) {
+    ui.detailEditButton.classList.toggle('d-none', !canEditTurno(turno));
+    ui.detailEditButton.textContent = editActionLabel(turno);
+  }
+  if (ui.detailCancelButton) {
+    ui.detailCancelButton.classList.toggle('d-none', !canCancelTurno(turno));
+  }
+  turnoDetailModal?.show();
 }
 
 function getRecordatorioBadge(turno) {
@@ -357,7 +395,7 @@ function renderRows(turnos) {
     .map((turno) => {
       const isSolicitud = turno.estado === 'solicitado';
       const isCancelacionSolicitada = turno.estado === 'cancelacion_solicitada';
-      const canCancel = ['programado', 'confirmado', 'reprogramado', 'reprogramacion_solicitada', 'cancelacion_solicitada'].includes(turno.estado);
+      const canCancel = canCancelTurno(turno);
       const canEdit = canEditTurno(turno);
       const canReject = canRejectSolicitud(turno);
       const canSendReminder = canSendWhatsAppReminder(turno);
@@ -1058,13 +1096,13 @@ function bindCalendarMode() {
   });
 }
 
-async function openCalendarTurno(turno) {
+function openCalendarTurno(turno) {
   if (!turno) return;
-  if (!canEditTurno(turno)) {
-    showCalendarTurnoDetail(turno);
-    return;
-  }
+  showCalendarTurnoDetail(turno);
+}
 
+async function loadAndOpenEditTurno(turno) {
+  if (!turno || !canEditTurno(turno)) return;
   await Promise.all([loadPacientesForSelect(), loadPrestacionesForSelect(), loadProfesionalesForSelect()]);
   await openEditModal(turno);
 }
@@ -1075,7 +1113,7 @@ function bindCalendarTurnoActions() {
       const button = event.target.closest('button[data-calendar-action="turno"]');
       if (!button) return;
       const turno = parseTurnoFromButton(button);
-      await openCalendarTurno(turno);
+      openCalendarTurno(turno);
     });
   });
 }
@@ -1236,6 +1274,54 @@ function bindEditForm() {
   });
 }
 
+async function cancelTurnoFromUi(turnoId) {
+  if (!turnoId) return;
+
+  const confirmed = window.confirm('Deseas cancelar este turno?');
+  if (!confirmed) return;
+  const enviarMensaje = window.confirm('Enviar mensaje de WhatsApp al paciente?');
+
+  try {
+    const response = await cancelarTurno(turnoId, { enviarMensaje });
+    const message = response.advertencia
+      ? `${response.mensaje || 'Turno cancelado'}. ${response.advertencia}`
+      : response.mensaje || 'Turno cancelado';
+    renderAlert(ui.alertContainer, message, response.advertencia ? 'warning' : 'success');
+    await refreshTurnosView();
+  } catch (error) {
+    renderAlert(ui.alertContainer, error.message, 'danger');
+  }
+}
+
+function afterDetailModalHidden(callback) {
+  if (!turnoDetailModalElement?.classList.contains('show')) {
+    callback();
+    return;
+  }
+  turnoDetailModalElement.addEventListener('hidden.bs.modal', callback, { once: true });
+  turnoDetailModal?.hide();
+}
+
+function bindDetailModalActions() {
+  ui.detailEditButton?.addEventListener('click', () => {
+    const turno = state.detailCurrentTurno;
+    if (!turno) return;
+    afterDetailModalHidden(() => {
+      loadAndOpenEditTurno(turno).catch((error) => {
+        renderAlert(ui.alertContainer, error.message, 'danger');
+      });
+    });
+  });
+
+  ui.detailCancelButton?.addEventListener('click', () => {
+    const turnoId = state.detailCurrentTurno?.id;
+    if (!turnoId) return;
+    afterDetailModalHidden(() => {
+      cancelTurnoFromUi(turnoId);
+    });
+  });
+}
+
 function bindTableActions() {
   ui.tbody.addEventListener('click', async (event) => {
     const button = event.target.closest('button[data-action]');
@@ -1253,7 +1339,7 @@ function bindTableActions() {
     if (action === 'editar' || action === 'confirmar-solicitud') {
       const turno = parseTurnoFromButton(button);
       if (!turno) return;
-      await openCalendarTurno(turno);
+      await loadAndOpenEditTurno(turno);
       return;
     }
 
@@ -1277,45 +1363,31 @@ function bindTableActions() {
     if (action === 'cancelar') {
       const turnoId = button.dataset.id;
       if (!turnoId) return;
+      await cancelTurnoFromUi(turnoId);
+      return;
+    }
 
-      const confirmed = window.confirm('Deseas cancelar este turno?');
+    if (action === 'whatsapp') {
+      const turnoId = button.dataset.id;
+      if (!turnoId) return;
+
+      const confirmed = window.confirm('Deseas enviar un recordatorio por WhatsApp para este turno?');
       if (!confirmed) return;
-      const enviarMensaje = window.confirm('Enviar mensaje de WhatsApp al paciente?');
 
       try {
-        const response = await cancelarTurno(turnoId, { enviarMensaje });
-        const message = response.advertencia
-          ? `${response.mensaje || 'Turno cancelado'}. ${response.advertencia}`
-          : response.mensaje || 'Turno cancelado';
-        renderAlert(ui.alertContainer, message, response.advertencia ? 'warning' : 'success');
+        const response = await enviarRecordatorioWhatsappTurno(turnoId);
+        renderAlert(
+          ui.alertContainer,
+          response.mensaje || 'Recordatorio procesado',
+          response?.resultado?.enviado ? 'success' : 'warning',
+        );
         await refreshTurnosView();
-        } catch (error) {
-          renderAlert(ui.alertContainer, error.message, 'danger');
-        }
-        return;
+      } catch (error) {
+        renderAlert(ui.alertContainer, error.message, 'danger');
       }
-
-      if (action === 'whatsapp') {
-        const turnoId = button.dataset.id;
-        if (!turnoId) return;
-
-        const confirmed = window.confirm('Deseas enviar un recordatorio por WhatsApp para este turno?');
-        if (!confirmed) return;
-
-        try {
-          const response = await enviarRecordatorioWhatsappTurno(turnoId);
-          renderAlert(
-            ui.alertContainer,
-            response.mensaje || 'Recordatorio procesado',
-            response?.resultado?.enviado ? 'success' : 'warning',
-          );
-          await refreshTurnosView();
-        } catch (error) {
-          renderAlert(ui.alertContainer, error.message, 'danger');
-        }
-        return;
-      }
-    });
+      return;
+    }
+  });
 }
 
 export async function initTurnosView() {
@@ -1336,6 +1408,7 @@ export async function initTurnosView() {
   bindEditDisponibilidadForm();
   bindCreateForm();
   bindEditForm();
+  bindDetailModalActions();
   bindTableActions();
   await loadTurnos();
   await loadWeeklyCalendar();

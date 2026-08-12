@@ -1,5 +1,4 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
-const WHATSAPP_MOCK_BASE_URL = import.meta.env.VITE_WHATSAPP_MOCK_BASE_URL ?? 'http://localhost:3999';
 const TOKEN_KEY = 'odonton_token';
 
 export function getToken() {
@@ -41,33 +40,24 @@ async function request(path, options = {}) {
 }
 
 async function requestForm(path, formData, options = {}) {
+  const token = getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     body: formData,
     ...options,
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(data?.mensaje || `Error ${response.status}`);
-  }
-
-  return data;
-}
-
-async function requestAbsolute(url, options = {}) {
-  const response = await fetch(url, {
     headers: {
-      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
-    ...options,
   });
 
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event('auth:logout'));
+    }
     throw new Error(data?.mensaje || `Error ${response.status}`);
   }
 
@@ -211,13 +201,6 @@ export function procesarRecordatoriosTurnos() {
   });
 }
 
-export function simularRespuestaWhatsappMock(payload) {
-  return requestAbsolute(`${WHATSAPP_MOCK_BASE_URL}/mock/reply`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-}
-
 export function getPrestaciones(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -308,6 +291,50 @@ export function getDocumentos(pacienteId) {
 
 export function uploadDocumento(formData) {
   return requestForm('/api/documentos/subir', formData);
+}
+
+function getDownloadFilename(response, fallback) {
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const encodedMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+  const rawFilename = encodedMatch?.[1] || plainMatch?.[1];
+
+  if (!rawFilename) return fallback;
+
+  try {
+    return decodeURIComponent(rawFilename);
+  } catch (_) {
+    return rawFilename;
+  }
+}
+
+export async function downloadDocumento(id) {
+  const token = getToken();
+  const response = await fetch(`${API_BASE_URL}/api/documentos/descargar/${id}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event('auth:logout'));
+    }
+    throw new Error(data?.mensaje || `Error ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = getDownloadFilename(response, `documento-${id}`);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
 export function deleteDocumento(id) {
