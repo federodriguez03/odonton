@@ -149,47 +149,6 @@ ALTER SEQUENCE public.auditoria_id_seq OWNED BY public.auditoria.id;
 
 
 --
--- Name: autogestion_tokens; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.autogestion_tokens (
-    id bigint NOT NULL,
-    token text NOT NULL,
-    telefono text,
-    creado_por text DEFAULT 'whatsapp'::text NOT NULL,
-    estado text DEFAULT 'activo'::text NOT NULL,
-    usado_en_turno_id integer,
-    expires_at timestamp with time zone NOT NULL,
-    used_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    tipo_flujo text DEFAULT 'solicitar_turno'::text NOT NULL,
-    turno_id integer,
-    paciente_id integer,
-    accion text
-);
-
-
---
--- Name: autogestion_tokens_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.autogestion_tokens_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: autogestion_tokens_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.autogestion_tokens_id_seq OWNED BY public.autogestion_tokens.id;
-
-
---
 -- Name: configuracion_consultorio; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -725,40 +684,6 @@ ALTER SEQUENCE public.protesis_removibles_id_seq OWNED BY public.protesis_removi
 
 
 --
--- Name: tokens_autogestion; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.tokens_autogestion (
-    id integer NOT NULL,
-    turno_id integer NOT NULL,
-    token character varying(255) NOT NULL,
-    expira_en timestamp with time zone NOT NULL,
-    usado boolean DEFAULT false,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
---
--- Name: tokens_autogestion_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.tokens_autogestion_id_seq
-    AS integer
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: tokens_autogestion_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.tokens_autogestion_id_seq OWNED BY public.tokens_autogestion.id;
-
-
---
 -- Name: tratamientos; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1010,13 +935,6 @@ ALTER TABLE ONLY public.auditoria ALTER COLUMN id SET DEFAULT nextval('public.au
 
 
 --
--- Name: autogestion_tokens id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.autogestion_tokens ALTER COLUMN id SET DEFAULT nextval('public.autogestion_tokens_id_seq'::regclass);
-
-
---
 -- Name: configuracion_consultorio id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1122,13 +1040,6 @@ ALTER TABLE ONLY public.protesis_removibles ALTER COLUMN id SET DEFAULT nextval(
 
 
 --
--- Name: tokens_autogestion id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.tokens_autogestion ALTER COLUMN id SET DEFAULT nextval('public.tokens_autogestion_id_seq'::regclass);
-
-
---
 -- Name: tratamientos id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1184,22 +1095,6 @@ ALTER TABLE ONLY public.archivos_clinicos
 
 ALTER TABLE ONLY public.auditoria
     ADD CONSTRAINT auditoria_pkey PRIMARY KEY (id);
-
-
---
--- Name: autogestion_tokens autogestion_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.autogestion_tokens
-    ADD CONSTRAINT autogestion_tokens_pkey PRIMARY KEY (id);
-
-
---
--- Name: autogestion_tokens autogestion_tokens_token_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.autogestion_tokens
-    ADD CONSTRAINT autogestion_tokens_token_key UNIQUE (token);
 
 
 --
@@ -1368,22 +1263,6 @@ ALTER TABLE ONLY public.protesis_fijas
 
 ALTER TABLE ONLY public.protesis_removibles
     ADD CONSTRAINT protesis_removibles_pkey PRIMARY KEY (id);
-
-
---
--- Name: tokens_autogestion tokens_autogestion_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.tokens_autogestion
-    ADD CONSTRAINT tokens_autogestion_pkey PRIMARY KEY (id);
-
-
---
--- Name: tokens_autogestion tokens_autogestion_token_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.tokens_autogestion
-    ADD CONSTRAINT tokens_autogestion_token_key UNIQUE (token);
 
 
 --
@@ -1665,14 +1544,6 @@ ALTER TABLE ONLY public.pagos
 
 ALTER TABLE ONLY public.pagos
     ADD CONSTRAINT fk_pago_turno FOREIGN KEY (turno_id) REFERENCES public.turnos(id) ON DELETE SET NULL;
-
-
---
--- Name: tokens_autogestion fk_token_turno; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.tokens_autogestion
-    ADD CONSTRAINT fk_token_turno FOREIGN KEY (turno_id) REFERENCES public.turnos(id) ON DELETE CASCADE;
 
 
 --

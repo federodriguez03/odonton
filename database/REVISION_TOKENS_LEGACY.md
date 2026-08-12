@@ -2,13 +2,21 @@
 
 Fecha de revisión: 2026-08-12
 
+## Estado posterior: retiro controlado
+
+El 2026-08-12 se retiraron `public.autogestion_tokens` y `public.tokens_autogestion` mediante la migración controlada `database/2026-08-12_remove_legacy_autogestion_tokens.sql`.
+
+Antes de ejecutarla se confirmó nuevamente que ambas tablas tenían 0 filas y ningún consumidor ejecutable en `backend/src` o `frontend/src`. También se validó el backup completo privado `odonton_db_2026-08-12.backup` mediante `pg_restore --list`.
+
+La comprobación posterior confirmó que ambas tablas dejaron de existir y que las tablas activas del sistema permanecieron disponibles.
+
 ## Alcance y seguridad
 
 Esta revisión se realizó exclusivamente mediante consultas `SELECT` dentro de una transacción PostgreSQL configurada como `READ ONLY`.
 
 No se consultaron ni documentaron tokens, teléfonos, JWT ni datos personales. Los resultados incluidos son únicamente conteos agregados y metadatos de fechas.
 
-No se ejecutaron operaciones `INSERT`, `UPDATE`, `DELETE`, `ALTER`, `DROP`, `TRUNCATE` ni migraciones.
+Durante la inspección documentada en las secciones siguientes no se ejecutaron operaciones de escritura. El retiro posterior se realizó exclusivamente mediante la migración indicada arriba.
 
 ## Conexión
 
@@ -50,7 +58,6 @@ La búsqueda en `backend/src` y `frontend/src` no encontró consumidores ejecuta
 Referencias históricas o documentales conservadas:
 
 - `database/2026-05-05_recordatorios_whatsapp.sql`
-- `database/schema_actual.sql`
 - `database/DIAGNOSTICO_BD.md`
 - `REVISION_LEGACY.md`
 
@@ -62,7 +69,7 @@ Referencias históricas o documentales conservadas:
 - CONSUMIDORES DE CÓDIGO: Ninguno encontrado.
 - REFERENCIAS HUÉRFANAS: 0.
 - RIESGO DE RETIRO: **BAJO**.
-- RECOMENDACIÓN: **A. CANDIDATA A ELIMINACIÓN**.
+- RESULTADO: **ELIMINADA MEDIANTE MIGRACIÓN CONTROLADA**.
 
 ## Tabla `tokens_autogestion`
 
@@ -93,7 +100,6 @@ La búsqueda en `backend/src` y `frontend/src` no encontró consumidores ejecuta
 
 Referencias históricas o documentales conservadas:
 
-- `database/schema_actual.sql`
 - `database/DIAGNOSTICO_BD.md`
 - `REVISION_LEGACY.md`
 
@@ -105,10 +111,8 @@ Referencias históricas o documentales conservadas:
 - CONSUMIDORES DE CÓDIGO: Ninguno encontrado.
 - REFERENCIAS HUÉRFANAS: 0.
 - RIESGO DE RETIRO: **BAJO**.
-- RECOMENDACIÓN: **A. CANDIDATA A ELIMINACIÓN**.
+- RESULTADO: **ELIMINADA MEDIANTE MIGRACIÓN CONTROLADA**.
 
 ## Conclusión general
 
-Las dos tablas están vacías y no poseen consumidores en el código actual. Tampoco existen referencias huérfanas que requieran migración o reparación. Desde el punto de vista del contenido y del uso estático, ambas son candidatas a una eliminación posterior controlada.
-
-Esta conclusión no elimina ni modifica las tablas. Cualquier retiro físico deberá realizarse en una fase distinta, con respaldo previo y una migración explícitamente autorizada.
+Las dos tablas estaban vacías, no poseían consumidores en el código actual y no tenían referencias huérfanas. Después de validar el backup completo previo, fueron retiradas mediante una migración explícita y acotada.

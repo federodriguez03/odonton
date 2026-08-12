@@ -4,6 +4,8 @@ Fecha: 11/08/2026
 Alcance: trazabilidad estática de rutas, imports, llamadas, scripts, documentación y tablas.  
 Contexto de BD: `database/schema_actual.sql` y `database/DIAGNOSTICO_BD.md`.
 
+> Actualización 12/08/2026: las rutas y el servicio de autogestión por links/tokens fueron retirados del código. Las tablas `autogestion_tokens` y `tokens_autogestion`, ambas con 0 filas y sin consumidores ejecutables, fueron eliminadas mediante `database/2026-08-12_remove_legacy_autogestion_tokens.sql` después de validar un backup completo. Las descripciones posteriores reflejan el estado histórico al momento de esta auditoría.
+
 No se modificó código ni base de datos. Que una ruta esté montada demuestra que es invocable, no que tenga tráfico real. Sin logs de acceso o telemetría, el uso por clientes externos no puede confirmarse completamente.
 
 ## 1. Autogestión antigua
@@ -75,13 +77,13 @@ Este flujo se acerca a la regla final. Sin embargo, `whatsappAutogestion.service
 | `autogestionService.js` | `marcarTokenComoUsado` | UPDATE estado/uso | Confirmar solicitud, cancelar o reprogramar directamente |
 | `2026-05-05_recordatorios_whatsapp.sql` | migración | CREATE/ALTER/INDEX | Migración histórica, no ejecutada en esta revisión |
 
-Clasificación: **LEGACY PERO CONECTADA**. Es necesaria mientras sigan montadas las rutas públicas antiguas. El bot WhatsApp vigente no la usa.
+Clasificación actual: **RETIRADA**. Las rutas públicas y el servicio antiguo ya no existen; la tabla fue eliminada mediante migración controlada.
 
 ### `tokens_autogestion`
 
 No se encontraron consultas, inserts, updates o deletes en el código actual. Solo aparece en el esquema real de BD y está relacionada con `turnos` mediante FK `ON DELETE CASCADE`.
 
-Clasificación: **POSIBLEMENTE SIN CONSUMIDOR / LEGACY DE UNA GENERACIÓN ANTERIOR**. Antes de retirarla deben comprobarse cantidad de filas y cualquier consumidor externo no contenido en este repositorio.
+Clasificación actual: **RETIRADA**. Se comprobó que tenía 0 filas y ningún consumidor ejecutable antes de eliminarla mediante migración controlada.
 
 ## 3. Odontograma duplicado
 
@@ -200,7 +202,7 @@ Otras rutas como `/process-reminders` y `/send-reminder/:appointmentId` son herr
 | `recordatoriosService.iniciarSchedulerRecordatorios` | Ningún importador; `app.js` inicia scheduler directamente | CONFIRMADO SIN CONSUMIDOR en repositorio |
 | `whatsappConnection.service.js` | No se encontró importador | POSIBLEMENTE SIN CONSUMIDOR |
 | `integrador-whatsapp/` | Sin imports; autoidentificado como obsoleto | LEGACY CONFIRMADO |
-| `tokens_autogestion` | Sin SQL en código actual | POSIBLEMENTE SIN CONSUMIDOR |
+| `tokens_autogestion` | Sin SQL en código actual; retirada el 2026-08-12 mediante migración controlada | RETIRADA |
 
 “Confirmado sin consumidor” se limita al código contenido en este repositorio. No descarta clientes o scripts externos no disponibles.
 
@@ -210,8 +212,8 @@ Otras rutas como `/process-reminders` y `/send-reminder/:appointmentId` son herr
 |---|---|---|---|---|---|
 | `autogestionService.js` | Servicio | Rutas públicas de pacientes y script PowerShell | LEGACY PERO CONECTADA | Alto | DESACTIVAR primero; ELIMINAR POSTERIORMENTE |
 | Rutas `/pacientes/autogestion/*` | API pública | Script antiguo; cliente externo incierto | LEGACY PERO CONECTADA | Alto | DESACTIVAR en cambios pequeños |
-| `autogestion_tokens` | Tabla | Servicio antiguo | LEGACY PERO CONECTADA | Alto | CONSERVAR hasta migrar/desactivar consumidor |
-| `tokens_autogestion` | Tabla | Ninguno encontrado | POSIBLE LEGACY | Medio | INVESTIGAR MÁS |
+| `autogestion_tokens` | Tabla retirada | Ninguno | RETIRADA | Bajo | ELIMINADA mediante migración controlada |
+| `tokens_autogestion` | Tabla retirada | Ninguno | RETIRADA | Bajo | ELIMINADA mediante migración controlada |
 | `whatsappAutogestion.service.js` | Servicio | Cliente WhatsApp real | ACTIVO | Alto | CONSERVAR; podar ramas legacy después |
 | `turnoSolicitudesService.js` | Servicio | WhatsApp y Turnos | ACTIVO | Alto | CONSERVAR |
 | `odontograma` + `odontograma_meta` | Tablas/flujo | Interfaz actual | ACTIVO | Alto | CONSERVAR |
