@@ -111,53 +111,7 @@ function validarConsultaPacientes(req, res, next) {
 	}
 }
 
-function validarOdontogramaPieza(req, res, next) {
-	try {
-		const pieza = String(req.params?.pieza ?? '').trim();
-		if (!/^(?:[1-4][1-8]|[5-8][1-5])$/.test(pieza)) {
-			return res.status(400).json({ mensaje: 'Numero de pieza invalido. Use formato FDI (11..48 o 51..85).' });
-		}
-
-		const body = req.body || {};
-		const estadosPermitidos = ['sana', 'requerido', 'realizado', 'ausente', 'protesis', 'corona'];
-		if (!body.estado_pieza || !estadosPermitidos.includes(String(body.estado_pieza))) {
-			return res.status(400).json({
-				mensaje: `estado_pieza invalido. Valores permitidos: ${estadosPermitidos.join(', ')}`,
-			});
-		}
-
-		if (body.observaciones !== undefined && body.observaciones !== null && typeof body.observaciones !== 'string') {
-			return res.status(400).json({ mensaje: 'observaciones debe ser texto' });
-		}
-
-		if (body.caras !== undefined && body.caras !== null) {
-			if (typeof body.caras !== 'object' || Array.isArray(body.caras)) {
-				return res.status(400).json({ mensaje: 'caras debe ser un objeto' });
-			}
-
-			const carasPermitidas = ['vestibular', 'palatina', 'lingual', 'mesial', 'distal', 'oclusal'];
-			const estadoCaraPermitido = ['sano', 'requerido', 'realizado', 'protesis', 'corona'];
-			for (const [cara, estado] of Object.entries(body.caras)) {
-				if (!carasPermitidas.includes(cara)) {
-					return res.status(400).json({ mensaje: `Cara no permitida: ${cara}` });
-				}
-				if (!estadoCaraPermitido.includes(String(estado))) {
-					return res.status(400).json({
-						mensaje: `Estado de cara invalido para ${cara}. Permitidos: ${estadoCaraPermitido.join(', ')}`,
-					});
-				}
-			}
-		}
-
-		return next();
-	} catch (err) {
-		return next(err);
-	}
-}
-
 module.exports = {
 	validarEntradaPaciente,
 	validarConsultaPacientes,
-	validarOdontogramaPieza,
 };
-

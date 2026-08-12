@@ -99,59 +99,11 @@ async function fichaClinica(req, res) {
 	}
 }
 
-async function obtenerOdontograma(req, res) {
-	try {
-		const { id } = req.params;
-		if (!id) return res.status(400).json({ mensaje: 'Id de paciente requerido' });
-
-		const result = await pacientesService.obtenerOdontogramaPaciente(id);
-		req.auditAction = 'consultar_odontograma';
-		req.auditMeta = {
-			paciente_id: Number(id),
-			piezas_total: Array.isArray(result?.piezas) ? result.piezas.length : 0,
-		};
-
-		return res.status(200).json(result);
-	} catch (error) {
-		return res.status(400).json({ mensaje: error.message || 'Error al consultar odontograma' });
-	}
-}
-
-async function guardarOdontogramaPieza(req, res) {
-	try {
-		const { id, pieza } = req.params;
-		if (!id) return res.status(400).json({ mensaje: 'Id de paciente requerido' });
-		if (!pieza) return res.status(400).json({ mensaje: 'Numero de pieza requerido' });
-
-		const result = await pacientesService.guardarOdontogramaPieza({
-			pacienteId: id,
-			piezaNumero: pieza,
-			estadoPieza: req.body?.estado_pieza,
-			caras: req.body?.caras || null,
-			observaciones: req.body?.observaciones || null,
-			usuarioId: req.user?.id || null,
-		});
-
-		req.auditAction = 'actualizar_odontograma_pieza';
-		req.auditMeta = {
-			paciente_id: Number(id),
-			pieza_numero: Number(pieza),
-			estado_pieza: result?.pieza?.estado_pieza || null,
-		};
-
-		return res.status(200).json(result);
-	} catch (error) {
-		return res.status(400).json({ mensaje: error.message || 'Error al guardar pieza de odontograma' });
-	}
-}
-
 module.exports = {
 	registrarPaciente,
 	actualizarPaciente,
 	listarPacientes,
 	obtenerPaciente,
-	obtenerOdontograma,
-	guardarOdontogramaPieza,
 };
 
 module.exports.fichaClinica = fichaClinica;
