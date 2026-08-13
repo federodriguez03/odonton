@@ -335,42 +335,6 @@ CREATE TABLE public.odontograma (
 
 
 --
--- Name: odontograma_cambios; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.odontograma_cambios (
-    id bigint NOT NULL,
-    paciente_id integer NOT NULL,
-    pieza_numero smallint NOT NULL,
-    accion text NOT NULL,
-    estado_pieza text NOT NULL,
-    caras jsonb DEFAULT '{}'::jsonb NOT NULL,
-    observaciones text,
-    usuario_id integer,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: odontograma_cambios_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.odontograma_cambios_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: odontograma_cambios_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.odontograma_cambios_id_seq OWNED BY public.odontograma_cambios.id;
-
-
---
 -- Name: odontograma_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -422,42 +386,6 @@ CREATE SEQUENCE public.odontograma_meta_id_seq
 --
 
 ALTER SEQUENCE public.odontograma_meta_id_seq OWNED BY public.odontograma_meta.id;
-
-
---
--- Name: odontograma_piezas; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.odontograma_piezas (
-    id bigint NOT NULL,
-    paciente_id integer NOT NULL,
-    pieza_numero smallint NOT NULL,
-    estado_pieza text DEFAULT 'sana'::text NOT NULL,
-    caras jsonb DEFAULT '{}'::jsonb NOT NULL,
-    observaciones text,
-    updated_by_usuario_id integer,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
---
--- Name: odontograma_piezas_id_seq; Type: SEQUENCE; Schema: public; Owner: -
---
-
-CREATE SEQUENCE public.odontograma_piezas_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
---
--- Name: odontograma_piezas_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
---
-
-ALTER SEQUENCE public.odontograma_piezas_id_seq OWNED BY public.odontograma_piezas.id;
 
 
 --
@@ -977,24 +905,10 @@ ALTER TABLE ONLY public.odontograma ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
--- Name: odontograma_cambios id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.odontograma_cambios ALTER COLUMN id SET DEFAULT nextval('public.odontograma_cambios_id_seq'::regclass);
-
-
---
 -- Name: odontograma_meta id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.odontograma_meta ALTER COLUMN id SET DEFAULT nextval('public.odontograma_meta_id_seq'::regclass);
-
-
---
--- Name: odontograma_piezas id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.odontograma_piezas ALTER COLUMN id SET DEFAULT nextval('public.odontograma_piezas_id_seq'::regclass);
 
 
 --
@@ -1154,14 +1068,6 @@ ALTER TABLE ONLY public.historias_clinicas
 
 
 --
--- Name: odontograma_cambios odontograma_cambios_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.odontograma_cambios
-    ADD CONSTRAINT odontograma_cambios_pkey PRIMARY KEY (id);
-
-
---
 -- Name: odontograma_meta odontograma_meta_paciente_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1183,14 +1089,6 @@ ALTER TABLE ONLY public.odontograma_meta
 
 ALTER TABLE ONLY public.odontograma
     ADD CONSTRAINT odontograma_paciente_id_diente_cara_key UNIQUE (paciente_id, diente, cara);
-
-
---
--- Name: odontograma_piezas odontograma_piezas_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.odontograma_piezas
-    ADD CONSTRAINT odontograma_piezas_pkey PRIMARY KEY (id);
 
 
 --
@@ -1287,14 +1185,6 @@ ALTER TABLE ONLY public.turno_solicitudes
 
 ALTER TABLE ONLY public.turnos
     ADD CONSTRAINT turnos_pkey PRIMARY KEY (id);
-
-
---
--- Name: odontograma_piezas uq_odontograma_pieza; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.odontograma_piezas
-    ADD CONSTRAINT uq_odontograma_pieza UNIQUE (paciente_id, pieza_numero);
 
 
 --
@@ -1563,14 +1453,6 @@ ALTER TABLE ONLY public.turnos
 
 
 --
--- Name: odontograma_cambios odontograma_cambios_paciente_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.odontograma_cambios
-    ADD CONSTRAINT odontograma_cambios_paciente_id_fkey FOREIGN KEY (paciente_id) REFERENCES public.pacientes(id) ON DELETE CASCADE;
-
-
---
 -- Name: odontograma_meta odontograma_meta_paciente_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1584,14 +1466,6 @@ ALTER TABLE ONLY public.odontograma_meta
 
 ALTER TABLE ONLY public.odontograma
     ADD CONSTRAINT odontograma_paciente_id_fkey FOREIGN KEY (paciente_id) REFERENCES public.pacientes(id) ON DELETE CASCADE;
-
-
---
--- Name: odontograma_piezas odontograma_piezas_paciente_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.odontograma_piezas
-    ADD CONSTRAINT odontograma_piezas_paciente_id_fkey FOREIGN KEY (paciente_id) REFERENCES public.pacientes(id) ON DELETE CASCADE;
 
 
 --

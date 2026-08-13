@@ -6,6 +6,12 @@ Alcance: análisis estático de `backend/src` y `frontend/src`, inspección del 
 
 Esta revisión no modificó código, tablas ni datos. No se muestran identidades de pacientes ni datos clínicos individualizados.
 
+## Estado posterior: retiro controlado
+
+El 2026-08-12 se completó el retiro del modelo anterior. Antes de la eliminación se confirmó nuevamente que `odontograma_piezas` y `odontograma_cambios` tenían 0 filas y que no existían consumidores ejecutables en `backend/src` ni `frontend/src`. También se creó y validó un backup completo actualizado, en formato PostgreSQL custom, fuera del repositorio.
+
+Las dos tablas fueron eliminadas mediante la migración transaccional `2026-08-12_remove_legacy_odontograma.sql`. El esquema fue regenerado y `odontograma` junto con `odontograma_meta` permanecen como único modelo activo. Las secciones siguientes conservan el diagnóstico previo como registro histórico.
+
 ## 1. Arquitectura y consumidores
 
 | Modelo | Frontend consumidor | Función en `api.js` | Endpoint | Route | Controller | Service | Tablas | Estado |
@@ -209,7 +215,7 @@ La recomendación se apoya en que `odontograma_piezas` y `odontograma_cambios` t
 
 El retiro no debería comenzar por las tablas. Primero debe desconectarse el recorrido ejecutable anterior, especialmente la función que puede recrearlas. Después deben repetirse los conteos, confirmar consumidores externos, realizar backup y eliminar las tablas mediante una migración pequeña y transaccional.
 
-Hasta completar esos pasos, la clasificación operativa correcta es: modelo actual **ACTIVO**; modelo anterior **LEGACY PERO CONECTADO**.
+Estado posterior al saneamiento: modelo actual **ACTIVO**; modelo anterior **RETIRADO** mediante migración controlada.
 
 ## 11. Confirmaciones de esta fase
 
