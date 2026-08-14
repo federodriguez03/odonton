@@ -1,7 +1,10 @@
 ﻿const { pool } = require('../config/db');
 const { obtenerConfiguracion } = require('./configuracionService');
 
-const { sincronizarSolicitudesPendientesConTurnos } = require('./turnoSolicitudesService');
+const {
+  cerrarSolicitudesPendientes,
+  sincronizarSolicitudesPendientesConTurnos,
+} = require('./turnoSolicitudesService');
 
 let turnosReminderColumnsReady = false;
 let turnosProfesionalColumnsReady = false;
@@ -436,27 +439,48 @@ async function editarTurno(
 }
 
 async function cancelarTurno(turnoId) {
-  const turnoResult = await pool.query('SELECT * FROM turnos WHERE id = $1', [turnoId]);
-  if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const turno = turnoResult.rows[0];
-  if (!ESTADOS_CANCELABLES.includes(turno.estado)) {
-    throw new Error(
-      `No se puede cancelar un turno en estado "${turno.estado}".`,
+    const turnoResult = await client.query(
+      'SELECT * FROM turnos WHERE id = $1 FOR UPDATE',
+      [turnoId],
     );
+    if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
+
+    const turno = turnoResult.rows[0];
+    if (!ESTADOS_CANCELABLES.includes(turno.estado)) {
+      throw new Error(
+        `No se puede cancelar un turno en estado "${turno.estado}".`,
+      );
+    }
+
+    const { rows } = await client.query(
+      `
+        UPDATE turnos
+        SET estado = 'cancelado',
+            fecha_cancelacion = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING *;
+      `,
+      [turnoId],
+    );
+
+    await cerrarSolicitudesPendientes(client, {
+      turnoId,
+      estadoFinal: 'resuelta',
+    });
+
+    await client.query('COMMIT');
+    return rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const query = `
-    UPDATE turnos
-    SET
-      estado = 'cancelado',
-      fecha_cancelacion = NOW()
-    WHERE id = $1
-    RETURNING *;
-  `;
-
-  const { rows } = await pool.query(query, [turnoId]);
-  return rows[0];
 }
 
 async function confirmarTurno(turnoId) {
@@ -520,76 +544,109 @@ async function confirmarSolicitudTurno(
   const hayConflicto = await existeSolapamiento(fechaInicio, fechaFin, turnoId, profesionalFinalId);
   if (hayConflicto) throw new Error('El horario seleccionado no esta disponible');
 
-  const { rows } = await pool.query(
-    `
-      UPDATE turnos
-      SET profesional_id = $2,
-          prestacion_id = $3,
-          fecha_hora_inicio = $4,
-          fecha_hora_fin = $5,
-          observaciones = COALESCE($6, observaciones),
-          estado = 'confirmado',
-          solicitud_confirmada_at = NOW(),
-          updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-    `,
-    [turnoId, profesionalFinalId, prestacionFinalId, fechaInicio, fechaFin, observaciones,],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  return {
-    ...rows[0],
-    duracion_minutos: duracionFinal,
-  };
+    const turnoBloqueado = await client.query(
+      'SELECT id, estado FROM turnos WHERE id = $1 FOR UPDATE',
+      [turnoId],
+    );
+    if (!turnoBloqueado.rowCount) throw new Error('El turno no existe');
+    if (turnoBloqueado.rows[0].estado !== 'solicitado') {
+      throw new Error('Solo pueden confirmarse solicitudes en estado solicitado');
+    }
+
+    const { rows } = await client.query(
+      `
+        UPDATE turnos
+        SET profesional_id = $2,
+            prestacion_id = $3,
+            fecha_hora_inicio = $4,
+            fecha_hora_fin = $5,
+            observaciones = COALESCE($6, observaciones),
+            estado = 'confirmado',
+            solicitud_confirmada_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+          AND estado = 'solicitado'
+        RETURNING *
+      `,
+      [turnoId, profesionalFinalId, prestacionFinalId, fechaInicio, fechaFin, observaciones],
+    );
+    if (!rows.length) throw new Error('La solicitud de turno ya no se encuentra pendiente');
+
+    await cerrarSolicitudesPendientes(client, {
+      turnoId,
+      tipos: ['nuevo_turno', 'primera_consulta'],
+      estadoFinal: 'resuelta',
+    });
+
+    await client.query('COMMIT');
+    return {
+      ...rows[0],
+      duracion_minutos: duracionFinal,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function rechazarSolicitudTurno(turnoId, { observaciones = null } = {}) {
   await asegurarColumnasProfesionalTurnos();
-  const turnoResult = await pool.query('SELECT * FROM turnos WHERE id = $1', [turnoId]);
-  if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
-  const turno = turnoResult.rows[0];
-  if (!ESTADOS_RECHAZABLES.includes(turno.estado)) throw new Error('Solo pueden rechazarse solicitudes pendientes');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const nuevoEstado = turno.estado === 'solicitado' ? 'rechazado' : 'programado';
-  const tiposSolicitud = {
-    solicitado: ['nuevo_turno', 'primera_consulta'],
-    reprogramacion_solicitada: ['reprogramacion'],
-    cancelacion_solicitada: ['cancelacion'],
-  }[turno.estado] || [];
-
-  const { rows } = await pool.query(
-    `
-      UPDATE turnos
-      SET estado = $3,
-          observaciones = COALESCE($2, observaciones),
-          solicitud_rechazada_at = NOW(),
-          updated_at = NOW()
-      WHERE id = $1
-      RETURNING *
-    `,
-    [turnoId, observaciones, nuevoEstado],
-  );
-
-  if (tiposSolicitud.length) {
-    try {
-      await pool.query(
-        `
-          UPDATE turno_solicitudes
-          SET estado = 'rechazada',
-              updated_at = NOW()
-          WHERE turno_id = $1
-            AND estado = 'pendiente'
-            AND tipo_solicitud = ANY($2)
-        `,
-        [turnoId, tiposSolicitud],
-      );
-    } catch (error) {
-      if (error.code !== '42P01') throw error;
-      console.warn('[TURNOS] No se pudo marcar la solicitud como rechazada porque la tabla turno_solicitudes no existe.');
+    const turnoResult = await client.query(
+      'SELECT * FROM turnos WHERE id = $1 FOR UPDATE',
+      [turnoId],
+    );
+    if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
+    const turno = turnoResult.rows[0];
+    if (!ESTADOS_RECHAZABLES.includes(turno.estado)) {
+      throw new Error('Solo pueden rechazarse solicitudes pendientes');
     }
-  }
 
-  return rows[0];
+    const nuevoEstado = turno.estado === 'solicitado' ? 'rechazado' : 'programado';
+    const tiposSolicitud = {
+      solicitado: ['nuevo_turno', 'primera_consulta'],
+      reprogramacion_solicitada: ['reprogramacion'],
+      cancelacion_solicitada: ['cancelacion'],
+    }[turno.estado];
+
+    const { rows } = await client.query(
+      `
+        UPDATE turnos
+        SET estado = $3,
+            observaciones = COALESCE($2, observaciones),
+            solicitud_rechazada_at = NOW(),
+            updated_at = NOW()
+        WHERE id = $1
+          AND estado = $4
+        RETURNING *
+      `,
+      [turnoId, observaciones, nuevoEstado, turno.estado],
+    );
+    if (!rows.length) throw new Error('La solicitud de turno ya no se encuentra pendiente');
+
+    await cerrarSolicitudesPendientes(client, {
+      turnoId,
+      tipos: tiposSolicitud,
+      estadoFinal: 'rechazada',
+    });
+
+    await client.query('COMMIT');
+    return rows[0];
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function obtenerTelefonoPaciente(pacienteId) {

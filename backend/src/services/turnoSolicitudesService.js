@@ -168,6 +168,52 @@ async function crearSolicitudPendienteSiNoExiste(payload = {}) {
   return { solicitud, creada: true };
 }
 
+async function cerrarSolicitudesPendientes(client, {
+  turnoId,
+  tipos = null,
+  estadoFinal,
+} = {}) {
+  if (!client || typeof client.query !== 'function') {
+    throw new Error('Se requiere un cliente PostgreSQL para cerrar solicitudes');
+  }
+  if (!turnoId) throw new Error('Id de turno obligatorio para cerrar solicitudes');
+  if (!['resuelta', 'rechazada'].includes(estadoFinal)) {
+    throw new Error('Estado final de solicitud invalido');
+  }
+
+  const tiposNormalizados = Array.isArray(tipos)
+    ? [...new Set(tipos.map((tipo) => String(tipo || '').trim()).filter(Boolean))]
+    : null;
+
+  if (Array.isArray(tiposNormalizados) && tiposNormalizados.length === 0) {
+    return { cantidad: 0, solicitudes: [] };
+  }
+
+  const params = [turnoId, estadoFinal];
+  const filtroTipos = tiposNormalizados
+    ? 'AND tipo_solicitud = ANY($3::varchar[])'
+    : '';
+  if (tiposNormalizados) params.push(tiposNormalizados);
+
+  const { rows, rowCount } = await client.query(
+    `
+      UPDATE turno_solicitudes
+      SET estado = $2,
+          updated_at = NOW()
+      WHERE turno_id = $1
+        AND estado = 'pendiente'
+        ${filtroTipos}
+      RETURNING id, tipo_solicitud, estado
+    `,
+    params,
+  );
+
+  return {
+    cantidad: rowCount,
+    solicitudes: rows,
+  };
+}
+
 async function pacienteTieneTurnoOSolicitudActiva({ pacienteId = null, dni = null } = {}) {
   await asegurarTablaTurnoSolicitudes();
 
@@ -397,6 +443,7 @@ module.exports = {
   asegurarTablaTurnoSolicitudes,
   crearSolicitudTurnoPendiente,
   crearSolicitudPendienteSiNoExiste,
+  cerrarSolicitudesPendientes,
   obtenerSolicitudPendientePorTurno,
   listarSolicitudesTurno,
   pacienteTieneTurnoOSolicitudActiva,
