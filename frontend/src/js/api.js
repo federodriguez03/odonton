@@ -113,7 +113,18 @@ export function postOdontograma(payload) {
   });
 }
 
-// Tratamientos / prótesis se integrarán en odontograma, se quitan helpers separados
+export function getTratamientos(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.append(key, value);
+    }
+  });
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return request(`/api/tratamientos${suffix}`);
+}
+
+// Prótesis se integrará en odontograma, se quitan helpers separados
 
 export function getTurnos(params = {}) {
   const query = new URLSearchParams();
@@ -187,12 +198,6 @@ export function cancelarTurno(id, payload = {}) {
 
 export function enviarRecordatorioWhatsappTurno(id) {
   return request(`/api/turnos/${id}/recordatorios/whatsapp`, {
-    method: 'POST',
-  });
-}
-
-export function procesarRecordatoriosTurnos() {
-  return request('/api/turnos/recordatorios/procesar', {
     method: 'POST',
   });
 }

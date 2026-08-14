@@ -1,10 +1,9 @@
 import { initPacientesView } from './views/pacientesView.js';
 import { initTurnosView } from './views/turnosView.js';
 import { initPrestacionesView } from './views/prestacionesView.js';
-import { initReportesView } from './views/reportesView.js';
-import { initEstadisticasView } from './views/estadisticasView.js';
 import { initPagosView } from './views/pagosView.js';
 import { initConfiguracionView } from './views/configuracionView.js';
+import { loadDashboard } from '../pages/dashboard.js';
 import { clearToken, getMe, getToken, login, setToken } from './api.js';
 import { renderAlert } from './components/alerts.js';
 
@@ -93,11 +92,18 @@ async function initAppOnce() {
   await initPacientesView();
   await initTurnosView();
   await initPrestacionesView();
-  await initReportesView();
-  await initEstadisticasView();
   await initPagosView();
   await initConfiguracionView();
   appInitialized = true;
+}
+
+async function initAuthenticatedApp() {
+  await initAppOnce();
+  try {
+    await loadDashboard();
+  } catch (_) {
+    console.warn('[DASHBOARD] No se pudo completar la carga de indicadores.');
+  }
 }
 
 async function handleLoginSubmit(event) {
@@ -124,7 +130,7 @@ async function handleLoginSubmit(event) {
     const result = await login({ email, password });
     setToken(result.token);
     showApp(result.user);
-    await initAppOnce();
+    await initAuthenticatedApp();
     if (ui.loginError) ui.loginError.classList.add('d-none');
     renderAlert(ui.alertContainer, 'Sesión iniciada correctamente.', 'success');
 
@@ -157,7 +163,7 @@ async function restoreSession() {
     showLoadingScreen();
     const data = await getMe();
     showApp(data.user);
-    await initAppOnce();
+    await initAuthenticatedApp();
   } catch (error) {
     clearToken();
     showLoginScreen('Sesión expirada. Volvé a iniciar sesión.');

@@ -1,5 +1,9 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
-const TOKEN_KEY = 'odonton_token';
+import {
+  getEstadisticas,
+  getPacientes,
+  getTratamientos,
+  getTurnos,
+} from '../js/api.js';
 
 const ui = {
   pacientes: document.getElementById('stat-pacientes'),
@@ -10,25 +14,6 @@ const ui = {
   chartIngresos: document.getElementById('chart-ingresos'),
   chartTratamientos: document.getElementById('chart-tratamientos'),
 };
-
-function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-async function request(path) {
-  const token = getToken();
-  if (!token) return null;
-
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (!res.ok) return null;
-  return res.json();
-}
 
 function formatCurrency(value) {
   const num = Number(value);
@@ -93,6 +78,8 @@ let chartIngresos = null;
 let chartTratamientos = null;
 
 function renderCharts({ turnosPorDia = [], topPrestaciones = [] }) {
+  if (typeof window.Chart !== 'function') return;
+
   const buckets = aggregateByMonth(turnosPorDia);
 
   const labels = buckets.map((b) => b.label);
@@ -167,13 +154,21 @@ function renderCharts({ turnosPorDia = [], topPrestaciones = [] }) {
   }
 }
 
-async function loadStats() {
+export async function loadDashboard() {
   const now = new Date();
   const desdeMes = formatDateForApi(startOfMonth(now));
   const hastaMes = formatDateForApi(endOfMonth(now));
+  const today = formatDateForApi(now);
 
-  const stats = await request(`/api/estadisticas?fecha_desde=${desdeMes}&fecha_hasta=${hastaMes}`);
-  if (stats) {
+  const [statsResult, pacientesResult, turnosResult, tratamientosResult] = await Promise.allSettled([
+    getEstadisticas({ fecha_desde: desdeMes, fecha_hasta: hastaMes }),
+    getPacientes({ limit: 1, page: 1 }),
+    getTurnos({ limit: 1, page: 1, fecha_desde: today, fecha_hasta: today }),
+    getTratamientos({ desde: desdeMes, hasta: hastaMes }),
+  ]);
+
+  if (statsResult.status === 'fulfilled') {
+    const stats = statsResult.value;
     ui.ingresos.textContent = formatCurrency(stats.resumen?.ingresos_estimados);
     ui.tratamientos.textContent = stats.resumen?.total_realizados ?? '-';
     renderCharts({
@@ -182,23 +177,26 @@ async function loadStats() {
     });
   }
 
-  const pacientes = await request('/api/pacientes?limit=1&page=1');
-  if (pacientes) {
+  if (pacientesResult.status === 'fulfilled') {
+    const pacientes = pacientesResult.value;
     ui.pacientes.textContent = pacientes.total ?? '-';
   }
 
-  const today = formatDateForApi(now);
-  const turnosHoy = await request(`/api/turnos?limit=1&page=1&fecha_desde=${today}&fecha_hasta=${today}`);
-  if (turnosHoy) {
+  if (turnosResult.status === 'fulfilled') {
+    const turnosHoy = turnosResult.value;
     ui.turnosHoy.textContent = turnosHoy.total ?? '-';
   }
 
-  const tratamientos = await request(`/api/tratamientos?desde=${desdeMes}&hasta=${hastaMes}`);
-  if (tratamientos && Array.isArray(tratamientos.tratamientos)) {
-    ui.tratamientos.textContent = tratamientos.tratamientos.length;
+  if (tratamientosResult.status === 'fulfilled') {
+    const tratamientos = tratamientosResult.value;
+    if (Array.isArray(tratamientos.tratamientos)) {
+      ui.tratamientos.textContent = tratamientos.tratamientos.length;
+    }
+  }
+
+  const failures = [statsResult, pacientesResult, turnosResult, tratamientosResult]
+    .filter((result) => result.status === 'rejected');
+  if (failures.length) {
+    console.warn(`[DASHBOARD] No se pudieron cargar ${failures.length} indicadores.`);
   }
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-  loadStats();
-});

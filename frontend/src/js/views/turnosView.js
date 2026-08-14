@@ -8,7 +8,6 @@ import {
   getPrestaciones,
   getProfesionalesTurnos,
   getTurnos,
-  procesarRecordatoriosTurnos,
   rechazarSolicitudTurno,
   reprogramarTurno,
   updateTurno,
@@ -51,7 +50,6 @@ const ui = {
   desdeInput: document.getElementById('turnos-filter-desde'),
   hastaInput: document.getElementById('turnos-filter-hasta'),
   clearFiltersButton: document.getElementById('turnos-clear-filters'),
-  processRemindersButton: document.getElementById('turnos-process-reminders'),
   openCreateModalButton: document.getElementById('open-create-turno-modal'),
   goPacientesButton: document.getElementById('turno-go-pacientes'),
   createForm: document.getElementById('create-turno-form'),
@@ -1185,25 +1183,6 @@ function bindEditDisponibilidadForm() {
   });
 }
 
-function bindReminderActions() {
-  ui.processRemindersButton?.addEventListener('click', async () => {
-    try {
-      const response = await procesarRecordatoriosTurnos();
-      const resultado = response.resultado || {};
-      renderAlert(
-        ui.alertContainer,
-        `Recordatorios procesados: ${resultado.procesados || 0}. Enviados: ${resultado.enviados || 0}. Fallidos: ${resultado.fallidos || 0}.`,
-        resultado.fallidos ? 'warning' : 'success',
-      );
-      await loadTurnos();
-      await loadWeeklyCalendar();
-      await loadDailyCalendar();
-    } catch (error) {
-      renderAlert(ui.alertContainer, error.message, 'danger');
-    }
-  });
-}
-
 function bindCreateForm() {
   ui.createForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1413,7 +1392,6 @@ export async function initTurnosView() {
   bindCalendarMode();
   bindCalendarNav();
   bindCalendarTurnoActions();
-  bindReminderActions();
   bindOpenCreateModal();
   bindDisponibilidadForm();
   bindEditDisponibilidadForm();
