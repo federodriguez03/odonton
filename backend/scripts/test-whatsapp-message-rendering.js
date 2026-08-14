@@ -50,4 +50,22 @@ const legacyPlaceholder = resolve(
 assert.equal(legacyPlaceholder.estado, 'invalido');
 assert.deepEqual(legacyPlaceholder.placeholdersNoSoportados, ['enlace_reprogramacion']);
 
-console.log('OK: renderizado de mensajes configurables (6 casos)');
+const rejection = resolve(
+  'rechazo_solicitud_turno',
+  { activo: true, contenido: 'Hola {paciente}. {consultorio}: solicitud no aceptada. {whatsapp_consultorio}' },
+  { paciente: 'Paciente de prueba', consultorio: 'Odonton', whatsapp_consultorio: 'Contacto de prueba' },
+);
+assert.equal(rejection.estado, 'activo');
+assert.equal(
+  rejection.contenido,
+  'Hola Paciente de prueba. Odonton: solicitud no aceptada. Contacto de prueba',
+);
+
+const inactiveRejection = resolve(
+  'rechazo_solicitud_turno',
+  { activo: false, contenido: 'No debe enviarse' },
+);
+assert.equal(inactiveRejection.estado, 'inactivo');
+assert.equal(inactiveRejection.contenido, null);
+
+console.log('OK: renderizado de mensajes configurables (8 casos)');

@@ -139,10 +139,19 @@ async function notificarCancelacionTurnoPorWhatsapp(payload = {}) {
   });
 }
 
+async function notificarRechazoSolicitudTurnoPorWhatsapp(payload = {}) {
+  return enviarMensajeAdministrativoConfigurado({
+    tipo: 'rechazo_solicitud_turno',
+    telefono: payload.telefono,
+    turno: payload.turno,
+  });
+}
+
 module.exports = {
   notificarCambioTurnoPorWhatsapp,
   notificarConfirmacionSolicitudTurnoPorWhatsapp,
   notificarCancelacionTurnoPorWhatsapp,
+  notificarRechazoSolicitudTurnoPorWhatsapp,
   enviarRecordatorioTurnoPorWhatsapp,
   enviarMensajeWhatsapp,
 };

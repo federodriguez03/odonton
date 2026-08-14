@@ -60,6 +60,11 @@ const MESSAGE_LABELS = {
     help: 'Informa la nueva fecha y hora definidas desde el sistema.',
     placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
+  rechazo_solicitud_turno: {
+    title: 'Solicitud rechazada',
+    help: 'Informa que el consultorio no pudo aceptar una solicitud de turno, reprogramacion o cancelacion.',
+    placeholders: ['{paciente}', '{consultorio}', '{whatsapp_consultorio}'],
+  },
 };
 
 const MESSAGE_ORDER = [
@@ -68,6 +73,7 @@ const MESSAGE_ORDER = [
   'confirmacion_turno',
   'cancelacion_turno',
   'reprogramacion_turno',
+  'rechazo_solicitud_turno',
 ];
 
 function getMessageMeta(tipo) {

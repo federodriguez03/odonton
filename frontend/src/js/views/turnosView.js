@@ -1351,7 +1351,8 @@ function bindTableActions() {
 
       try {
         const response = await rechazarSolicitudTurno(turnoId, { observaciones });
-        renderAlert(ui.alertContainer, response.mensaje || 'Solicitud rechazada', 'success');
+        const feedback = getOperationFeedback(response, 'Solicitud rechazada correctamente');
+        renderAlert(ui.alertContainer, feedback.message, feedback.type);
         await refreshTurnosView();
       } catch (error) {
         renderAlert(ui.alertContainer, error.message, 'danger');

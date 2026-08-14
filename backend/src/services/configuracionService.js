@@ -50,6 +50,8 @@ const MENSAJES_DEFAULT_ACTUALES = {
     'Hola {paciente}, te informamos que tu turno de {prestacion} del {fecha} a las {hora} fue cancelado. Para coordinar uno nuevo, comunicate con {consultorio}.',
   reprogramacion_turno:
     'Hola {paciente}, tu turno de {prestacion} fue reprogramado para el {fecha} a las {hora}. Te esperamos en {consultorio}.',
+  rechazo_solicitud_turno:
+    'Hola {paciente}. Tu solicitud no pudo ser aceptada por {consultorio}. Si necesitás realizar una nueva gestión, podés volver a comunicarte con nosotros.',
 };
 
 const MENSAJES_DEFAULT_EVENTOS_PENDIENTES = {
@@ -204,6 +206,7 @@ async function obtenerConfiguracion() {
         WHEN 'confirmacion_turno' THEN 3
         WHEN 'cancelacion_turno' THEN 4
         WHEN 'reprogramacion_turno' THEN 5
+        WHEN 'rechazo_solicitud_turno' THEN 6
         ELSE 99
       END, tipo ASC
     `),

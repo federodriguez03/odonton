@@ -5,6 +5,7 @@ const {
   notificarCambioTurnoPorWhatsapp,
   notificarConfirmacionSolicitudTurnoPorWhatsapp,
   notificarCancelacionTurnoPorWhatsapp,
+  notificarRechazoSolicitudTurnoPorWhatsapp,
 } = require('../services/whatsappService');
 const {
   procesarRecordatoriosAutomaticos,
@@ -317,12 +318,38 @@ async function rechazarSolicitudTurno(req, res) {
     if (!id) return res.status(400).json({ mensaje: 'Id de turno requerido' });
 
     const turno = await turnosService.rechazarSolicitudTurno(id, { observaciones });
+    let turnoDetalle = turno;
+    let whatsappResult = { intentado: false, enviado: false, advertencia: null };
+
+    try {
+      turnoDetalle = await turnosService.obtenerTurnoDetalle(turno.id);
+      whatsappResult = await notificarRechazoSolicitudTurnoPorWhatsapp({
+        telefono: turnoDetalle.paciente?.telefono,
+        turno: turnoDetalle,
+      });
+    } catch (notificationError) {
+      whatsappResult = {
+        intentado: false,
+        enviado: false,
+        advertencia: 'No se pudo preparar la notificación de rechazo por WhatsApp.',
+      };
+    }
+
     req.auditAction = 'rechazar_solicitud_turno';
-    req.auditMeta = { turno_id: id };
+    req.auditMeta = {
+      turno_id: id,
+      whatsapp_intentado: whatsappResult.intentado,
+      whatsapp_ok: whatsappResult.enviado,
+      whatsapp_error: whatsappResult.advertencia || null,
+    };
+
+    const advertencias = [whatsappResult.advertencia].filter(Boolean);
 
     return res.status(200).json({
-      mensaje: 'La solicitud fue rechazada correctamente',
-      turno,
+      mensaje: 'Solicitud rechazada correctamente',
+      turno: turnoDetalle,
+      notificacion: whatsappResult,
+      ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
     return res.status(400).json({ mensaje: error.message || 'Error al rechazar la solicitud' });

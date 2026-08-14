@@ -44,6 +44,11 @@ const PLACEHOLDERS_BY_MESSAGE_TYPE = Object.freeze({
     'consultorio',
     'whatsapp_consultorio',
   ]),
+  rechazo_solicitud_turno: Object.freeze([
+    'paciente',
+    'consultorio',
+    'whatsapp_consultorio',
+  ]),
 });
 
 function extraerPlaceholders(template) {
