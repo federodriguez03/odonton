@@ -10,6 +10,7 @@ import {
   getTurnos,
   procesarRecordatoriosTurnos,
   rechazarSolicitudTurno,
+  reprogramarTurno,
   updateTurno,
 } from '../api.js';
 import { renderAlert } from '../components/alerts.js';
@@ -1259,9 +1260,19 @@ function bindEditForm() {
 
     try {
       const isSolicitud = state.editCurrentTurno?.estado === 'solicitado';
-      const response = isSolicitud
-        ? await confirmarSolicitudTurno(id, payload)
-        : await updateTurno(id, payload);
+      const isReprogramacionSolicitada = state.editCurrentTurno?.estado === 'reprogramacion_solicitada';
+      let response;
+
+      if (isSolicitud) {
+        response = await confirmarSolicitudTurno(id, payload);
+      } else if (isReprogramacionSolicitada) {
+        response = await reprogramarTurno(id, {
+          fechaHoraInicio: payload.fechaHoraInicio,
+          fechaHoraFin: state.editSelectedSlot?.fechaHoraFin,
+        });
+      } else {
+        response = await updateTurno(id, payload);
+      }
       const extra = Array.isArray(response.advertencias) && response.advertencias.length
         ? ` ${response.advertencias.join(' | ')}`
         : '';

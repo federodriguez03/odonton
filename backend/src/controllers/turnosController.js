@@ -192,11 +192,30 @@ async function reprogramarTurno(req, res) {
     }
 
     const turnoReprogramado = await turnosService.reprogramarTurno(id, inicio, fin);
+    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoReprogramado.id);
+    const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
+    let whatsappResult = { intentado: false, enviado: false, advertencia: null };
+    if (telefono) {
+      whatsappResult = await notificarCambioTurnoPorWhatsapp({
+        telefono,
+        turno: turnoDetalle,
+      });
+    }
+
     req.auditAction = 'reprogramar_turno';
+    req.auditMeta = {
+      turno_id: id,
+      whatsapp_intentado: whatsappResult.intentado,
+      whatsapp_ok: whatsappResult.enviado,
+      whatsapp_error: whatsappResult.advertencia || null,
+    };
+
+    const advertencias = [whatsappResult.advertencia].filter(Boolean);
 
     return res.status(200).json({
       mensaje: 'El turno se reprogramo correctamente',
-      turno: turnoReprogramado,
+      turno: turnoDetalle,
+      ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
     return res.status(400).json({ mensaje: error.message || 'Error al reprogramar el turno' });

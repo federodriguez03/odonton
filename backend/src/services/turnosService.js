@@ -335,13 +335,25 @@ async function reprogramarTurno(turnoId, fechaHoraInicio, fechaHoraFin) {
   }
 
   const query = `
-    UPDATE turnos
-    SET
-      fecha_hora_inicio = $1,
-      fecha_hora_fin = $2,
-      estado = 'reprogramado'
-    WHERE id = $3
-    RETURNING *;
+    WITH turno_actualizado AS (
+      UPDATE turnos
+      SET
+        fecha_hora_inicio = $1,
+        fecha_hora_fin = $2,
+        estado = 'reprogramado',
+        updated_at = NOW()
+      WHERE id = $3
+      RETURNING *
+    ), solicitudes_resueltas AS (
+      UPDATE turno_solicitudes
+      SET estado = 'resuelta',
+          updated_at = NOW()
+      WHERE turno_id = $3
+        AND tipo_solicitud = 'reprogramacion'
+        AND estado = 'pendiente'
+      RETURNING id
+    )
+    SELECT * FROM turno_actualizado;
   `;
 
   const { rows } = await pool.query(query, [fechaHoraInicio, fechaHoraFin, turnoId]);

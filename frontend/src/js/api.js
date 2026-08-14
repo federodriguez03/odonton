@@ -157,6 +157,13 @@ export function updateTurno(id, payload) {
   });
 }
 
+export function reprogramarTurno(id, payload) {
+  return request(`/api/turnos/${id}/reprogramar`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function confirmarSolicitudTurno(id, payload) {
   return request(`/api/turnos/${id}/confirmar-solicitud`, {
     method: 'PUT',

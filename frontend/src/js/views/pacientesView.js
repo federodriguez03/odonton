@@ -658,8 +658,7 @@ function handleToothFaceClick(toothNumber, face) {
   const affectAll =
     estadoSeleccionado === 'ausente' ||
     estadoSeleccionado === 'protesis_fija' ||
-    estadoSeleccionado === 'protesis_removible' ||
-    estadoSeleccionado === 'sano';
+    estadoSeleccionado === 'protesis_removible';
 
   if (affectAll) {
     FACES.forEach((f) => paintFace(toothNumber, f, estadoSeleccionado));
