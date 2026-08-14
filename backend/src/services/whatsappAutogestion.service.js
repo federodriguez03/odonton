@@ -11,6 +11,11 @@ const { registrarAuditoria } = require('./auditoriaService');
 const { crearPaciente } = require('./pacientesService');
 const { obtenerConfiguracion, AUTOGESTION_KEYWORDS_DEFAULT } = require('./configuracionService');
 const {
+  TURN_STATES_WHATSAPP_CANCELABLE,
+  TURN_STATES_WHATSAPP_REPROGRAMMABLE,
+  determinarTipoPaciente,
+} = require('../domain/turnoActivityRules');
+const {
   crearSolicitudTurnoPendiente,
   crearSolicitudPendienteSiNoExiste,
   pacienteTieneTurnoOSolicitudActiva,
@@ -31,7 +36,14 @@ const TEXT_ONLY_MESSAGE = 'Por ahora solo puedo procesar mensajes de texto 😕\
 const OUTGOING_DEDUP_MS = 3500;
 const recentOutgoingMessages = new Map();
 const COURTESY_MESSAGE = '😊 ¡Gracias a vos! Ante cualquier consulta, escribinos nuevamente por este medio.';
-const ACTIVE_DUPLICATE_MESSAGE = '⚠️ Ya tenés un turno o solicitud activa en el sistema. Para evitar duplicados, el consultorio revisará tu caso actual antes de registrar una nueva solicitud. Si necesitás cambiar o cancelar tu turno, elegí 2 para reprogramar o 3 para cancelar.';
+const ACTIVE_TURN_DUPLICATE_MESSAGE = '⚠️ Ya tenés un turno futuro activo. Si necesitás cambiarlo o cancelarlo, elegí 2 para reprogramar o 3 para cancelar.';
+const ACTIVE_REQUEST_DUPLICATE_MESSAGE = '⚠️ Ya existe una solicitud pendiente. El consultorio debe revisarla antes de registrar otra solicitud.';
+
+function buildActiveDuplicateMessage(activity) {
+  return activity?.tipo === 'turno'
+    ? ACTIVE_TURN_DUPLICATE_MESSAGE
+    : ACTIVE_REQUEST_DUPLICATE_MESSAGE;
+}
 
 async function ensureAutogestionSchema() {
   if (schemaReady) return;
@@ -142,13 +154,6 @@ async function shouldStartAutogestion(body) {
 function parseOption(body) {
   const text = normalizeText(body);
   if (/^\d+$/.test(text)) return Number.parseInt(text, 10);
-  return null;
-}
-
-function parseYesNo(body) {
-  const text = normalizeText(body);
-  if (['1', 'si', 's'].includes(text)) return true;
-  if (['2', 'no', 'n'].includes(text)) return false;
   return null;
 }
 
@@ -360,12 +365,12 @@ async function findPacienteByDni(dni) {
   return rows[0] || null;
 }
 
-async function findNextManagedAppointment(phone) {
+async function findNextManagedAppointment(phone, allowedStates) {
   await ensureAutogestionSchema();
   const rawChatId = String(phone || '').trim().toLowerCase();
   const normalized = normalizePhoneDigits(phone);
   const normalizedDigits = /^\d+$/.test(normalized) ? normalized : null;
-  if (!normalized && !rawChatId) return null;
+  if ((!normalized && !rawChatId) || !Array.isArray(allowedStates) || allowedStates.length === 0) return null;
 
   const { rows } = await pool.query(
     `
@@ -373,24 +378,24 @@ async function findNextManagedAppointment(phone) {
       FROM turnos t
       JOIN pacientes p ON p.id = t.paciente_id
       WHERE t.fecha_hora_inicio > NOW()
-        AND t.estado IN ('programado', 'confirmado', 'reprogramado', 'reprogramacion_solicitada', 'cancelacion_solicitada')
+        AND t.estado = ANY($1)
         AND (
-          ($1::text IS NOT NULL AND regexp_replace(COALESCE(p.telefono, ''), '[^0-9]', '', 'g') = $1)
+          ($2::text IS NOT NULL AND regexp_replace(COALESCE(p.telefono, ''), '[^0-9]', '', 'g') = $2)
           OR EXISTS (
             SELECT 1
             FROM whatsapp_conversations wc
             WHERE (wc.paciente_id = t.paciente_id OR wc.turno_id = t.id)
               AND (
-                wc.phone = $2
-                OR wc.phone = $3
-                OR ($1::text IS NOT NULL AND regexp_replace(COALESCE(wc.phone, ''), '[^0-9]', '', 'g') = $1)
+                wc.phone = $3
+                OR wc.phone = $4
+                OR ($2::text IS NOT NULL AND regexp_replace(COALESCE(wc.phone, ''), '[^0-9]', '', 'g') = $2)
               )
           )
         )
       ORDER BY t.fecha_hora_inicio ASC
       LIMIT 1
     `,
-    [normalizedDigits, normalized, rawChatId],
+    [allowedStates, normalizedDigits, normalized, rawChatId],
   );
 
   if (!rows[0]?.id) return null;
@@ -433,18 +438,20 @@ function splitNombreApellido(value) {
   };
 }
 
-async function findNextActiveAppointmentByPacienteId(pacienteId) {
+async function findNextFutureAppointmentByPacienteId(pacienteId, allowedStates) {
+  if (!pacienteId || !Array.isArray(allowedStates) || allowedStates.length === 0) return null;
+
   const { rows } = await pool.query(
     `
       SELECT id
       FROM turnos
       WHERE paciente_id = $1
         AND fecha_hora_inicio > NOW()
-        AND estado IN ('programado', 'confirmado', 'reprogramado', 'reprogramacion_solicitada', 'cancelacion_solicitada')
+        AND estado = ANY($2)
       ORDER BY fecha_hora_inicio ASC
       LIMIT 1
     `,
-    [pacienteId],
+    [pacienteId, allowedStates],
   );
   if (!rows[0]?.id) return null;
   return obtenerTurnoDetalle(rows[0].id);
@@ -484,12 +491,11 @@ async function registerPendingRequestFromSession(session, phone) {
 
     const activo = await pacienteTieneTurnoOSolicitudActiva({
       pacienteId,
-      dni,
-      telefono,
     });
     if (activo.activa) {
       const error = new Error('El paciente ya tiene un turno o solicitud activa');
       error.code = 'PACIENTE_CON_SOLICITUD_ACTIVA';
+      error.tipoActividad = activo.tipo;
       throw error;
     }
 
@@ -853,8 +859,6 @@ async function startAutogestion(phone) {
   });
   await safeSend(phone, menuPrincipalMessage());
   return { ok: true, started: true, session_id: session.id };
-  await safeSend(phone, withCancel('Hola, soy el asistente del consultorio odontológico. ¿Ya fuiste atendido alguna vez?\n\n1. Sí\n2. No'));
-  return { ok: true, started: true, session_id: session.id };
 }
 
 async function handleGuidedMenu(session, phone, body) {
@@ -862,10 +866,10 @@ async function handleGuidedMenu(session, phone, body) {
 
   if (option === 1) {
     await updateSession(session, {
-      step: 'esperando_tipo_paciente',
+      step: 'esperando_dni',
       data: { tipo_solicitud: 'nuevo_turno' },
     });
-    await safeSend(phone, withCancel('📅 Perfecto. Para solicitar un turno, indicá una opción:\n\n1. Ya fui atendido/a en el consultorio\n2. Es mi primera vez'));
+    await safeSend(phone, withCancel('📅 Perfecto. Para solicitar un turno, ingresá tu DNI sin puntos ni espacios.'));
     return { ok: true };
   }
 
@@ -888,37 +892,6 @@ async function handleGuidedMenu(session, phone, body) {
   return { ok: false };
 }
 
-async function handleGuidedPatientType(session, phone, body) {
-  const option = parseOption(body);
-
-  if (option === 1) {
-    await updateSession(session, {
-      step: 'esperando_dni',
-      data: { tipo_solicitud: 'nuevo_turno', paciente_tipo: 'existente' },
-    });
-    await safeSend(phone, withCancel('Usted indico que ya fue atendido/a en el consultorio.\n\nPor favor, ingresa tu DNI sin puntos ni espacios.'));
-    return { ok: true };
-  }
-
-  if (option === 2) {
-    await updateSession(session, {
-      step: 'esperando_nombre_apellido',
-      data: { tipo_solicitud: 'primera_consulta', paciente_tipo: 'nuevo' },
-    });
-    await safeSend(phone, withCancel('Perfecto. Como es tu primera vez en el consultorio, vamos a registrar una solicitud para primera consulta.\n\nPor favor, indica tu nombre y apellido.\nEjemplo: Mariana Lopez'));
-    return { ok: true };
-  }
-
-  if (option === 3) {
-    await finishSession(session, CANCELLED_STATUS);
-    await safeSend(phone, CANCELLED_MESSAGE);
-    return { ok: true, cancelled: true };
-  }
-
-  await safeSend(phone, 'No pude reconocer esa opcion.\n\n1. Ya fui atendido/a\n2. Es mi primera vez\n3. Cancelar operacion');
-  return { ok: false };
-}
-
 async function handleGuidedNombreApellido(session, phone, body) {
   const parsed = splitNombreApellido(body);
   if (!parsed || !isValidName(parsed.nombre) || !isValidName(parsed.apellido)) {
@@ -926,14 +899,26 @@ async function handleGuidedNombreApellido(session, phone, body) {
     return { ok: false };
   }
 
+  const data = session.data || {};
+  const nextData = {
+    nombre: parsed.nombre,
+    apellido: parsed.apellido,
+    nombre_apellido: parsed.nombreApellido,
+    paciente_nombre: parsed.nombreApellido,
+  };
+
+  if (data.dni) {
+    await updateSession(session, {
+      step: 'esperando_motivo',
+      data: nextData,
+    });
+    await safeSend(phone, withCancel(`Gracias, ${parsed.nombre}. Como no encontramos una ficha con ese DNI, la solicitud sera de primera consulta.\n\nAhora indicame el motivo de la consulta.`));
+    return { ok: true };
+  }
+
   await updateSession(session, {
     step: 'esperando_dni',
-    data: {
-      nombre: parsed.nombre,
-      apellido: parsed.apellido,
-      nombre_apellido: parsed.nombreApellido,
-      paciente_nombre: parsed.nombreApellido,
-    },
+    data: nextData,
   });
   await safeSend(phone, withCancel(`Gracias, ${parsed.nombre}.\n\nAhora ingresa tu DNI sin puntos ni espacios.\nEjemplo: 23456123`));
   return { ok: true };
@@ -969,41 +954,64 @@ async function handleGuidedDni(session, phone, body) {
   const data = session.data || {};
   const dni = String(body).trim();
   const tipoSolicitud = data.tipo_solicitud || 'nuevo_turno';
-
-  if (tipoSolicitud === 'primera_consulta') {
-    await updateSession(session, { step: 'esperando_motivo', data: { dni } });
-    await safeSend(phone, withCancel('Perfecto. Ahora indicame el motivo de la consulta.\nEjemplo: dolor, chequeo, limpieza, control, molestia, etc.'));
-    return { ok: true };
-  }
-
   const paciente = await findPacienteByDni(dni);
+  const identificacion = determinarTipoPaciente(paciente);
+
   if (!paciente) {
+    if (['nuevo_turno', 'primera_consulta'].includes(tipoSolicitud)) {
+      if (tipoSolicitud === 'primera_consulta' && data.nombre && data.apellido) {
+        await updateSession(session, { step: 'esperando_motivo', data: { dni } });
+        await safeSend(phone, withCancel('Perfecto. La solicitud sera de primera consulta.\n\nAhora indicame el motivo de la consulta.'));
+        return { ok: true, paciente_tipo: identificacion.tipo };
+      }
+
+      await updateSession(session, {
+        step: 'esperando_nombre_apellido',
+        data: {
+          dni,
+          tipo_solicitud: identificacion.tipoSolicitud,
+          paciente_tipo: identificacion.tipo,
+        },
+      });
+      await safeSend(phone, withCancel('No encontramos una ficha asociada a ese DNI. Vamos a registrar una solicitud de primera consulta.\n\nPor favor, indica tu nombre y apellido.\nEjemplo: Mariana Lopez'));
+      return { ok: true, paciente_tipo: identificacion.tipo };
+    }
+
     await updateSession(session, { step: 'esperando_dni_no_encontrado', data: { dni } });
-    await safeSend(phone, 'No encontramos una ficha asociada a ese DNI.\n\nPodes intentar ingresarlo nuevamente, sin puntos ni espacios.\nSi es tu primera vez en el consultorio, volve al menu principal y elegi la opcion correspondiente.\n\n1. Ingresar DNI nuevamente\n2. Volver al menu principal\n3. Cancelar operacion');
-    return { ok: false };
+    await safeSend(phone, 'No encontramos una ficha asociada a ese DNI.\n\nPodes intentar ingresarlo nuevamente, sin puntos ni espacios.\n\n1. Ingresar DNI nuevamente\n2. Volver al menu principal\n3. Cancelar operacion');
+    return { ok: false, paciente_tipo: identificacion.tipo };
   }
 
+  const tipoSolicitudEfectiva = tipoSolicitud === 'primera_consulta'
+    ? identificacion.tipoSolicitud
+    : tipoSolicitud;
   const pacienteNombre = `${paciente.nombre || ''} ${paciente.apellido || ''}`.trim();
   const updated = await updateSession(session, {
     paciente_id: paciente.id,
-    data: { dni, paciente_nombre: pacienteNombre },
+    data: {
+      dni,
+      paciente_nombre: pacienteNombre,
+      paciente_tipo: identificacion.tipo,
+      tipo_solicitud: tipoSolicitudEfectiva,
+    },
   });
 
-  if (tipoSolicitud === 'nuevo_turno') {
+  if (tipoSolicitudEfectiva === 'nuevo_turno') {
     const activo = await pacienteTieneTurnoOSolicitudActiva({
       pacienteId: paciente.id,
-      dni,
-      telefono: normalizePhoneForStorage(phone) || normalizePhoneDigits(phone),
     });
     if (activo.activa) {
       await finishSession(updated, COMPLETED_STATUS);
-      await safeSend(phone, ACTIVE_DUPLICATE_MESSAGE);
+      await safeSend(phone, buildActiveDuplicateMessage(activo));
       return { ok: true, duplicated: true };
     }
   }
 
-  if (tipoSolicitud === 'reprogramacion' || tipoSolicitud === 'cancelacion') {
-    const turno = await findNextActiveAppointmentByPacienteId(paciente.id);
+  if (tipoSolicitudEfectiva === 'reprogramacion' || tipoSolicitudEfectiva === 'cancelacion') {
+    const allowedStates = tipoSolicitudEfectiva === 'reprogramacion'
+      ? TURN_STATES_WHATSAPP_REPROGRAMMABLE
+      : TURN_STATES_WHATSAPP_CANCELABLE;
+    const turno = await findNextFutureAppointmentByPacienteId(paciente.id, allowedStates);
     if (!turno) {
       await finishSession(updated, COMPLETED_STATUS);
       await safeSend(phone, 'No encontramos un turno futuro activo asociado a tu ficha.\n\nSi necesitas ayuda, escribi tu consulta y en la brevedad nos pondremos en contacto con vos.');
@@ -1016,7 +1024,7 @@ async function handleGuidedDni(session, phone, body) {
       data: { turno_id: turno.id, turno_fecha: fecha, turno_hora: hora },
     });
 
-    if (tipoSolicitud === 'reprogramacion') {
+    if (tipoSolicitudEfectiva === 'reprogramacion') {
       const { solicitud, creada } = await crearSolicitudPendienteSiNoExiste({
         tipoSolicitud: 'reprogramacion',
         pacienteId: paciente.id,
@@ -1029,8 +1037,8 @@ async function handleGuidedDni(session, phone, body) {
       });
 
       await pool.query(
-        `UPDATE turnos SET estado = 'reprogramacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado IN ('programado', 'confirmado', 'reprogramado')`,
-        [turno.id],
+        `UPDATE turnos SET estado = 'reprogramacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado = ANY($2)`,
+        [turno.id, TURN_STATES_WHATSAPP_REPROGRAMMABLE],
       );
       await finishSession(withTurno, COMPLETED_STATUS);
       await safeSend(
@@ -1150,7 +1158,7 @@ async function handleGuidedConfirmRequest(session, phone, body) {
   } catch (error) {
     if (error.code === 'PACIENTE_CON_SOLICITUD_ACTIVA') {
       await finishSession(session, COMPLETED_STATUS);
-      await safeSend(phone, ACTIVE_DUPLICATE_MESSAGE);
+      await safeSend(phone, buildActiveDuplicateMessage({ tipo: error.tipoActividad }));
       return { ok: true, duplicated: true };
     }
     console.error('[WHATSAPP AUTOGESTION] No se pudo guardar la solicitud:', {
@@ -1210,8 +1218,8 @@ async function handleGuidedConfirmCancellation(session, phone, body) {
   await finishSession(session, COMPLETED_STATUS);
   if (session.turno_id || data.turno_id) {
     await pool.query(
-      `UPDATE turnos SET estado = 'cancelacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado IN ('programado', 'confirmado', 'reprogramado')`,
-      [session.turno_id || data.turno_id],
+      `UPDATE turnos SET estado = 'cancelacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado = ANY($2)`,
+      [session.turno_id || data.turno_id, TURN_STATES_WHATSAPP_CANCELABLE],
     );
   }
   await audit({
@@ -1235,24 +1243,6 @@ async function resetLegacyAppointmentFlow(session, phone) {
   await finishSession(session, CANCELLED_STATUS);
   await safeSend(phone, '⚠️ Actualizamos el flujo de autogestión. Para iniciar una nueva gestión, escribí 1 para sacar turno, 2 para reprogramar o 3 para cancelar.');
   return { ok: true, reset: true };
-}
-
-async function handleAskExisting(session, phone, body) {
-  const answer = parseYesNo(body);
-  if (answer === null) {
-    await safeSend(phone, withCancel('No pude entender tu respuesta 😕\n\nRespondé:\n1. Sí, ya fui atendido\n2. No, es mi primera vez'));
-    return { ok: false };
-  }
-
-  if (answer) {
-    await updateSession(session, { step: 'ASK_DNI_EXISTING' });
-    await safeSend(phone, withCancel('Perfecto. Enviame tu DNI, solo números.'));
-    return { ok: true };
-  }
-
-  await updateSession(session, { step: 'ASK_NOMBRE', data: { is_new_patient: true } });
-  await safeSend(phone, withCancel('Vamos a registrarte con datos mínimos. Enviame tu nombre.'));
-  return { ok: true };
 }
 
 async function handleExistingDni(session, phone, body) {
@@ -1740,7 +1730,7 @@ async function handleConfirmReschedule(session, phone, body) {
 }
 
 async function startCancelAppointmentFlow(phone) {
-  const turno = await findNextManagedAppointment(phone);
+  const turno = await findNextManagedAppointment(phone, TURN_STATES_WHATSAPP_CANCELABLE);
   if (!turno) {
     await safeSend(phone, 'No encontré un turno futuro asociado a este número.\n\nSi necesitás ayuda, comunicate con el consultorio. 🦷');
     return { handled: true, ok: false, codigo: 'NO_UPCOMING_APPOINTMENT' };
@@ -1778,7 +1768,7 @@ async function startCancelAppointmentFlow(phone) {
 }
 
 async function startManagedRescheduleFlow(phone) {
-  const turno = await findNextManagedAppointment(phone);
+  const turno = await findNextManagedAppointment(phone, TURN_STATES_WHATSAPP_REPROGRAMMABLE);
   if (!turno) {
     await safeSend(phone, 'No encontré un turno futuro asociado a este número.\n\nSi necesitás ayuda, comunicate con el consultorio. 🦷');
     return { handled: true, ok: false, codigo: 'NO_UPCOMING_APPOINTMENT' };
@@ -1815,8 +1805,8 @@ async function handleManagedCancelConfirm(session, phone, body) {
   });
 
   await pool.query(
-    `UPDATE turnos SET estado = 'cancelacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado IN ('programado', 'confirmado', 'reprogramado')`,
-    [turnoDetallePendiente.id],
+    `UPDATE turnos SET estado = 'cancelacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado = ANY($2)`,
+    [turnoDetallePendiente.id, TURN_STATES_WHATSAPP_CANCELABLE],
   );
   await finishSession(session, COMPLETED_STATUS);
   await audit({
@@ -1906,7 +1896,6 @@ async function processAutogestionMessage(phone, body) {
 
   const handlers = {
     esperando_opcion_menu: () => handleGuidedMenu(session, phone, text),
-    esperando_tipo_paciente: () => handleGuidedPatientType(session, phone, text),
     esperando_dni: () => handleGuidedDni(session, phone, text),
     esperando_dni_no_encontrado: () => handleGuidedDniNotFound(session, phone, text),
     esperando_nombre_apellido: () => handleGuidedNombreApellido(session, phone, text),
@@ -1981,7 +1970,7 @@ async function processAutogestionNonTextMessage(phone) {
 
 async function startRescheduleFlow(phone, appointmentId) {
   const turno = await obtenerTurnoDetalle(appointmentId);
-  if (!['programado', 'confirmado', 'reprogramado', 'reprogramacion_solicitada'].includes(turno.estado)) {
+  if (!TURN_STATES_WHATSAPP_REPROGRAMMABLE.includes(turno.estado)) {
     await safeSend(phone, 'Ese turno no se puede reprogramar por WhatsApp.\n\nSi necesitás ayuda, comunicate con el consultorio. 🦷');
     return { ok: false };
   }
@@ -1999,8 +1988,8 @@ async function startRescheduleFlow(phone, appointmentId) {
   });
 
   await pool.query(
-    `UPDATE turnos SET estado = 'reprogramacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado IN ('programado', 'confirmado', 'reprogramado')`,
-    [turno.id],
+    `UPDATE turnos SET estado = 'reprogramacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado = ANY($2)`,
+    [turno.id, TURN_STATES_WHATSAPP_REPROGRAMMABLE],
   );
 
   await audit({

@@ -1,17 +1,9 @@
 const { pool } = require('../config/db');
 const { registrarAuditoria } = require('./auditoriaService');
 const { crearPaciente } = require('./pacientesService');
+const { TURN_STATES_BLOCKING_NEW_REQUEST } = require('../domain/turnoActivityRules');
 
 let solicitudesReady = false;
-
-const ESTADOS_TURNO_ACTIVO = [
-  'programado',
-  'confirmado',
-  'reprogramado',
-  'solicitado',
-  'reprogramacion_solicitada',
-  'cancelacion_solicitada',
-];
 
 function normalizeDigits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -176,37 +168,33 @@ async function crearSolicitudPendienteSiNoExiste(payload = {}) {
   return { solicitud, creada: true };
 }
 
-async function pacienteTieneTurnoOSolicitudActiva({ pacienteId = null, dni = null, telefono = null } = {}) {
+async function pacienteTieneTurnoOSolicitudActiva({ pacienteId = null, dni = null } = {}) {
   await asegurarTablaTurnoSolicitudes();
 
   const dniNormalizado = normalizeDigits(dni);
-  const telefonoNormalizado = normalizeDigits(telefono);
+  const tienePacienteId = pacienteId !== null && pacienteId !== undefined;
+  if (!tienePacienteId && !dniNormalizado) return { activa: false };
 
-  const turnoParams = [ESTADOS_TURNO_ACTIVO];
-  const turnoConditions = [`t.estado = ANY($1)`];
-
-  if (pacienteId) {
+  const turnoParams = [TURN_STATES_BLOCKING_NEW_REQUEST];
+  let turnoIdentityCondition;
+  if (tienePacienteId) {
     turnoParams.push(pacienteId);
-    turnoConditions.push(`t.paciente_id = $${turnoParams.length}`);
-  }
-  if (dniNormalizado) {
+    turnoIdentityCondition = `t.paciente_id = $${turnoParams.length}`;
+  } else {
     turnoParams.push(dniNormalizado);
-    turnoConditions.push(`regexp_replace(COALESCE(p.dni, ''), '[^0-9]', '', 'g') = $${turnoParams.length}`);
-  }
-  if (telefonoNormalizado) {
-    turnoParams.push(telefonoNormalizado);
-    turnoConditions.push(`regexp_replace(COALESCE(p.telefono, ''), '[^0-9]', '', 'g') = $${turnoParams.length}`);
+    turnoIdentityCondition = `regexp_replace(COALESCE(p.dni, ''), '[^0-9]', '', 'g') = $${turnoParams.length}`;
   }
 
-  if (turnoConditions.length > 1) {
+  {
     const { rows } = await pool.query(
       `
-        SELECT t.id, t.estado
+        SELECT t.id, t.estado, t.fecha_hora_inicio
         FROM turnos t
         LEFT JOIN pacientes p ON p.id = t.paciente_id
-        WHERE ${turnoConditions[0]}
-          AND (${turnoConditions.slice(1).join(' OR ')})
-        ORDER BY t.fecha_hora_inicio NULLS LAST, t.id DESC
+        WHERE t.estado = ANY($1)
+          AND t.fecha_hora_inicio > NOW()
+          AND ${turnoIdentityCondition}
+        ORDER BY t.fecha_hora_inicio ASC, t.id DESC
         LIMIT 1
       `,
       turnoParams,
@@ -214,30 +202,44 @@ async function pacienteTieneTurnoOSolicitudActiva({ pacienteId = null, dni = nul
     if (rows[0]) return { activa: true, tipo: 'turno', registro: rows[0] };
   }
 
-  const solicitudParams = [];
-  const solicitudConditions = [`estado = 'pendiente'`];
-
-  if (pacienteId) {
+  const solicitudParams = [TURN_STATES_BLOCKING_NEW_REQUEST];
+  let solicitudIdentityCondition;
+  if (tienePacienteId) {
     solicitudParams.push(pacienteId);
-    solicitudConditions.push(`paciente_id = $${solicitudParams.length}`);
-  }
-  if (dniNormalizado) {
+    solicitudIdentityCondition = `ts.paciente_id = $${solicitudParams.length}`;
+  } else {
     solicitudParams.push(dniNormalizado);
-    solicitudConditions.push(`regexp_replace(COALESCE(dni, ''), '[^0-9]', '', 'g') = $${solicitudParams.length}`);
-  }
-  if (telefonoNormalizado) {
-    solicitudParams.push(telefonoNormalizado);
-    solicitudConditions.push(`regexp_replace(COALESCE(telefono, ''), '[^0-9]', '', 'g') = $${solicitudParams.length}`);
+    solicitudIdentityCondition = `regexp_replace(COALESCE(ts.dni, ''), '[^0-9]', '', 'g') = $${solicitudParams.length}`;
   }
 
-  if (solicitudConditions.length > 1) {
+  {
     const { rows } = await pool.query(
       `
-        SELECT id, tipo_solicitud, estado
-        FROM turno_solicitudes
-        WHERE ${solicitudConditions[0]}
-          AND (${solicitudConditions.slice(1).join(' OR ')})
-        ORDER BY created_at DESC
+        SELECT
+          ts.id,
+          ts.tipo_solicitud,
+          ts.estado,
+          ts.turno_id,
+          t.estado AS turno_estado,
+          t.fecha_hora_inicio AS turno_fecha_hora_inicio
+        FROM turno_solicitudes ts
+        LEFT JOIN turnos t ON t.id = ts.turno_id
+        WHERE ts.estado = 'pendiente'
+          AND ${solicitudIdentityCondition}
+          AND (
+            ts.turno_id IS NULL
+            OR (
+              t.id IS NOT NULL
+              AND (
+                t.estado = 'solicitado'
+                OR (
+                  t.fecha_hora_inicio > NOW()
+                  AND t.estado = ANY($1)
+                )
+              )
+            )
+          )
+        ORDER BY ts.created_at DESC
         LIMIT 1
       `,
       solicitudParams,
