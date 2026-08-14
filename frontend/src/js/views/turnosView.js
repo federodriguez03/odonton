@@ -283,6 +283,19 @@ function editActionLabel(turno) {
   return 'Editar';
 }
 
+function getOperationFeedback(response, fallbackMessage) {
+  const warning = response?.notificacion?.advertencia
+    || (Array.isArray(response?.advertencias) ? response.advertencias[0] : null)
+    || response?.advertencia
+    || null;
+  const message = response?.mensaje || fallbackMessage;
+
+  return {
+    message: warning ? `${message}, pero ${warning}` : message,
+    type: warning ? 'warning' : 'success',
+  };
+}
+
 function serializeTurno(turno) {
   return encodeURIComponent(
     JSON.stringify({
@@ -1252,10 +1265,8 @@ function bindEditForm() {
       } else {
         response = await updateTurno(id, payload);
       }
-      const extra = Array.isArray(response.advertencias) && response.advertencias.length
-        ? ` ${response.advertencias.join(' | ')}`
-        : '';
-      renderAlert(ui.alertContainer, `${response.mensaje || 'Turno actualizado'}${extra}`, extra ? 'warning' : 'success');
+      const feedback = getOperationFeedback(response, 'Turno actualizado');
+      renderAlert(ui.alertContainer, feedback.message, feedback.type);
       turnoEditModal?.hide();
       await refreshTurnosView();
     } catch (error) {
@@ -1273,10 +1284,8 @@ async function cancelTurnoFromUi(turnoId) {
 
   try {
     const response = await cancelarTurno(turnoId, { enviarMensaje });
-    const message = response.advertencia
-      ? `${response.mensaje || 'Turno cancelado'}. ${response.advertencia}`
-      : response.mensaje || 'Turno cancelado';
-    renderAlert(ui.alertContainer, message, response.advertencia ? 'warning' : 'success');
+    const feedback = getOperationFeedback(response, 'Turno cancelado');
+    renderAlert(ui.alertContainer, feedback.message, feedback.type);
     await refreshTurnosView();
   } catch (error) {
     renderAlert(ui.alertContainer, error.message, 'danger');

@@ -257,8 +257,6 @@ async function sendAppointmentReminder(appointmentId, { force = false } = {}) {
     throw new Error('Solo se envian recordatorios para turnos programados o confirmados');
   }
   if (new Date(turno.fecha_hora_inicio) <= new Date()) throw new Error('No se envian recordatorios para turnos vencidos');
-  const phone = await resolveReminderPhone(turno);
-  if (!phone) throw new Error('El paciente no tiene un telefono valido');
 
   const existing = await hasReminderForAppointment(appointmentId);
   if (existing && !force) {
@@ -272,6 +270,18 @@ async function sendAppointmentReminder(appointmentId, { force = false } = {}) {
   }
 
   const message = await buildReminderMessage(turno);
+  if (message === null) {
+    return {
+      skipped: true,
+      sent: false,
+      appointment_id: appointmentId,
+      reason: 'MESSAGE_DISABLED',
+      mensaje: 'El mensaje de recordatorio esta desactivado en Configuracion',
+    };
+  }
+
+  const phone = await resolveReminderPhone(turno);
+  if (!phone) throw new Error('El paciente no tiene un telefono valido');
 
   try {
     const sent = await sendWhatsAppMessage(phone, message);
@@ -389,7 +399,7 @@ function parseReply(body) {
 }
 
 async function buildConfirmationReply(reminder) {
-  const configured = await renderizarMensajeAutomatico('confirmacion_turno', {
+  return renderizarMensajeAutomatico('confirmacion_turno', {
     turno: {
       id: reminder.appointment_id,
       fecha_hora_inicio: reminder.fecha_hora_inicio,
@@ -408,35 +418,6 @@ async function buildConfirmationReply(reminder) {
       },
     },
   });
-
-  if (configured) return configured;
-
-  const { fecha, hora } = formatFechaHora(reminder.fecha_hora_inicio);
-  return `¡Perfecto, ${buildPatientName(reminder)}! ✅ Tu turno quedó confirmado.\n\n📅 Fecha: ${fecha}\n🕒 Hora: ${hora}\n\n¡Te esperamos! 🦷✨`;
-}
-
-async function buildCancellationReply(reminder) {
-  const configured = await renderizarMensajeAutomatico('cancelacion_turno', {
-    turno: {
-      id: reminder.appointment_id,
-      fecha_hora_inicio: reminder.fecha_hora_inicio,
-      paciente: {
-        id: reminder.paciente_id,
-        nombre: reminder.paciente_nombre,
-        apellido: reminder.paciente_apellido,
-      },
-      prestacion: {
-        id: reminder.prestacion_id,
-        nombre: reminder.prestacion_nombre,
-      },
-      profesional: {
-        id: reminder.profesional_id,
-        nombre: reminder.profesional_nombre,
-      },
-    },
-  });
-
-  return configured || buildCancellationRequestReply();
 }
 
 function buildCancellationRequestReply() {
@@ -630,7 +611,9 @@ async function processPatientReply(phone, body, { replyWhenNoPending = true } = 
       metadata: { reminder_id: reminder.id, phone: normalizePhoneDigits(phone), response_text: text },
     });
 
-    const reply = await safeReply(phone, replyMessage);
+    const reply = replyMessage === null
+      ? { sent: false, error: null, skipped: true, reason: 'MESSAGE_DISABLED' }
+      : await safeReply(phone, replyMessage);
 
     return {
       ok: true,
@@ -692,7 +675,12 @@ async function processAutomaticReminders() {
     try {
       const result = await sendAppointmentReminder(appointment.id);
       sent += result.sent ? 1 : 0;
-      results.push({ appointment_id: appointment.id, sent: true });
+      results.push({
+        appointment_id: appointment.id,
+        sent: Boolean(result.sent),
+        skipped: Boolean(result.skipped),
+        reason: result.reason || null,
+      });
     } catch (error) {
       failed += 1;
       results.push({ appointment_id: appointment.id, sent: false, error: error.message });

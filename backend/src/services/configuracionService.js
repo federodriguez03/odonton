@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const { resolverMensajeConfigurado } = require('../utils/whatsappMessageTemplate');
 
 let configReady = false;
 
@@ -45,6 +46,13 @@ const MENSAJES_DEFAULT_ACTUALES = {
     'Hola {paciente}, te recordamos tu turno de {prestacion} el {fecha} a las {hora}. Responde CONFIRMAR, CANCELAR o REPROGRAMAR.',
   confirmacion_turno:
     '✅ Hola {paciente}, tu turno de {prestacion} fue confirmado para el {fecha} a las {hora}. Te esperamos en {consultorio}.',
+  cancelacion_turno:
+    'Hola {paciente}, te informamos que tu turno de {prestacion} del {fecha} a las {hora} fue cancelado. Para coordinar uno nuevo, comunicate con {consultorio}.',
+  reprogramacion_turno:
+    'Hola {paciente}, tu turno de {prestacion} fue reprogramado para el {fecha} a las {hora}. Te esperamos en {consultorio}.',
+};
+
+const MENSAJES_DEFAULT_EVENTOS_PENDIENTES = {
   cancelacion_turno:
     '✅ Tu solicitud de cancelación fue registrada correctamente. El turno todavía no queda cancelado definitivamente. El consultorio revisará la solicitud y te enviará la confirmación correspondiente.',
   reprogramacion_turno:
@@ -143,9 +151,15 @@ async function asegurarConfiguracion() {
           SET contenido = $1,
               updated_at = NOW()
           WHERE tipo = $2
-            AND contenido IN ($3, $4)
+            AND contenido IN ($3, $4, $5)
         `,
-        [contenido, tipo, MENSAJES_DEFAULT_ANTERIORES[tipo], MENSAJES_DEFAULT[tipo]],
+        [
+          contenido,
+          tipo,
+          MENSAJES_DEFAULT_ANTERIORES[tipo],
+          MENSAJES_DEFAULT[tipo],
+          MENSAJES_DEFAULT_EVENTOS_PENDIENTES[tipo] || '',
+        ],
       );
     }
   }
@@ -374,13 +388,8 @@ function formatearFechaHora(fechaIso, timezone = 'America/Argentina/Buenos_Aires
   return { fecha, hora };
 }
 
-function interpolarTemplate(template, context) {
-  return String(template || '').replace(/\{(\w+)\}/g, (_, key) => context[key] ?? '');
-}
-
 async function renderizarMensajeAutomatico(tipo, payload = {}) {
   const config = await obtenerConfiguracion();
-  const mensaje = config.mensajes.find((item) => item.tipo === tipo) || null;
   const consultorio = config.consultorio || {};
   const inicio = payload?.turno?.fecha_hora_inicio || payload?.fecha_hora_inicio || null;
   const formato = formatearFechaHora(inicio, consultorio.timezone);
@@ -397,12 +406,32 @@ async function renderizarMensajeAutomatico(tipo, payload = {}) {
     turno_id: payload?.turno?.id || payload?.turno_id || '',
     consultorio: consultorio.nombre_consultorio || 'Consultorio',
     whatsapp_consultorio: consultorio.whatsapp_numero || '',
-    enlace_reprogramacion: payload?.reprogramacion?.enlace || '',
     profesional: payload?.turno?.profesional?.nombre || payload?.profesional || '',
   };
 
-  const contenido = mensaje?.activo ? mensaje.contenido : MENSAJES_DEFAULT_ACTUALES[tipo] || '';
-  return interpolarTemplate(contenido, context).trim();
+  const resultado = resolverMensajeConfigurado({
+    tipo,
+    mensajes: config.mensajes,
+    context,
+  });
+
+  if (resultado.estado === 'inexistente') {
+    const error = new Error(`No existe configuracion para el mensaje automatico ${tipo}`);
+    error.code = 'WHATSAPP_MESSAGE_TYPE_NOT_FOUND';
+    throw error;
+  }
+
+  if (resultado.estado === 'invalido') {
+    const error = new Error(
+      `El mensaje ${tipo} usa placeholders no vigentes: ${resultado.placeholdersNoSoportados
+        .map((placeholder) => `{${placeholder}}`)
+        .join(', ')}`,
+    );
+    error.code = 'WHATSAPP_MESSAGE_TEMPLATE_INVALID';
+    throw error;
+  }
+
+  return resultado.contenido;
 }
 
 module.exports = {

@@ -1,4 +1,88 @@
-const { sendWhatsAppMessage } = require('./whatsappClient.service');
+const { getStatus, sendWhatsAppMessage } = require('./whatsappClient.service');
+const { renderizarMensajeAutomatico } = require('./configuracionService');
+
+const WARNING_NO_PHONE = 'El paciente no tiene un teléfono registrado.';
+const WARNING_NOT_READY = 'WhatsApp no está conectado o listo.';
+const WARNING_SEND_FAILED = 'No se pudo enviar la notificación por WhatsApp.';
+const WARNING_CONFIG_FAILED = 'No se pudo preparar la notificación configurada de WhatsApp.';
+
+function administrativeNotificationResult({ intentado, enviado, advertencia = null }) {
+  return { intentado, enviado, advertencia };
+}
+
+function warningFromSendError(error) {
+  if (error?.code === 'INVALID_WHATSAPP_PHONE') return error.message;
+  if (/no esta listo|no está listo/i.test(String(error?.message || ''))) return WARNING_NOT_READY;
+  return WARNING_SEND_FAILED;
+}
+
+async function enviarNotificacionAdministrativaWhatsapp({ telefono, mensaje } = {}) {
+  if (!String(telefono || '').trim()) {
+    return administrativeNotificationResult({
+      intentado: false,
+      enviado: false,
+      advertencia: WARNING_NO_PHONE,
+    });
+  }
+
+  if (!String(mensaje || '').trim()) {
+    return administrativeNotificationResult({
+      intentado: false,
+      enviado: false,
+      advertencia: 'No se pudo preparar la notificación por WhatsApp.',
+    });
+  }
+
+  if (!getStatus()?.ready) {
+    return administrativeNotificationResult({
+      intentado: true,
+      enviado: false,
+      advertencia: WARNING_NOT_READY,
+    });
+  }
+
+  try {
+    await sendWhatsAppMessage(telefono, mensaje);
+    return administrativeNotificationResult({ intentado: true, enviado: true });
+  } catch (error) {
+    return administrativeNotificationResult({
+      intentado: true,
+      enviado: false,
+      advertencia: warningFromSendError(error),
+    });
+  }
+}
+
+async function enviarMensajeAdministrativoConfigurado({ tipo, telefono, turno } = {}) {
+  let mensaje;
+
+  try {
+    mensaje = await renderizarMensajeAutomatico(tipo, { turno });
+  } catch (error) {
+    const detalleSeguro = [
+      'WHATSAPP_MESSAGE_TYPE_NOT_FOUND',
+      'WHATSAPP_MESSAGE_TEMPLATE_INVALID',
+    ].includes(error?.code)
+      ? error.message
+      : WARNING_CONFIG_FAILED;
+
+    return administrativeNotificationResult({
+      intentado: false,
+      enviado: false,
+      advertencia: detalleSeguro,
+    });
+  }
+
+  if (mensaje === null) {
+    return administrativeNotificationResult({
+      intentado: false,
+      enviado: false,
+      advertencia: null,
+    });
+  }
+
+  return enviarNotificacionAdministrativaWhatsapp({ telefono, mensaje });
+}
 
 async function enviarMensajeWhatsapp({ telefono, mensaje, tipo = 'whatsapp' } = {}) {
   if (!telefono) return { intentado: false, enviado: false, advertencia: 'Telefono no informado' };
@@ -31,65 +115,27 @@ async function enviarRecordatorioTurnoPorWhatsapp(payload = {}) {
   });
 }
 
-function formatFechaHoraTurno(turno = {}) {
-  const fechaInicio = turno.fecha_hora_inicio ? new Date(turno.fecha_hora_inicio) : null;
-  return {
-    fecha: fechaInicio && !Number.isNaN(fechaInicio.getTime())
-      ? fechaInicio.toLocaleDateString('es-AR')
-      : '-',
-    hora: fechaInicio && !Number.isNaN(fechaInicio.getTime())
-      ? fechaInicio.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-      : '-',
-  };
-}
-
-function nombrePaciente(turno = {}) {
-  return [turno?.paciente?.nombre, turno?.paciente?.apellido].filter(Boolean).join(' ').trim() || 'paciente';
-}
-
 async function notificarCambioTurnoPorWhatsapp(payload = {}) {
-  const turno = payload.turno || {};
-  const { fecha, hora } = formatFechaHoraTurno(turno);
-  const profesional = turno?.profesional?.nombre || turno?.profesional?.email || 'consultorio';
-  const mensaje = payload.mensaje || `Hola ${nombrePaciente(turno)}, tu turno odontologico fue modificado.
-
-Fecha nueva: ${fecha}
-Horario nuevo: ${hora}
-Profesional: ${profesional}
-
-Si tenes alguna duda, comunicate con el consultorio.
-Gracias.`;
-
-  return enviarMensajeWhatsapp({
+  return enviarMensajeAdministrativoConfigurado({
+    tipo: 'reprogramacion_turno',
     telefono: payload.telefono,
-    mensaje,
-    tipo: 'cambio_turno',
+    turno: payload.turno,
   });
 }
 
 async function notificarConfirmacionSolicitudTurnoPorWhatsapp(payload = {}) {
-  const turno = payload.turno || {};
-  const { fecha, hora } = formatFechaHoraTurno(turno);
-  const prestacion = turno?.prestacion?.nombre || 'la prestacion solicitada';
-  const mensaje = payload.mensaje || `Hola ${nombrePaciente(turno)}, tu turno de ${prestacion} fue confirmado para el ${fecha} a las ${hora}. Te esperamos en Odonton.`;
-
-  return enviarMensajeWhatsapp({
+  return enviarMensajeAdministrativoConfigurado({
+    tipo: 'confirmacion_turno',
     telefono: payload.telefono,
-    mensaje,
-    tipo: 'confirmacion_solicitud_turno',
+    turno: payload.turno,
   });
 }
 
 async function notificarCancelacionTurnoPorWhatsapp(payload = {}) {
-  const turno = payload.turno || {};
-  const { fecha, hora } = formatFechaHoraTurno(turno);
-  const prestacion = turno?.prestacion?.nombre || 'tu prestacion';
-  const mensaje = payload.mensaje || `Hola ${nombrePaciente(turno)}, te informamos que tu turno de ${prestacion} del ${fecha} a las ${hora} fue cancelado. Para coordinar un nuevo turno, comunicate con Odonton.`;
-
-  return enviarMensajeWhatsapp({
-    telefono: payload.telefono,
-    mensaje,
+  return enviarMensajeAdministrativoConfigurado({
     tipo: 'cancelacion_turno',
+    telefono: payload.telefono,
+    turno: payload.turno,
   });
 }
 

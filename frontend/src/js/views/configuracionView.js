@@ -37,23 +37,28 @@ const ui = {
 const MESSAGE_LABELS = {
   principal_whatsapp: {
     title: 'Mensaje principal',
-    help: 'Base para comunicaciones generales por WhatsApp.',
+    help: 'Plantilla general disponible; actualmente no tiene un envio automatico asociado.',
+    placeholders: ['{paciente}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   recordatorio_turno: {
     title: 'Recordatorio de turno',
-    help: 'Se envia antes de un turno programado.',
+    help: 'Se envia antes de un turno programado o confirmado.',
+    placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   confirmacion_turno: {
     title: 'Confirmacion',
-    help: 'Respuesta automatica cuando el paciente confirma.',
+    help: 'Confirma el turno desde el sistema o como respuesta a un recordatorio.',
+    placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   cancelacion_turno: {
-    title: 'Cancelacion',
-    help: 'Respuesta automatica cuando el paciente cancela.',
+    title: 'Cancelacion confirmada',
+    help: 'Informa una cancelacion definitiva realizada desde el sistema.',
+    placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   reprogramacion_turno: {
-    title: 'Reprogramacion',
-    help: 'Respuesta automatica cuando el paciente solicita reprogramar.',
+    title: 'Reprogramacion confirmada',
+    help: 'Informa la nueva fecha y hora definidas desde el sistema.',
+    placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
 };
 
@@ -65,13 +70,18 @@ const MESSAGE_ORDER = [
   'reprogramacion_turno',
 ];
 
-const PLACEHOLDERS = ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'];
-
 function getMessageMeta(tipo) {
   return MESSAGE_LABELS[tipo] || {
     title: tipo.replaceAll('_', ' '),
     help: 'Mensaje automatico.',
+    placeholders: [],
   };
+}
+
+function getUnsupportedPlaceholders(mensaje, placeholders) {
+  const valid = new Set(placeholders);
+  const found = String(mensaje.contenido || '').match(/\{\w+\}/g) || [];
+  return [...new Set(found.filter((placeholder) => !valid.has(placeholder)))];
 }
 
 function renderHorarios() {
@@ -132,6 +142,7 @@ function renderMensajes() {
     .map(
       (mensaje) => {
         const meta = getMessageMeta(mensaje.tipo);
+        const unsupportedPlaceholders = getUnsupportedPlaceholders(mensaje, meta.placeholders);
         return `
         <div class="col-lg-6">
           <div class="config-message-card">
@@ -140,16 +151,25 @@ function renderMensajes() {
                 <h3 class="h6 mb-0">${meta.title}</h3>
                 <small class="text-secondary">${meta.help}</small>
               </div>
-              <div class="form-check form-switch mb-0">
-                <input
-                  class="form-check-input"
-                  type="checkbox"
-                  data-role="mensaje-activo"
-                  data-tipo="${mensaje.tipo}"
-                  ${mensaje.activo ? 'checked' : ''}
-                />
+              <div class="text-end">
+                <span class="badge ${mensaje.activo ? 'bg-success' : 'bg-secondary'} mb-1">
+                  ${mensaje.activo ? 'Activo' : 'Desactivado'}
+                </span>
+                <div class="form-check form-switch d-flex justify-content-end mb-0">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    data-role="mensaje-activo"
+                    data-tipo="${mensaje.tipo}"
+                    aria-label="Activar o desactivar ${meta.title}"
+                    ${mensaje.activo ? 'checked' : ''}
+                  />
+                </div>
               </div>
             </div>
+            <p class="small ${mensaje.activo ? 'text-success' : 'text-secondary'} mb-2">
+              ${mensaje.activo ? 'Se utilizara cuando corresponda este evento.' : 'No se enviara ningun mensaje para este evento.'}
+            </p>
             <textarea
               class="form-control"
               rows="5"
@@ -157,8 +177,11 @@ function renderMensajes() {
               data-tipo="${mensaje.tipo}"
             >${mensaje.contenido || ''}</textarea>
             <div class="d-flex flex-wrap gap-1 mt-2">
-              ${PLACEHOLDERS.map((item) => `<button class="btn btn-sm btn-light border" type="button" data-role="insert-placeholder" data-tipo="${mensaje.tipo}" data-placeholder="${item}">${item}</button>`).join('')}
+              ${meta.placeholders.map((item) => `<button class="btn btn-sm btn-light border" type="button" data-role="insert-placeholder" data-tipo="${mensaje.tipo}" data-placeholder="${item}">${item}</button>`).join('')}
             </div>
+            ${unsupportedPlaceholders.length > 0
+              ? `<p class="small text-danger mb-0 mt-2">Variables no vigentes: ${unsupportedPlaceholders.join(', ')}. Retiralas antes de usar este mensaje.</p>`
+              : ''}
           </div>
         </div>
       `;
@@ -218,7 +241,10 @@ function bindMensajes() {
     const mensaje = state.mensajes.find((item) => item.tipo === tipo);
     if (!mensaje) return;
 
-    if (target.dataset.role === 'mensaje-activo') mensaje.activo = target.checked;
+    if (target.dataset.role === 'mensaje-activo') {
+      mensaje.activo = target.checked;
+      renderMensajes();
+    }
   });
 
   ui.mensajesWrap?.addEventListener('click', (event) => {

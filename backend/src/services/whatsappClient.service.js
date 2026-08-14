@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { execFile } = require('child_process');
 const { Client, LocalAuth } = require('whatsapp-web.js');
+const { normalizePhoneToChatId } = require('../utils/whatsappPhone');
 
 let client = null;
 let ready = false;
@@ -90,15 +91,6 @@ function normalizePhoneForStorage(phone) {
 
   const digits = normalizePhoneDigits(raw);
   return /^\d{10,15}$/.test(digits) ? digits : null;
-}
-
-function normalizePhoneToChatId(phone) {
-  const raw = String(phone || '').trim();
-  if (raw.endsWith('@c.us') || raw.endsWith('@lid')) return raw;
-
-  const digits = normalizePhoneDigits(phone);
-  if (!digits) throw new Error('Telefono invalido');
-  return `${digits}@c.us`;
 }
 
 function isDirectChatId(chatId) {

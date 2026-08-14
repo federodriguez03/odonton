@@ -94,13 +94,10 @@ async function editarTurno(req, res) {
     const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoActualizado.id);
 
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
-    let whatsappResult = { intentado: false, enviado: false, advertencia: null };
-    if (telefono) {
-      whatsappResult = await notificarCambioTurnoPorWhatsapp({
-        telefono,
-        turno: turnoDetalle,
-      });
-    }
+    const whatsappResult = await notificarCambioTurnoPorWhatsapp({
+      telefono,
+      turno: turnoDetalle,
+    });
 
     req.auditAction = 'editar_turno';
     req.auditMeta = {
@@ -114,6 +111,7 @@ async function editarTurno(req, res) {
     return res.status(200).json({
       mensaje: 'El turno se actualizo correctamente',
       turno: turnoDetalle,
+      notificacion: whatsappResult,
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
@@ -194,13 +192,10 @@ async function reprogramarTurno(req, res) {
     const turnoReprogramado = await turnosService.reprogramarTurno(id, inicio, fin);
     const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoReprogramado.id);
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
-    let whatsappResult = { intentado: false, enviado: false, advertencia: null };
-    if (telefono) {
-      whatsappResult = await notificarCambioTurnoPorWhatsapp({
-        telefono,
-        turno: turnoDetalle,
-      });
-    }
+    const whatsappResult = await notificarCambioTurnoPorWhatsapp({
+      telefono,
+      turno: turnoDetalle,
+    });
 
     req.auditAction = 'reprogramar_turno';
     req.auditMeta = {
@@ -215,6 +210,7 @@ async function reprogramarTurno(req, res) {
     return res.status(200).json({
       mensaje: 'El turno se reprogramo correctamente',
       turno: turnoDetalle,
+      notificacion: whatsappResult,
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
@@ -251,10 +247,13 @@ async function cancelarTurno(req, res) {
       whatsapp_error: whatsappResult.advertencia || null,
     };
 
+    const advertencias = [whatsappResult.advertencia].filter(Boolean);
+
     return res.status(200).json({
       mensaje: 'El turno se cancelo correctamente',
       turno: turnoDetalle,
-      ...(whatsappResult.advertencia && { advertencia: whatsappResult.advertencia }),
+      notificacion: whatsappResult,
+      ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
     return res.status(400).json({ mensaje: error.message || 'Error al cancelar el turno' });
@@ -286,13 +285,10 @@ async function confirmarSolicitudTurno(req, res) {
 
     const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoConfirmado.id);
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
-    let whatsappResult = { intentado: false, enviado: false, advertencia: null };
-    if (telefono) {
-      whatsappResult = await notificarConfirmacionSolicitudTurnoPorWhatsapp({
-        telefono,
-        turno: turnoDetalle,
-      });
-    }
+    const whatsappResult = await notificarConfirmacionSolicitudTurnoPorWhatsapp({
+      telefono,
+      turno: turnoDetalle,
+    });
 
     req.auditAction = 'confirmar_solicitud_turno';
     req.auditMeta = {
@@ -306,6 +302,7 @@ async function confirmarSolicitudTurno(req, res) {
     return res.status(200).json({
       mensaje: 'La solicitud fue confirmada correctamente',
       turno: turnoDetalle,
+      notificacion: whatsappResult,
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
@@ -406,7 +403,9 @@ async function enviarRecordatorioManual(req, res) {
 
     const resultado = await enviarRecordatorioManualTurno(id);
 
-    req.auditAction = 'recordatorio_manual_enviado';
+    req.auditAction = resultado.enviado
+      ? 'recordatorio_manual_enviado'
+      : 'recordatorio_manual_omitido';
     req.auditMeta = {
       turno_id: id,
       whatsapp_ok: resultado.enviado,
@@ -417,7 +416,7 @@ async function enviarRecordatorioManual(req, res) {
       mensaje: resultado.enviado
         ? 'Recordatorio enviado por WhatsApp'
         : resultado.omitido
-          ? 'El turno ya tiene un recordatorio registrado'
+          ? resultado.advertencia || 'El turno ya tiene un recordatorio registrado'
           : 'No se pudo enviar el recordatorio',
       resultado,
     });
