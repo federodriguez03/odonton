@@ -12,6 +12,7 @@ const {
   enviarRecordatorioManualTurno,
 } = require('../services/recordatoriosService');
 const { listarSolicitudesTurno } = require('../services/turnoSolicitudesService');
+const { resolverRecordatorioHabilitado } = require('../domain/recordatorioTurno');
 
 function parseFechaHora(value) {
   const date = new Date(value);
@@ -23,7 +24,15 @@ function parseFechaHora(value) {
 
 async function registrarTurno(req, res) {
   try {
-    const { pacienteId, prestacionId, profesionalId, fechaHoraInicio, duracionMinutos, observaciones } = req.body;
+    const {
+      pacienteId,
+      prestacionId,
+      profesionalId,
+      fechaHoraInicio,
+      duracionMinutos,
+      observaciones,
+      recordatorioHabilitado,
+    } = req.body;
 
     if (!pacienteId || !prestacionId || !fechaHoraInicio) {
       return res.status(400).json({
@@ -48,6 +57,7 @@ async function registrarTurno(req, res) {
       profesionalId: profesionalId || req.user?.id || null,
       origen: 'interno',
       observaciones,
+      recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado, { defaultValue: true }),
     });
 
     const turnoDetalle = await turnosService.obtenerTurnoDetalle(turno.id);
@@ -65,7 +75,15 @@ async function registrarTurno(req, res) {
 async function editarTurno(req, res) {
   try {
     const { id } = req.params;
-    const { pacienteId, prestacionId, profesionalId, fechaHoraInicio, duracionMinutos, observaciones } = req.body;
+    const {
+      pacienteId,
+      prestacionId,
+      profesionalId,
+      fechaHoraInicio,
+      duracionMinutos,
+      observaciones,
+      recordatorioHabilitado,
+    } = req.body;
 
     if (!id) {
       return res.status(400).json({ mensaje: 'Id de turno requerido' });
@@ -90,6 +108,7 @@ async function editarTurno(req, res) {
       fechaHoraInicio,
       duracionMinutos,
       observaciones,
+      recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado),
     });
 
     const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoActualizado.id);
@@ -174,7 +193,7 @@ async function consultarDisponibilidad(req, res) {
 async function reprogramarTurno(req, res) {
   try {
     const { id } = req.params;
-    const { fechaHoraInicio, fechaHoraFin } = req.body;
+    const { fechaHoraInicio, fechaHoraFin, recordatorioHabilitado } = req.body;
 
     if (!id) {
       return res.status(400).json({ mensaje: 'Id de turno requerido' });
@@ -190,7 +209,9 @@ async function reprogramarTurno(req, res) {
       return res.status(400).json({ mensaje: 'Fecha y hora invalidas para reprogramar' });
     }
 
-    const turnoReprogramado = await turnosService.reprogramarTurno(id, inicio, fin);
+    const turnoReprogramado = await turnosService.reprogramarTurno(id, inicio, fin, {
+      recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado),
+    });
     const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoReprogramado.id);
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
     const whatsappResult = await notificarCambioTurnoPorWhatsapp({
@@ -264,7 +285,14 @@ async function cancelarTurno(req, res) {
 async function confirmarSolicitudTurno(req, res) {
   try {
     const { id } = req.params;
-    const { profesionalId, prestacionId, fechaHoraInicio, duracionMinutos, observaciones } = req.body;
+    const {
+      profesionalId,
+      prestacionId,
+      fechaHoraInicio,
+      duracionMinutos,
+      observaciones,
+      recordatorioHabilitado,
+    } = req.body;
 
     if (!id) return res.status(400).json({ mensaje: 'Id de turno requerido' });
     if (!profesionalId || !fechaHoraInicio) {
@@ -282,6 +310,7 @@ async function confirmarSolicitudTurno(req, res) {
       fechaHoraInicio: fechaInicio,
       duracionMinutos,
       observaciones,
+      recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado),
     });
 
     const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoConfirmado.id);

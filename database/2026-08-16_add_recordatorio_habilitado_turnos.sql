@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE public.turnos
+  ADD COLUMN IF NOT EXISTS recordatorio_habilitado BOOLEAN NOT NULL DEFAULT TRUE;
+
+COMMIT;

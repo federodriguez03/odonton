@@ -1,5 +1,6 @@
 ﻿const { pool } = require('../config/db');
 const { obtenerConfiguracion } = require('./configuracionService');
+const { resolverRecordatorioHabilitado } = require('../domain/recordatorioTurno');
 
 const {
   cerrarSolicitudesPendientes,
@@ -220,6 +221,7 @@ async function crearTurno({
   origen = 'interno',
   observaciones = null,
   profesionalId = null,
+  recordatorioHabilitado = true,
 }) {
   await asegurarColumnasProfesionalTurnos();
 
@@ -241,6 +243,7 @@ async function crearTurno({
   const duracionFinal = validarDuracionTurno(duracionMinutos, duracionPrestacion);
 
   const profesionalFinalId = await normalizarProfesionalId(profesionalId);
+  const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado, { defaultValue: true });
   const fechaHoraFin = new Date(fechaHoraInicio.getTime() + duracionFinal * 60000);
   await validarHorarioProfesional(profesionalFinalId, fechaHoraInicio, fechaHoraFin);
 
@@ -258,13 +261,14 @@ async function crearTurno({
       fecha_hora_fin,
       estado,
       origen,
-      observaciones
+      observaciones,
+      recordatorio_habilitado
     )
-    VALUES ($1, $2, $3, $4, $5, 'programado', $6, $7)
+    VALUES ($1, $2, $3, $4, $5, 'programado', $6, $7, $8)
     RETURNING *;
   `;
 
-  const values = [pacienteId, prestacionId, profesionalFinalId, fechaHoraInicio, fechaHoraFin, origen, observaciones];
+  const values = [pacienteId, prestacionId, profesionalFinalId, fechaHoraInicio, fechaHoraFin, origen, observaciones, recordatorioFinal];
   const { rows } = await pool.query(query, values);
 
   return {
@@ -312,7 +316,12 @@ async function crearSolicitudTurno({
   return rows[0];
 }
 
-async function reprogramarTurno(turnoId, fechaHoraInicio, fechaHoraFin) {
+async function reprogramarTurno(
+  turnoId,
+  fechaHoraInicio,
+  fechaHoraFin,
+  { recordatorioHabilitado } = {},
+) {
   await asegurarColumnasProfesionalTurnos();
   const turnoResult = await pool.query('SELECT * FROM turnos WHERE id = $1', [turnoId]);
 
@@ -325,6 +334,7 @@ async function reprogramarTurno(turnoId, fechaHoraInicio, fechaHoraFin) {
   }
 
   const turno = turnoResult.rows[0];
+  const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
   const estadosPermitidos = ['programado', 'reprogramado', 'confirmado', 'reprogramacion_solicitada'];
   if (!estadosPermitidos.includes(turno.estado)) {
     throw new Error('El turno no puede reprogramarse');
@@ -344,6 +354,7 @@ async function reprogramarTurno(turnoId, fechaHoraInicio, fechaHoraFin) {
         fecha_hora_inicio = $1,
         fecha_hora_fin = $2,
         estado = 'reprogramado',
+        recordatorio_habilitado = COALESCE($4::boolean, recordatorio_habilitado),
         updated_at = NOW()
       WHERE id = $3
       RETURNING *
@@ -359,7 +370,7 @@ async function reprogramarTurno(turnoId, fechaHoraInicio, fechaHoraFin) {
     SELECT * FROM turno_actualizado;
   `;
 
-  const { rows } = await pool.query(query, [fechaHoraInicio, fechaHoraFin, turnoId]);
+  const { rows } = await pool.query(query, [fechaHoraInicio, fechaHoraFin, turnoId, recordatorioFinal]);
   return rows[0];
 }
 
@@ -372,6 +383,7 @@ async function editarTurno(
     duracionMinutos = null,
     observaciones = null,
     profesionalId = null,
+    recordatorioHabilitado,
   },
 ) {
   await asegurarColumnasProfesionalTurnos();
@@ -391,6 +403,7 @@ async function editarTurno(
   if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
 
   const turno = turnoResult.rows[0];
+  const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
   if (!ESTADOS_EDITABLES.includes(turno.estado)) {
     throw new Error(
       `No se puede editar un turno en estado "${turno.estado}".`,
@@ -425,12 +438,13 @@ async function editarTurno(
       fecha_hora_inicio = $4,
       fecha_hora_fin = $5,
       observaciones = $6,
+      recordatorio_habilitado = COALESCE($7::boolean, recordatorio_habilitado),
       updated_at = NOW()
-    WHERE id = $7
+    WHERE id = $8
     RETURNING *;
   `;
 
-  const values = [pacienteId, prestacionId, profesionalFinalId, fechaInicio, fechaFin, observaciones, turnoId];
+  const values = [pacienteId, prestacionId, profesionalFinalId, fechaInicio, fechaFin, observaciones, recordatorioFinal, turnoId];
   const { rows } = await pool.query(query, values);
   return {
     ...rows[0],
@@ -513,6 +527,7 @@ async function confirmarSolicitudTurno(
     fechaHoraInicio,
     duracionMinutos,
     observaciones = null,
+    recordatorioHabilitado,
   },
 ) {
   await asegurarColumnasProfesionalTurnos();
@@ -521,6 +536,7 @@ async function confirmarSolicitudTurno(
   if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
 
   const turno = turnoResult.rows[0];
+  const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
   if (turno.estado !== 'solicitado') {
     throw new Error('Solo pueden confirmarse solicitudes en estado solicitado');
   }
@@ -565,6 +581,7 @@ async function confirmarSolicitudTurno(
             fecha_hora_inicio = $4,
             fecha_hora_fin = $5,
             observaciones = COALESCE($6, observaciones),
+            recordatorio_habilitado = COALESCE($7::boolean, recordatorio_habilitado),
             estado = 'confirmado',
             solicitud_confirmada_at = NOW(),
             updated_at = NOW()
@@ -572,7 +589,7 @@ async function confirmarSolicitudTurno(
           AND estado = 'solicitado'
         RETURNING *
       `,
-      [turnoId, profesionalFinalId, prestacionFinalId, fechaInicio, fechaFin, observaciones],
+      [turnoId, profesionalFinalId, prestacionFinalId, fechaInicio, fechaFin, observaciones, recordatorioFinal],
     );
     if (!rows.length) throw new Error('La solicitud de turno ya no se encuentra pendiente');
 
@@ -672,6 +689,7 @@ async function obtenerTurnoDetalle(turnoId) {
       t.solicitud_preferencia,
       t.solicitud_confirmada_at,
       t.solicitud_rechazada_at,
+      t.recordatorio_habilitado,
       t.created_at,
       t.updated_at,
       p.nombre AS paciente_nombre,
@@ -703,6 +721,7 @@ async function obtenerTurnoDetalle(turnoId) {
     solicitud_preferencia: row.solicitud_preferencia,
     solicitud_confirmada_at: row.solicitud_confirmada_at,
     solicitud_rechazada_at: row.solicitud_rechazada_at,
+    recordatorio_habilitado: row.recordatorio_habilitado,
     created_at: row.created_at,
     updated_at: row.updated_at,
     paciente: {
@@ -872,6 +891,7 @@ async function listarTurnos({
       t.solicitud_preferencia,
       t.solicitud_confirmada_at,
       t.solicitud_rechazada_at,
+      t.recordatorio_habilitado,
       t.recordatorio_enviado_at,
       t.recordatorio_estado,
       t.recordatorio_error,
@@ -912,6 +932,7 @@ async function listarTurnos({
       solicitud_preferencia: row.solicitud_preferencia,
       solicitud_confirmada_at: row.solicitud_confirmada_at,
       solicitud_rechazada_at: row.solicitud_rechazada_at,
+      recordatorio_habilitado: row.recordatorio_habilitado,
       recordatorio_enviado_at: row.recordatorio_enviado_at,
       recordatorio_estado: row.recordatorio_estado,
       recordatorio_error: row.recordatorio_error,

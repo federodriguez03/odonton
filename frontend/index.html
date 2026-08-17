@@ -1117,6 +1117,21 @@
                 <label class="form-label" for="turno-observaciones">Observaciones</label>
                 <textarea id="turno-observaciones" name="observaciones" rows="2" class="form-control"></textarea>
               </div>
+              <div class="form-check mb-2">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="turno-recordatorio-habilitado"
+                  name="recordatorioHabilitado"
+                  checked
+                />
+                <label class="form-check-label" for="turno-recordatorio-habilitado">
+                  Enviar recordatorio automático por WhatsApp
+                </label>
+                <small class="d-block text-secondary">
+                  Se enviará antes del turno según la configuración del consultorio.
+                </small>
+              </div>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -1163,6 +1178,20 @@
               <div class="mb-2">
                 <label class="form-label" for="edit-turno-observaciones">Observaciones</label>
                 <textarea id="edit-turno-observaciones" name="observaciones" rows="2" class="form-control"></textarea>
+              </div>
+              <div class="form-check mb-2">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  id="edit-turno-recordatorio-habilitado"
+                  name="recordatorioHabilitado"
+                />
+                <label class="form-check-label" for="edit-turno-recordatorio-habilitado">
+                  Enviar recordatorio automático por WhatsApp
+                </label>
+                <small class="d-block text-secondary">
+                  Se enviará antes del turno según la configuración del consultorio.
+                </small>
               </div>
               <div class="mb-2">
                 <label class="form-label" for="edit-turno-fecha-dia">Dia</label>

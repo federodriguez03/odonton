@@ -214,6 +214,7 @@ async function getAppointment(appointmentId) {
         t.fecha_hora_inicio,
         t.fecha_hora_fin,
         t.estado,
+        t.recordatorio_habilitado,
         p.nombre AS paciente_nombre,
         p.apellido AS paciente_apellido,
         p.dni AS paciente_dni,
@@ -247,7 +248,7 @@ async function hasReminderForAppointment(appointmentId) {
   return rows[0] || null;
 }
 
-async function sendAppointmentReminder(appointmentId, { force = false } = {}) {
+async function sendAppointmentReminder(appointmentId, { force = false, automatic = false } = {}) {
   await ensureWhatsAppReminderSchema();
   if (!appointmentId) throw new Error('appointmentId es obligatorio');
 
@@ -257,6 +258,15 @@ async function sendAppointmentReminder(appointmentId, { force = false } = {}) {
     throw new Error('Solo se envian recordatorios para turnos programados o confirmados');
   }
   if (new Date(turno.fecha_hora_inicio) <= new Date()) throw new Error('No se envian recordatorios para turnos vencidos');
+  if (automatic && turno.recordatorio_habilitado !== true) {
+    return {
+      skipped: true,
+      sent: false,
+      appointment_id: appointmentId,
+      reason: 'AUTOMATIC_REMINDER_DISABLED',
+      mensaje: 'El recordatorio automatico esta deshabilitado para este turno',
+    };
+  }
 
   const existing = await hasReminderForAppointment(appointmentId);
   if (existing && !force) {
@@ -639,6 +649,7 @@ async function findUpcomingAppointmentsForReminders({ hours = 24, limit = 25 } =
       JOIN pacientes p ON p.id = t.paciente_id
       LEFT JOIN whatsapp_reminders wr ON wr.appointment_id = t.id
       WHERE t.estado IN ('programado', 'confirmado')
+        AND t.recordatorio_habilitado = TRUE
         AND t.fecha_hora_inicio > NOW()
         AND t.fecha_hora_inicio <= NOW() + ($1::text || ' hours')::INTERVAL
         AND t.recordatorio_enviado_at IS NULL
@@ -671,7 +682,7 @@ async function processAutomaticReminders() {
 
   for (const appointment of appointments) {
     try {
-      const result = await sendAppointmentReminder(appointment.id);
+      const result = await sendAppointmentReminder(appointment.id, { automatic: true });
       sent += result.sent ? 1 : 0;
       results.push({
         appointment_id: appointment.id,
@@ -699,5 +710,6 @@ module.exports = {
   sendAppointmentReminder,
   processPatientReply,
   hasPendingReminderForPhone,
+  findUpcomingAppointmentsForReminders,
   processAutomaticReminders,
 };

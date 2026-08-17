@@ -713,6 +713,7 @@ CREATE TABLE public.turnos (
     solicitud_preferencia text,
     solicitud_confirmada_at timestamp with time zone,
     solicitud_rechazada_at timestamp with time zone,
+    recordatorio_habilitado boolean DEFAULT true NOT NULL,
     CONSTRAINT chk_fechas_turno CHECK ((fecha_hora_fin > fecha_hora_inicio))
 );
 

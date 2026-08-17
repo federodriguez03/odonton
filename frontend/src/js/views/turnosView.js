@@ -13,6 +13,7 @@ import {
   updateTurno,
 } from '../api.js';
 import { renderAlert } from '../components/alerts.js';
+import { checkboxToBoolean } from '../utils/booleans.js';
 
 const state = {
   page: 1,
@@ -64,6 +65,7 @@ const ui = {
   disponibilidadGrid: document.getElementById('turno-disponibilidad-grid'),
   selectedSlotLabel: document.getElementById('turno-selected-slot-label'),
   submitButton: document.getElementById('turno-submit-btn'),
+  recordatorioCheckbox: document.getElementById('turno-recordatorio-habilitado'),
   editForm: document.getElementById('edit-turno-form'),
   editModalLabel: document.getElementById('turno-edit-modal-label'),
   editIdInput: document.getElementById('edit-turno-id'),
@@ -78,6 +80,7 @@ const ui = {
   editSelectedSlotLabel: document.getElementById('edit-turno-selected-slot-label'),
   editSubmitButton: document.getElementById('edit-turno-submit-btn'),
   editObservacionesInput: document.getElementById('edit-turno-observaciones'),
+  editRecordatorioCheckbox: document.getElementById('edit-turno-recordatorio-habilitado'),
   detailContent: document.getElementById('turno-detail-content'),
   detailEditButton: document.getElementById('turno-detail-edit'),
   detailCancelButton: document.getElementById('turno-detail-cancel'),
@@ -311,6 +314,7 @@ function serializeTurno(turno) {
       fechaHoraFin: turno.fecha_hora_fin,
       observaciones: turno.observaciones || '',
       solicitudPreferencia: turno.solicitud_preferencia || '',
+      recordatorioHabilitado: turno.recordatorio_habilitado !== false,
       estado: turno.estado,
     }),
   );
@@ -950,6 +954,7 @@ async function openEditModal(turno) {
   ui.editFechaInput.value = formatForDateTimeLocal(turno.fechaHoraInicio);
   ui.editDuracionInput.value = calcularDuracionMinutos(turno);
   ui.editObservacionesInput.value = turno.observaciones || '';
+  ui.editRecordatorioCheckbox.checked = turno.recordatorioHabilitado !== false;
   ui.editSelectedSlotLabel.textContent = formatTimeForSlot(turno.fechaHoraInicio) || 'Selecciona un horario disponible';
   await loadEditDisponibilidad({ keepCurrentSlot: true });
   turnoEditModal?.show();
@@ -1140,6 +1145,7 @@ function bindOpenCreateModal() {
   ui.openCreateModalButton.addEventListener('click', async () => {
     await Promise.all([loadPacientesForSelect(), loadPrestacionesForSelect(), loadProfesionalesForSelect()]);
     ui.createForm.reset();
+    ui.recordatorioCheckbox.checked = true;
     resetDisponibilidad();
     turnoModal?.show();
   });
@@ -1202,6 +1208,7 @@ function bindCreateForm() {
 
     const formData = new FormData(ui.createForm);
     const payload = Object.fromEntries(formData.entries());
+    payload.recordatorioHabilitado = checkboxToBoolean(ui.recordatorioCheckbox);
     if (!payload.fechaHoraInicio) {
       renderAlert(ui.alertContainer, 'Selecciona un horario disponible para confirmar el turno', 'warning');
       return;
@@ -1235,6 +1242,7 @@ function bindEditForm() {
 
     const formData = new FormData(ui.editForm);
     const payload = Object.fromEntries(formData.entries());
+    payload.recordatorioHabilitado = checkboxToBoolean(ui.editRecordatorioCheckbox);
     const id = payload.id;
     delete payload.id;
     delete payload.fechaDia;
@@ -1261,6 +1269,7 @@ function bindEditForm() {
         response = await reprogramarTurno(id, {
           fechaHoraInicio: payload.fechaHoraInicio,
           fechaHoraFin: state.editSelectedSlot?.fechaHoraFin,
+          recordatorioHabilitado: payload.recordatorioHabilitado,
         });
       } else {
         response = await updateTurno(id, payload);
