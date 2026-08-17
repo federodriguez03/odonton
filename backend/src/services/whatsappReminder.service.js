@@ -6,7 +6,7 @@ const {
 } = require('./whatsappClient.service');
 const { registrarAuditoria } = require('./auditoriaService');
 const { renderizarMensajeAutomatico } = require('./configuracionService');
-const { crearSolicitudPendienteSiNoExiste } = require('./turnoSolicitudesService');
+const { abrirSolicitudCambioTurno } = require('./turnoSolicitudesService');
 
 let schemaReady = false;
 
@@ -434,7 +434,7 @@ async function registerAppointmentRequestFromReminder(reminder, tipoSolicitud, p
     ? `Solicitud de cancelacion por WhatsApp. Turno actual: ${fecha} ${hora}`
     : `Solicitud de reprogramacion por WhatsApp. Turno actual: ${fecha} ${hora}`;
 
-  return crearSolicitudPendienteSiNoExiste({
+  return abrirSolicitudCambioTurno({
     tipoSolicitud,
     pacienteId: reminder.paciente_id,
     nombreApellido: buildPatientName(reminder),
@@ -547,7 +547,7 @@ async function processPatientReply(phone, body, { replyWhenNoPending = true } = 
   try {
     await client.query('BEGIN');
 
-    let appointmentState = 'programado';
+    let appointmentState = null;
     let auditAction = '';
     let replyMessage = '';
 
@@ -556,11 +556,9 @@ async function processPatientReply(phone, body, { replyWhenNoPending = true } = 
       auditAction = 'APPOINTMENT_CONFIRMED_BY_WHATSAPP';
       replyMessage = await buildConfirmationReply(reminder);
     } else if (action === 'cancelled') {
-      appointmentState = 'cancelacion_solicitada';
       auditAction = 'APPOINTMENT_CANCELLATION_REQUESTED_BY_WHATSAPP';
       replyMessage = buildCancellationRequestReply();
     } else {
-      appointmentState = 'reprogramacion_solicitada';
       auditAction = 'APPOINTMENT_RESCHEDULE_REQUESTED_BY_WHATSAPP';
       replyMessage = buildRescheduleRequestReply(reminder);
     }
@@ -568,7 +566,7 @@ async function processPatientReply(phone, body, { replyWhenNoPending = true } = 
     await client.query(
       `
         UPDATE turnos
-        SET estado = $2,
+        SET estado = COALESCE($2::varchar, estado),
             respuesta_paciente = $3,
             respuesta_paciente_at = NOW(),
             recordatorio_estado = 'respondido',

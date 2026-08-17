@@ -17,7 +17,7 @@ const {
 } = require('../domain/turnoActivityRules');
 const {
   crearSolicitudTurnoPendiente,
-  crearSolicitudPendienteSiNoExiste,
+  abrirSolicitudCambioTurno,
   pacienteTieneTurnoOSolicitudActiva,
   buildObservacionSolicitud,
 } = require('./turnoSolicitudesService');
@@ -1025,7 +1025,7 @@ async function handleGuidedDni(session, phone, body) {
     });
 
     if (tipoSolicitudEfectiva === 'reprogramacion') {
-      const { solicitud, creada } = await crearSolicitudPendienteSiNoExiste({
+      const { solicitud, creada } = await abrirSolicitudCambioTurno({
         tipoSolicitud: 'reprogramacion',
         pacienteId: paciente.id,
         nombreApellido: pacienteNombre,
@@ -1036,10 +1036,6 @@ async function handleGuidedDni(session, phone, body) {
         auditoria: { phone: normalizePhoneDigits(phone), conversation_id: session.id, tipo_solicitud: 'reprogramacion' },
       });
 
-      await pool.query(
-        `UPDATE turnos SET estado = 'reprogramacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado = ANY($2)`,
-        [turno.id, TURN_STATES_WHATSAPP_REPROGRAMMABLE],
-      );
       await finishSession(withTurno, COMPLETED_STATUS);
       await safeSend(
         phone,
@@ -1204,7 +1200,7 @@ async function handleGuidedConfirmCancellation(session, phone, body) {
   }
 
   const data = session.data || {};
-  const { solicitud, creada } = await crearSolicitudPendienteSiNoExiste({
+  const { solicitud, creada } = await abrirSolicitudCambioTurno({
     tipoSolicitud: 'cancelacion',
     pacienteId: session.paciente_id || null,
     nombreApellido: data.paciente_nombre || null,
@@ -1216,12 +1212,6 @@ async function handleGuidedConfirmCancellation(session, phone, body) {
   });
 
   await finishSession(session, COMPLETED_STATUS);
-  if (session.turno_id || data.turno_id) {
-    await pool.query(
-      `UPDATE turnos SET estado = 'cancelacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado = ANY($2)`,
-      [session.turno_id || data.turno_id, TURN_STATES_WHATSAPP_CANCELABLE],
-    );
-  }
   await audit({
     accion: 'WHATSAPP_CANCELACION_SOLICITADA',
     recurso: 'turno_solicitudes',
@@ -1793,7 +1783,7 @@ async function handleManagedCancelConfirm(session, phone, body) {
 
   const turnoDetallePendiente = await obtenerTurnoDetalle(session.turno_id);
   const fechaHoraPendiente = formatTurnoFechaHora(turnoDetallePendiente.fecha_hora_inicio);
-  const { solicitud, creada } = await crearSolicitudPendienteSiNoExiste({
+  const { solicitud, creada } = await abrirSolicitudCambioTurno({
     tipoSolicitud: 'cancelacion',
     pacienteId: turnoDetallePendiente.paciente?.id || session.paciente_id || null,
     nombreApellido: `${turnoDetallePendiente.paciente?.nombre || ''} ${turnoDetallePendiente.paciente?.apellido || ''}`.trim() || session.data?.paciente_nombre || null,
@@ -1804,10 +1794,6 @@ async function handleManagedCancelConfirm(session, phone, body) {
     auditoria: { phone: normalizePhoneDigits(phone), conversation_id: session.id, tipo_solicitud: 'cancelacion' },
   });
 
-  await pool.query(
-    `UPDATE turnos SET estado = 'cancelacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado = ANY($2)`,
-    [turnoDetallePendiente.id, TURN_STATES_WHATSAPP_CANCELABLE],
-  );
   await finishSession(session, COMPLETED_STATUS);
   await audit({
     accion: 'WHATSAPP_CANCELACION_SOLICITADA',
@@ -1976,7 +1962,7 @@ async function startRescheduleFlow(phone, appointmentId) {
   }
 
   const { fecha, hora } = formatTurnoFechaHora(turno.fecha_hora_inicio);
-  const { solicitud, creada } = await crearSolicitudPendienteSiNoExiste({
+  const { solicitud, creada } = await abrirSolicitudCambioTurno({
     tipoSolicitud: 'reprogramacion',
     pacienteId: turno.paciente?.id || null,
     nombreApellido: `${turno.paciente?.nombre || ''} ${turno.paciente?.apellido || ''}`.trim() || null,
@@ -1986,11 +1972,6 @@ async function startRescheduleFlow(phone, appointmentId) {
     observaciones: `Solicitud de reprogramacion por WhatsApp. Turno actual: ${fecha} ${hora}`,
     auditoria: { phone: normalizePhoneDigits(phone), appointment_id: turno.id, tipo_solicitud: 'reprogramacion' },
   });
-
-  await pool.query(
-    `UPDATE turnos SET estado = 'reprogramacion_solicitada', updated_at = NOW() WHERE id = $1 AND estado = ANY($2)`,
-    [turno.id, TURN_STATES_WHATSAPP_REPROGRAMMABLE],
-  );
 
   await audit({
     accion: 'WHATSAPP_REPROGRAMACION_SOLICITADA',

@@ -1,7 +1,11 @@
 const { pool } = require('../config/db');
 const { registrarAuditoria } = require('./auditoriaService');
 const { crearPaciente } = require('./pacientesService');
-const { TURN_STATES_BLOCKING_NEW_REQUEST } = require('../domain/turnoActivityRules');
+const {
+  TURN_STATES_BLOCKING_NEW_REQUEST,
+  TURN_STATES_WHATSAPP_CANCELABLE,
+  TURN_STATES_WHATSAPP_REPROGRAMMABLE,
+} = require('../domain/turnoActivityRules');
 
 let solicitudesReady = false;
 
@@ -166,6 +170,156 @@ async function crearSolicitudPendienteSiNoExiste(payload = {}) {
 
   const solicitud = await crearSolicitudTurnoPendiente(payload);
   return { solicitud, creada: true };
+}
+
+const CONFIGURACION_APERTURA_CAMBIO = Object.freeze({
+  cancelacion: Object.freeze({
+    estadoTurno: 'cancelacion_solicitada',
+    estadosPermitidos: TURN_STATES_WHATSAPP_CANCELABLE,
+  }),
+  reprogramacion: Object.freeze({
+    estadoTurno: 'reprogramacion_solicitada',
+    estadosPermitidos: TURN_STATES_WHATSAPP_REPROGRAMMABLE,
+  }),
+});
+
+async function abrirSolicitudCambioTurno({
+  tipoSolicitud,
+  pacienteId = null,
+  nombreApellido = null,
+  dni,
+  telefono,
+  turnoId,
+  motivo = null,
+  preferenciaHoraria = null,
+  observaciones = null,
+  auditoria = {},
+} = {}) {
+  const configuracion = CONFIGURACION_APERTURA_CAMBIO[tipoSolicitud];
+  if (!configuracion) {
+    throw new Error('Solo se pueden abrir solicitudes de cancelacion o reprogramacion');
+  }
+  if (!turnoId) throw new Error('Id de turno obligatorio');
+  if (!dni) throw new Error('DNI obligatorio');
+  if (!telefono) throw new Error('Telefono obligatorio');
+
+  await asegurarTablaTurnoSolicitudes();
+  const client = await pool.connect();
+  let resultado;
+
+  try {
+    await client.query('BEGIN');
+
+    const turnoResult = await client.query(
+      'SELECT id, estado FROM turnos WHERE id = $1 FOR UPDATE',
+      [turnoId],
+    );
+    if (!turnoResult.rowCount) throw new Error('El turno no existe');
+
+    const turno = turnoResult.rows[0];
+    const estadoYaSolicitado = turno.estado === configuracion.estadoTurno;
+    if (!estadoYaSolicitado && !configuracion.estadosPermitidos.includes(turno.estado)) {
+      throw new Error(`El turno no admite una solicitud de ${tipoSolicitud}`);
+    }
+
+    const existenteResult = await client.query(
+      `
+        SELECT *
+        FROM turno_solicitudes
+        WHERE turno_id = $1
+          AND tipo_solicitud = $2
+          AND estado = 'pendiente'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `,
+      [turnoId, tipoSolicitud],
+    );
+
+    let solicitud = existenteResult.rows[0] || null;
+    let creada = false;
+
+    if (!solicitud) {
+      const observacionesFinal = buildObservacionSolicitud({
+        motivo,
+        preferenciaHoraria,
+        observaciones,
+      });
+      const insertResult = await client.query(
+        `
+          INSERT INTO turno_solicitudes (
+            tipo_solicitud,
+            estado,
+            paciente_id,
+            nombre_apellido,
+            dni,
+            telefono,
+            motivo,
+            preferencia_horaria,
+            turno_id,
+            observaciones
+          )
+          VALUES ($1, 'pendiente', $2, $3, $4, $5, $6, $7, $8, $9)
+          RETURNING *
+        `,
+        [
+          tipoSolicitud,
+          pacienteId,
+          nombreApellido,
+          dni,
+          telefono,
+          motivo,
+          preferenciaHoraria,
+          turnoId,
+          observacionesFinal,
+        ],
+      );
+      [solicitud] = insertResult.rows;
+      creada = true;
+    }
+
+    const turnoActualizado = await client.query(
+      `
+        UPDATE turnos
+        SET estado = $2,
+            updated_at = NOW()
+        WHERE id = $1
+          AND estado = $3
+        RETURNING id, estado
+      `,
+      [turnoId, configuracion.estadoTurno, turno.estado],
+    );
+    if (!turnoActualizado.rowCount) {
+      throw new Error('El turno cambio de estado durante la apertura de la solicitud');
+    }
+
+    await client.query('COMMIT');
+    resultado = {
+      solicitud,
+      creada,
+      turno: turnoActualizado.rows[0],
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (resultado.creada) {
+    try {
+      await registrarAuditoria({
+        accion: 'TURNO_SOLICITUD_CREADA',
+        recurso: 'turno_solicitudes',
+        recursoId: resultado.solicitud.id,
+        statusCode: 201,
+        metadata: auditoria,
+      });
+    } catch (error) {
+      console.warn('[TURNO SOLICITUDES] La auditoria fallo, pero la solicitud fue guardada:', error.message);
+    }
+  }
+
+  return resultado;
 }
 
 async function cerrarSolicitudesPendientes(client, {
@@ -443,6 +597,7 @@ module.exports = {
   asegurarTablaTurnoSolicitudes,
   crearSolicitudTurnoPendiente,
   crearSolicitudPendienteSiNoExiste,
+  abrirSolicitudCambioTurno,
   cerrarSolicitudesPendientes,
   obtenerSolicitudPendientePorTurno,
   listarSolicitudesTurno,
