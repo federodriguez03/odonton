@@ -117,6 +117,52 @@ function getPreferredIncomingChatId(message) {
   );
 }
 
+function firstValidStoragePhone(candidates = []) {
+  for (const candidate of candidates) {
+    const normalized = normalizePhoneForStorage(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+async function resolveIncomingPhoneForStorage(message, chatId = null, currentClient = client) {
+  const incomingChatId = String(chatId || getPreferredIncomingChatId(message) || '').trim();
+  const directPhone = firstValidStoragePhone([
+    incomingChatId,
+    message?.from,
+    message?.author,
+    message?._data?.from,
+    message?._data?.author,
+  ]);
+  if (directPhone) return directPhone;
+  if (!incomingChatId.endsWith('@lid')) return null;
+
+  try {
+    const contact = typeof message?.getContact === 'function'
+      ? await message.getContact()
+      : null;
+    const contactId = contact?.id?._serialized
+      || (contact?.id?.server === 'c.us' && contact?.id?.user
+        ? `${contact.id.user}@c.us`
+        : null);
+    const contactPhone = firstValidStoragePhone([contactId]);
+    if (contactPhone) return contactPhone;
+  } catch (_) {
+    // La resolucion del contacto es opcional; nunca se persiste el LID como telefono.
+  }
+
+  try {
+    if (typeof currentClient?.getContactLidAndPhone !== 'function') return null;
+    const mappings = await currentClient.getContactLidAndPhone([incomingChatId]);
+    const match = Array.isArray(mappings)
+      ? mappings.find((item) => String(item?.lid || '').trim() === incomingChatId)
+      : null;
+    return firstValidStoragePhone([match?.pn]);
+  } catch (_) {
+    return null;
+  }
+}
+
 function isGroupOrStatus(chatId) {
   const value = String(chatId || '');
   return value.endsWith('@g.us') || value === 'status@broadcast';
@@ -361,7 +407,8 @@ async function handleIncomingMessage(message, sourceEvent) {
       if (reminderResult?.codigo !== 'NO_PENDING_REMINDER') return;
     }
 
-    await processAutogestionMessage(chatId, text);
+    const storagePhone = await resolveIncomingPhoneForStorage(message, chatId);
+    await processAutogestionMessage(chatId, text, { storagePhone });
   } catch (error) {
     console.error('[WHATSAPP WEB] Error procesando mensaje entrante:', error.message);
   }
@@ -680,6 +727,7 @@ module.exports = {
   normalizePhoneToChatId,
   normalizePhoneDigits,
   normalizePhoneForStorage,
+  resolveIncomingPhoneForStorage,
   getStatus,
   getLastQr,
   destroyWhatsAppClient,

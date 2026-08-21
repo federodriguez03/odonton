@@ -8,8 +8,11 @@ const {
   obtenerTurnoDetalle,
 } = require('./turnosService');
 const { registrarAuditoria } = require('./auditoriaService');
-const { crearPaciente } = require('./pacientesService');
 const { obtenerConfiguracion, AUTOGESTION_KEYWORDS_DEFAULT } = require('./configuracionService');
+const {
+  completarTelefonoPacienteSiVacio,
+  createPacienteMinimo,
+} = require('./whatsappPaciente.service');
 const {
   TURN_STATES_WHATSAPP_CANCELABLE,
   TURN_STATES_WHATSAPP_REPROGRAMMABLE,
@@ -479,6 +482,7 @@ async function registerPendingRequestFromSession(session, phone) {
       apellido: data.apellido,
       dni,
       phone,
+      storagePhone: data.telefono_resuelto || null,
       conversationId: session.id,
     });
     pacienteId = paciente.id;
@@ -536,39 +540,6 @@ async function registerPendingRequestFromSession(session, phone) {
       tipo_solicitud: tipoSolicitud,
     },
   });
-}
-
-async function createPacienteMinimo({ nombre, apellido, dni, phone, conversationId }) {
-  const dniNormalizado = normalizeDni(dni);
-  const existente = await findPacienteByDni(dniNormalizado);
-  if (existente) {
-    const telefonoNormalizado = normalizePhoneForStorage(phone);
-    if (telefonoNormalizado && !String(existente.telefono || '').trim()) {
-      const { rows } = await pool.query(
-        'UPDATE pacientes SET telefono = $1, updated_at = NOW() WHERE id = $2 RETURNING id, nombre, apellido, dni, telefono',
-        [telefonoNormalizado, existente.id],
-      );
-      return rows[0] || existente;
-    }
-    return existente;
-  }
-
-  const paciente = await crearPaciente({
-    nombre,
-    apellido,
-    dni: dniNormalizado,
-    telefono: normalizePhoneForStorage(phone),
-  });
-
-  await audit({
-    accion: 'PATIENT_CREATED_FROM_WHATSAPP',
-    recurso: 'pacientes',
-    recursoId: paciente.id,
-    statusCode: 200,
-    metadata: { phone: normalizePhoneDigits(phone), conversation_id: conversationId },
-  });
-
-  return paciente;
 }
 
 async function getOrCreatePrimeraConsulta() {
@@ -849,8 +820,11 @@ async function askAppointmentConfirmation(session, phone, selectedSlot, { step =
   return updated;
 }
 
-async function startAutogestion(phone) {
-  const session = await createSession(phone, 'esperando_opcion_menu', { mode: 'guided_requests' });
+async function startAutogestion(phone, { storagePhone = null } = {}) {
+  const session = await createSession(phone, 'esperando_opcion_menu', {
+    mode: 'guided_requests',
+    ...(storagePhone && { telefono_resuelto: storagePhone }),
+  });
   await audit({
     accion: 'BOT_SESSION_STARTED',
     recurso: 'whatsapp_conversations',
@@ -954,7 +928,13 @@ async function handleGuidedDni(session, phone, body) {
   const data = session.data || {};
   const dni = String(body).trim();
   const tipoSolicitud = data.tipo_solicitud || 'nuevo_turno';
-  const paciente = await findPacienteByDni(dni);
+  const pacienteEncontrado = await findPacienteByDni(dni);
+  const paciente = pacienteEncontrado
+    ? await completarTelefonoPacienteSiVacio(pacienteEncontrado, {
+      phone,
+      storagePhone: data.telefono_resuelto || null,
+    })
+    : null;
   const identificacion = determinarTipoPaciente(paciente);
 
   if (!paciente) {
@@ -1812,10 +1792,12 @@ async function handleManagedCancelConfirm(session, phone, body) {
 
 }
 
-async function processAutogestionMessage(phone, body) {
+async function processAutogestionMessage(phone, body, { storagePhone = null } = {}) {
   await ensureAutogestionSchema();
   const text = String(body || '').trim();
   if (!text) return { handled: false };
+
+  const telefonoResuelto = normalizePhoneForStorage(storagePhone);
 
   const state = await getActiveSessionState(phone);
   let session = state.session;
@@ -1846,11 +1828,14 @@ async function processAutogestionMessage(phone, body) {
     }
 
     if (!isDirectMenuCommand) {
-      const result = await startAutogestion(phone);
+      const result = await startAutogestion(phone, { storagePhone: telefonoResuelto });
       return { handled: true, ...result };
     }
 
-    session = await createSession(phone, 'esperando_opcion_menu', { mode: 'guided_requests' });
+    session = await createSession(phone, 'esperando_opcion_menu', {
+      mode: 'guided_requests',
+      ...(telefonoResuelto && { telefono_resuelto: telefonoResuelto }),
+    });
     await audit({
       accion: 'BOT_SESSION_STARTED',
       recurso: 'whatsapp_conversations',
@@ -1859,6 +1844,12 @@ async function processAutogestionMessage(phone, body) {
     });
     const result = await handleGuidedMenu(session, phone, text);
     return { handled: true, started: true, session_id: session.id, ...result };
+  }
+
+  if (telefonoResuelto && !session.data?.telefono_resuelto) {
+    session = await updateSession(session, {
+      data: { telefono_resuelto: telefonoResuelto },
+    });
   }
 
   if (isCancelCommand(text)) {
