@@ -243,7 +243,7 @@ function rememberProcessedFingerprint(message) {
   return false;
 }
 
-async function pollRecentMessagesOnce({ limitChats = 50, limitMessages = 10, maxAgeMinutes = 120, process = true } = {}) {
+async function pollRecentMessagesOnce({ limitChats = 50, limitMessages = 10, maxAgeMinutes = 120, process = false } = {}) {
   if (!client || !ready) {
     throw new Error('WhatsApp Web no esta listo');
   }
@@ -261,9 +261,7 @@ async function pollRecentMessagesOnce({ limitChats = 50, limitMessages = 10, max
 
     for (const message of messages) {
       const ageMs = Date.now() - Number(message.timestamp || 0) * 1000;
-      const messageAtMs = Number(message.timestamp || 0) * 1000;
       const isRecent = ageMs <= maxAgeMinutes * 60 * 1000;
-      const isAfterReady = !readyAt || messageAtMs >= new Date(readyAt).getTime() - 15000;
 
       mappedMessages.push({
         id: getMessageId(message),
@@ -273,11 +271,8 @@ async function pollRecentMessagesOnce({ limitChats = 50, limitMessages = 10, max
         body: message.body || '',
         timestamp: message.timestamp || null,
         age_minutes: Number.isFinite(ageMs) ? Math.round(ageMs / 60000) : null,
+        is_recent: isRecent,
       });
-
-      if (process && isRecent && isAfterReady && message.body && !message.fromMe) {
-        await handleIncomingMessage(message, 'manual_poll');
-      }
     }
 
     seen.push({
@@ -304,6 +299,8 @@ async function pollRecentMessagesOnce({ limitChats = 50, limitMessages = 10, max
     chats: seen,
     total_chats_seen: seen.length,
     last_incoming_message: lastIncomingMessage,
+    processing_requested: process === true,
+    processing_enabled: false,
   };
 }
 
@@ -320,7 +317,7 @@ function startMessagePolling() {
   pollHandle = setInterval(async () => {
     try {
       if (!client || !ready) return;
-      await pollRecentMessagesOnce({ limitChats: 20, limitMessages: 5, maxAgeMinutes: 30, process: true });
+      await pollRecentMessagesOnce({ limitChats: 20, limitMessages: 5, maxAgeMinutes: 30, process: false });
     } catch (error) {
       const message = error?.message || String(error);
       lastError = message;
@@ -338,6 +335,7 @@ async function handleIncomingMessage(message, sourceEvent) {
     const to = String(message?.to || '').trim();
 
     if (message?.fromMe === true) return;
+    if (sourceEvent !== 'message') return;
 
     if (from === 'status@broadcast' || to === 'status@broadcast') {
       console.log('[WHATSAPP WEB] Mensaje ignorado por ser estado');
@@ -408,7 +406,14 @@ async function handleIncomingMessage(message, sourceEvent) {
     }
 
     const storagePhone = await resolveIncomingPhoneForStorage(message, chatId);
-    await processAutogestionMessage(chatId, text, { storagePhone });
+    await processAutogestionMessage(chatId, text, {
+      storagePhone,
+      allowSessionStart: true,
+      sourceEvent,
+      messageId: getMessageId(message),
+      messageTimestamp: message?.timestamp || null,
+      fromMe: message?.fromMe,
+    });
   } catch (error) {
     console.error('[WHATSAPP WEB] Error procesando mensaje entrante:', error.message);
   }
@@ -545,7 +550,6 @@ async function initializeWhatsAppClient() {
     lastError = null;
     connectedNumber = client?.info?.wid?._serialized || client?.info?.wid?.user || null;
     lastConnectedAt = new Date().toISOString();
-    startMessagePolling();
     console.log('[WhatsApp] Cliente listo');
   });
 

@@ -224,7 +224,9 @@ async function run() {
     path.join(__dirname, '../src/services/whatsappAutogestion.service.js'),
     'utf8',
   );
-  assert.equal(clientSource.includes('processAutogestionMessage(chatId, text, { storagePhone })'), true);
+  assert.equal(clientSource.includes('processAutogestionMessage(chatId, text, {'), true);
+  assert.equal(clientSource.includes('storagePhone,'), true);
+  assert.equal(clientSource.includes('allowSessionStart: true'), true);
   assert.equal(autogestionSource.includes('storagePhone: data.telefono_resuelto || null'), true);
 
   console.log('OK: telefono de pacientes creados desde WhatsApp (casos A-F, sin WhatsApp real)');

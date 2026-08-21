@@ -11,7 +11,6 @@ const {
 const {
   sendAppointmentReminder,
   processAutomaticReminders,
-  processPatientReply,
 } = require('../services/whatsappReminder.service');
 
 async function getWhatsAppStatus(req, res) {
@@ -107,33 +106,35 @@ async function processReminders(req, res) {
 }
 
 async function simulateReply(req, res) {
-  try {
-    const { phone, body } = req.body || {};
-    if (!phone || !body) {
-      return res.status(400).json({ mensaje: 'phone y body son obligatorios' });
-    }
-    const result = await processPatientReply(phone, body, { replyWhenNoPending: false });
-    if (result?.codigo === 'NO_PENDING_REMINDER') {
-      const { processAutogestionMessage } = require('../services/whatsappAutogestion.service');
-      const autogestion = await processAutogestionMessage(phone, body);
-      return res.status(200).json({ tipo: 'autogestion', resultado: autogestion });
-    }
-    return res.status(200).json(result);
-  } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error simulando respuesta' });
+  const { phone, body } = req.body || {};
+  if (!phone || !body) {
+    return res.status(400).json({ mensaje: 'phone y body son obligatorios' });
   }
+
+  return res.status(200).json({
+    tipo: 'simulacion',
+    resultado: {
+      handled: false,
+      codigo: 'SIMULATION_ONLY_NO_REAL_TRANSPORT',
+      mensaje: 'Simulacion sin procesamiento ni envio real de WhatsApp.',
+    },
+  });
 }
 
 async function debugRecentChats(req, res) {
   try {
-    const processMessages = String(req.query?.process || '').toLowerCase() === 'true';
+    const processingRequested = String(req.query?.process || '').toLowerCase() === 'true';
     const result = await pollRecentMessagesOnce({
       limitChats: Number.parseInt(req.query?.limitChats || '20', 10),
       limitMessages: Number.parseInt(req.query?.limitMessages || '5', 10),
       maxAgeMinutes: Number.parseInt(req.query?.maxAgeMinutes || '120', 10),
-      process: processMessages,
+      process: false,
     });
-    return res.status(200).json(result);
+    return res.status(200).json({
+      ...result,
+      processing_requested: processingRequested,
+      processing_enabled: false,
+    });
   } catch (error) {
     return res.status(400).json({ mensaje: error.message || 'Error leyendo chats de WhatsApp' });
   }

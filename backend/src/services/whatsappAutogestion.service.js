@@ -151,7 +151,7 @@ async function shouldStartAutogestion(body) {
   const keywords = parseKeywords(config.consultorio?.autogestion_keywords);
   const text = normalizeText(body);
   if (!text) return false;
-  return keywords.some((keyword) => text.includes(keyword));
+  return text === 'turno' || keywords.some((keyword) => text === keyword);
 }
 
 function parseOption(body) {
@@ -820,7 +820,7 @@ async function askAppointmentConfirmation(session, phone, selectedSlot, { step =
   return updated;
 }
 
-async function startAutogestion(phone, { storagePhone = null } = {}) {
+async function startAutogestion(phone, { storagePhone = null, auditContext = {} } = {}) {
   const session = await createSession(phone, 'esperando_opcion_menu', {
     mode: 'guided_requests',
     ...(storagePhone && { telefono_resuelto: storagePhone }),
@@ -829,7 +829,13 @@ async function startAutogestion(phone, { storagePhone = null } = {}) {
     accion: 'BOT_SESSION_STARTED',
     recurso: 'whatsapp_conversations',
     recursoId: session.id,
-    metadata: { phone: normalizePhoneDigits(phone) },
+    metadata: {
+      phone: normalizePhoneDigits(phone),
+      sourceEvent: auditContext.sourceEvent || null,
+      messageId: auditContext.messageId || null,
+      messageTimestamp: auditContext.messageTimestamp || null,
+      trigger: 'exact_keyword',
+    },
   });
   await safeSend(phone, menuPrincipalMessage());
   return { ok: true, started: true, session_id: session.id };
@@ -1792,7 +1798,14 @@ async function handleManagedCancelConfirm(session, phone, body) {
 
 }
 
-async function processAutogestionMessage(phone, body, { storagePhone = null } = {}) {
+async function processAutogestionMessage(phone, body, {
+  storagePhone = null,
+  allowSessionStart = false,
+  sourceEvent = null,
+  messageId = null,
+  messageTimestamp = null,
+  fromMe = null,
+} = {}) {
   await ensureAutogestionSchema();
   const text = String(body || '').trim();
   if (!text) return { handled: false };
@@ -1818,6 +1831,13 @@ async function processAutogestionMessage(phone, body, { storagePhone = null } = 
   }
 
   if (!session) {
+    const canStartSession = allowSessionStart === true
+      && sourceEvent === 'message'
+      && fromMe === false;
+    if (!canStartSession) {
+      return { handled: false, codigo: 'SESSION_START_NOT_ALLOWED' };
+    }
+
     if (isCourtesyMessage(text)) {
       await safeSend(phone, COURTESY_MESSAGE);
       return { handled: true, courtesy: true };
@@ -1828,7 +1848,10 @@ async function processAutogestionMessage(phone, body, { storagePhone = null } = 
     }
 
     if (!isDirectMenuCommand) {
-      const result = await startAutogestion(phone, { storagePhone: telefonoResuelto });
+      const result = await startAutogestion(phone, {
+        storagePhone: telefonoResuelto,
+        auditContext: { sourceEvent, messageId, messageTimestamp },
+      });
       return { handled: true, ...result };
     }
 
@@ -1840,7 +1863,14 @@ async function processAutogestionMessage(phone, body, { storagePhone = null } = 
       accion: 'BOT_SESSION_STARTED',
       recurso: 'whatsapp_conversations',
       recursoId: session.id,
-      metadata: { phone: normalizePhoneDigits(phone), command: text },
+      metadata: {
+        phone: normalizePhoneDigits(phone),
+        command: text,
+        sourceEvent,
+        messageId,
+        messageTimestamp,
+        trigger: 'direct_command',
+      },
     });
     const result = await handleGuidedMenu(session, phone, text);
     return { handled: true, started: true, session_id: session.id, ...result };
