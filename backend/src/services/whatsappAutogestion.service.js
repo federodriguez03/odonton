@@ -151,6 +151,7 @@ async function shouldStartAutogestion(body) {
   const keywords = parseKeywords(config.consultorio?.autogestion_keywords);
   const text = normalizeText(body);
   if (!text) return false;
+  // Exige comandos completos para evitar que una conversación incidental active el bot.
   return text === 'turno' || keywords.some((keyword) => text === keyword);
 }
 
@@ -1798,6 +1799,9 @@ async function handleManagedCancelConfirm(session, phone, body) {
 
 }
 
+/**
+ * Continúa la máquina de estados persistida o inicia una sesión desde un evento autorizado.
+ */
 async function processAutogestionMessage(phone, body, {
   storagePhone = null,
   allowSessionStart = false,
@@ -1831,6 +1835,7 @@ async function processAutogestionMessage(phone, body, {
   }
 
   if (!session) {
+    // Las fuentes internas pueden continuar sesiones existentes, pero nunca abrir una nueva.
     const canStartSession = allowSessionStart === true
       && sourceEvent === 'message'
       && fromMe === false;
@@ -1901,6 +1906,7 @@ async function processAutogestionMessage(phone, body, {
     metadata: { phone: normalizePhoneDigits(phone), step: session.step, body: text },
   });
 
+  // El paso persistido determina el único handler válido para la respuesta recibida.
   const handlers = {
     esperando_opcion_menu: () => handleGuidedMenu(session, phone, text),
     esperando_dni: () => handleGuidedDni(session, phone, text),

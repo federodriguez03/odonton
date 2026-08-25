@@ -10,6 +10,7 @@ function resolveDocumentoPath(rutaArchivo) {
 }
 
 async function subirDocumento(req, res) {
+  // Multer ya guardó el archivo; cualquier rechazo posterior debe evitar un upload huérfano.
   try {
     const { paciente_id, descripcion } = req.body || {};
     const file = req.file;

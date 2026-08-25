@@ -16,6 +16,9 @@ function warningFromSendError(error) {
   return WARNING_SEND_FAILED;
 }
 
+/**
+ * Convierte fallos externos en advertencias porque la operación principal ya fue persistida.
+ */
 async function enviarNotificacionAdministrativaWhatsapp({ telefono, mensaje } = {}) {
   if (!String(telefono || '').trim()) {
     return administrativeNotificationResult({

@@ -183,6 +183,9 @@ const CONFIGURACION_APERTURA_CAMBIO = Object.freeze({
   }),
 });
 
+/**
+ * Abre la solicitud y cambia el estado del turno como una operación atómica.
+ */
 async function abrirSolicitudCambioTurno({
   tipoSolicitud,
   pacienteId = null,
@@ -210,6 +213,7 @@ async function abrirSolicitudCambioTurno({
   try {
     await client.query('BEGIN');
 
+    // Bloquea el turno para serializar decisiones concurrentes sobre su estado.
     const turnoResult = await client.query(
       'SELECT id, estado FROM turnos WHERE id = $1 FOR UPDATE',
       [turnoId],

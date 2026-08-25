@@ -72,6 +72,7 @@ async function registrarTurno(req, res) {
   }
 }
 
+// WhatsApp se intenta después de persistir; su fallo se informa sin revertir el turno.
 async function editarTurno(req, res) {
   try {
     const { id } = req.params;

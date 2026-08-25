@@ -2,6 +2,9 @@ const { pool } = require('../config/db');
 const { registrarAuditoria } = require('./auditoriaService');
 const { cerrarSolicitudesPendientes } = require('./turnoSolicitudesService');
 
+/**
+ * Finaliza turnos vencidos y resuelve sus solicitudes dentro de la misma transacción.
+ */
 async function marcarTurnosVencidosComoRealizados({ limit = 50 } = {}) {
   const max = Number.isFinite(Number(limit)) && Number(limit) > 0 ? Number(limit) : 50;
   const client = await pool.connect();
@@ -28,6 +31,7 @@ async function marcarTurnosVencidosComoRealizados({ limit = 50 } = {}) {
     );
     rows = result.rows;
 
+    // Una solicitud pendiente no debe sobrevivir al cierre definitivo de su turno.
     for (const row of rows) {
       await cerrarSolicitudesPendientes(client, {
         turnoId: row.id,

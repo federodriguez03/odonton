@@ -124,8 +124,6 @@ export function getTratamientos(params = {}) {
   return request(`/api/tratamientos${suffix}`);
 }
 
-// Prótesis se integrará en odontograma, se quitan helpers separados
-
 export function getTurnos(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {

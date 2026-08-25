@@ -452,6 +452,9 @@ async function editarTurno(
   };
 }
 
+/**
+ * Cancela el turno y resuelve sus solicitudes pendientes en una sola transacción.
+ */
 async function cancelarTurno(turnoId) {
   const client = await pool.connect();
   try {
@@ -519,6 +522,9 @@ async function confirmarTurno(turnoId) {
   return rows[0];
 }
 
+/**
+ * Confirma la solicitud y cierra sus registros pendientes de forma atómica.
+ */
 async function confirmarSolicitudTurno(
   turnoId,
   {
@@ -564,6 +570,7 @@ async function confirmarSolicitudTurno(
   try {
     await client.query('BEGIN');
 
+    // Revalida bajo bloqueo porque las comprobaciones previas pueden quedar desactualizadas.
     const turnoBloqueado = await client.query(
       'SELECT id, estado FROM turnos WHERE id = $1 FOR UPDATE',
       [turnoId],
@@ -612,6 +619,9 @@ async function confirmarSolicitudTurno(
   }
 }
 
+/**
+ * Rechaza la solicitud y restaura el estado aplicable sin dejar registros pendientes.
+ */
 async function rechazarSolicitudTurno(turnoId, { observaciones = null } = {}) {
   await asegurarColumnasProfesionalTurnos();
   const client = await pool.connect();

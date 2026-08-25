@@ -243,6 +243,9 @@ function rememberProcessedFingerprint(message) {
   return false;
 }
 
+/**
+ * Lista mensajes recientes para diagnóstico sin reinyectarlos en el bot.
+ */
 async function pollRecentMessagesOnce({ limitChats = 50, limitMessages = 10, maxAgeMinutes = 120, process = false } = {}) {
   if (!client || !ready) {
     throw new Error('WhatsApp Web no esta listo');
@@ -334,6 +337,7 @@ async function handleIncomingMessage(message, sourceEvent) {
     const from = getPreferredIncomingChatId(message);
     const to = String(message?.to || '').trim();
 
+    // Solo un evento entrante real y ajeno puede alimentar el flujo automático.
     if (message?.fromMe === true) return;
     if (sourceEvent !== 'message') return;
 

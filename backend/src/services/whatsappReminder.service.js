@@ -248,6 +248,9 @@ async function hasReminderForAppointment(appointmentId) {
   return rows[0] || null;
 }
 
+/**
+ * Envía un recordatorio respetando la habilitación y evitando duplicados salvo envío forzado.
+ */
 async function sendAppointmentReminder(appointmentId, { force = false, automatic = false } = {}) {
   await ensureWhatsAppReminderSchema();
   if (!appointmentId) throw new Error('appointmentId es obligatorio');
@@ -471,6 +474,9 @@ async function safeReply(phone, message) {
   }
 }
 
+/**
+ * Persiste la respuesta y sus efectos antes de contestar por WhatsApp.
+ */
 async function processPatientReply(phone, body, { replyWhenNoPending = true } = {}) {
   await ensureWhatsAppReminderSchema();
   const text = String(body || '').trim();
@@ -619,6 +625,7 @@ async function processPatientReply(phone, body, { replyWhenNoPending = true } = 
       metadata: { reminder_id: reminder.id, phone: normalizePhoneDigits(phone), response_text: text },
     });
 
+    // La respuesta externa ocurre después del COMMIT para no revertir la persistencia.
     const reply = replyMessage === null
       ? { sent: false, error: null, skipped: true, reason: 'MESSAGE_DISABLED' }
       : await safeReply(phone, replyMessage);
@@ -665,6 +672,7 @@ async function findUpcomingAppointmentsForReminders({ hours = 24, limit = 25 } =
 }
 
 async function processAutomaticReminders() {
+  // El flag global detiene el lote; cada turno conserva además su habilitación individual.
   if (String(process.env.REMINDERS_ENABLED || 'false').toLowerCase() !== 'true') {
     return { enabled: false, processed: 0, sent: 0, failed: 0, results: [] };
   }
