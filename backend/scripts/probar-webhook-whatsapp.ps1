@@ -1,5 +1,0 @@
-Write-Host "Este script quedo obsoleto."
-Write-Host "WhatsApp ahora se prueba con whatsapp-web.js:"
-Write-Host "  GET  /api/whatsapp/status"
-Write-Host "  POST /api/whatsapp/send-test"
-Write-Host "  POST /api/whatsapp/send-reminder/:appointmentId"
