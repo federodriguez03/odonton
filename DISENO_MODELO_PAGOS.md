@@ -86,7 +86,7 @@ Tabla propuesta: `public.cargos`.
 | `prestacion_id` | `INTEGER` | No | FK a `prestaciones(id)`. Conserva la prestación tomada como referencia. |
 | `concepto` | `TEXT` | Sí | Snapshot descriptivo; no vacío después de aplicar `TRIM`. |
 | `importe_total` | `NUMERIC(12,2)` | Sí | Importe acordado e histórico; `CHECK (importe_total > 0)`. |
-| `fecha_cargo` | `DATE` | Sí | Fecha administrativa del cargo; valor inicial `CURRENT_DATE`. |
+| `fecha_cargo` | `DATE` | Sí | Fecha administrativa del cargo; admite fechas anteriores, nunca futuras; valor inicial `CURRENT_DATE`. |
 | `observaciones` | `TEXT` | No | Aclaración interna opcional. |
 | `created_at` | `TIMESTAMPTZ` | Sí | Momento técnico de creación; valor inicial `NOW()`. |
 | `updated_at` | `TIMESTAMPTZ` | Sí | Momento de la última corrección permitida; valor inicial `NOW()`. |
@@ -100,6 +100,10 @@ Tabla propuesta: `public.cargos`.
 - Si ambos existen, deben coincidir en el momento de crear el cargo. No se confiará únicamente en valores enviados por el frontend.
 - `concepto` se copia desde el nombre vigente de la prestación cuando corresponda, pero queda independiente de cambios posteriores.
 - `importe_total` puede precargarse desde `precio_base`, pero el valor aceptado por el usuario autorizado es el importe acordado que quedará congelado.
+
+Antes de crear el cargo, el odontólogo puede modificar el importe precargado. Una vez creado, ese valor deja de depender del catálogo de prestaciones.
+
+Los datos principales del cargo solo pueden corregirse mientras nunca haya tenido pagos. Desde el primer pago histórico —aunque luego sea anulado— quedan inmutables `paciente_id`, `turno_id`, `prestacion_id`, `concepto` e `importe_total`.
 
 Se recomienda `ON DELETE SET NULL` para las FKs opcionales a turno y prestación: si en el futuro se retirara físicamente una referencia, el cargo conserva paciente, concepto, importe y fechas. La aplicación debería seguir prefiriendo bajas lógicas o restricciones antes que borrar información clínica.
 
@@ -127,7 +131,7 @@ Tabla propuesta: nueva definición canónica de `public.pagos`.
 | `cargo_id` | `INTEGER` | Sí | FK a `cargos(id)`, con `ON DELETE RESTRICT`. |
 | `importe` | `NUMERIC(12,2)` | Sí | Dinero efectivamente recibido; `CHECK (importe > 0)`. |
 | `metodo_pago` | `VARCHAR(30)` | Sí | Medio utilizado. Restricción inicial: `efectivo`, `tarjeta` o `transferencia`. |
-| `fecha_pago` | `DATE` | Sí | Fecha administrativa del cobro; valor inicial `CURRENT_DATE`. |
+| `fecha_pago` | `DATE` | Sí | Fecha administrativa del cobro; admite fechas anteriores, nunca futuras ni anteriores al cargo; valor inicial `CURRENT_DATE`. |
 | `observaciones` | `TEXT` | No | Aclaración interna opcional. |
 | `estado` | `VARCHAR(10)` | Sí | Solo `activo` o `anulado`; valor inicial `activo`. |
 | `fecha_anulacion` | `TIMESTAMPTZ` | No | Momento técnico de la anulación; obligatorio cuando el estado es `anulado`. |
@@ -199,9 +203,9 @@ La relación identifica quién realizó la anulación. Además, la ruta debe reg
 
 **R10.** Cambios en `prestaciones.nombre` o `prestaciones.precio_base` no modifican concepto ni importe de cargos existentes.
 
-**R11.** `fecha_pago` no debe ser anterior a `fecha_cargo`. La fecha la valida el backend; `created_at` conserva cuándo se registró realmente.
+**R11.** Se permiten fechas administrativas anteriores, pero `fecha_cargo` y `fecha_pago` no pueden ser futuras y `fecha_pago` no puede ser anterior a `fecha_cargo`. `created_at` conserva cuándo se registró realmente.
 
-**R12.** No se permite cambiar paciente, turno, prestación o importe de un cargo que ya tenga pagos activos. Una política futura de corrección debe preservar trazabilidad.
+**R12.** No se permite cambiar paciente, turno, prestación, concepto ni importe de un cargo que haya tenido cualquier pago histórico, incluso si todos fueron anulados. Solo un cargo sin pagos históricos puede corregirse.
 
 **R13.** Programar, confirmar, reprogramar o realizar un turno no crea deuda automáticamente. El cargo se genera mediante una acción administrativa explícita.
 
@@ -321,7 +325,7 @@ No se expone DELETE para pagos normales. Tampoco se restaura un pago anulado: si
 
 ## CONSTANCIA INTERNA
 
-La constancia posterior será explícitamente **no fiscal** y podrá generarse a partir de los datos persistidos, sin modificar el modelo.
+La constancia forma parte del cierre del módulo, se implementará en una fase posterior y será explícitamente **no fiscal**. Podrá generarse a partir de los datos persistidos, sin modificar el modelo.
 
 Datos mínimos:
 
@@ -491,14 +495,16 @@ Cada cobro bloquea temporalmente la fila del cargo dentro de una transacción, v
 
 ## DECISIONES PENDIENTES
 
-Estas decisiones no cambian la separación Cargo/Pago, pero deben cerrarse antes de implementar la interfaz definitiva:
+Las decisiones funcionales de esta etapa quedaron cerradas:
 
-1. Confirmar si los únicos métodos iniciales serán `efectivo`, `tarjeta` y `transferencia`, o si se necesita `otro` con descripción obligatoria.
-2. Definir si el importe precargado desde `precio_base` podrá editarse libremente por el odontólogo como precio acordado. El modelo lo permite.
-3. Definir si la primera entrega incluye anulación lógica de cargos creados por error. No es requisito del alcance acordado; si se agrega, necesita estado y metadatos propios.
-4. Definir si se permiten fechas administrativas anteriores y qué límite de retroactividad tendrá la interfaz. No deberían aceptarse pagos anteriores a su cargo.
-5. Confirmar si la constancia interna forma parte del cierre inicial o de la fase posterior de reportes/documentación.
-6. Reconfirmar que `pagos` siga vacía justo antes de diseñar y ejecutar la migración; cualquier fila nueva obliga a abandonar la recreación directa y migrar datos.
+- métodos iniciales: `efectivo`, `tarjeta` y `transferencia`, sin `otro`;
+- el odontólogo puede ajustar el precio precargado antes de crear el cargo;
+- no se implementará anulación de cargos en el alcance inicial;
+- se admiten fechas anteriores, pero no futuras ni pagos anteriores al cargo;
+- la constancia interna no fiscal forma parte del cierre y se implementará más adelante;
+- cualquier pago histórico vuelve inmutables los datos principales del cargo.
+
+Solo permanece una precondición operativa: reconfirmar que `pagos` siga vacía inmediatamente antes de crear y ejecutar la futura migración. Cualquier fila nueva obliga a abandonar la recreación directa y diseñar una migración de datos.
 
 ## CONFIRMACIONES
 
