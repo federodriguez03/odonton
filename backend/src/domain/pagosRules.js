@@ -18,7 +18,7 @@ function crearError(codigo, mensaje) {
   return error;
 }
 
-function normalizarImporteACentavos(value, { campo = 'importe' } = {}) {
+function convertirImporteACentavos(value, { campo, permitirCero }) {
   if (typeof value !== 'string' && typeof value !== 'number') {
     throw crearError('IMPORTE_INVALIDO', `${campo} debe ser un importe monetario valido`);
   }
@@ -40,8 +40,11 @@ function normalizarImporteACentavos(value, { campo = 'importe' } = {}) {
   const parteDecimal = BigInt((coincidencia[2] || '').padEnd(2, '0'));
   const centavos = (parteEntera * 100n) + parteDecimal;
 
-  if (centavos <= 0n) {
-    throw crearError('IMPORTE_INVALIDO', `${campo} debe ser mayor que cero`);
+  if (centavos < 0n || (!permitirCero && centavos === 0n)) {
+    throw crearError(
+      'IMPORTE_INVALIDO',
+      `${campo} debe ser ${permitirCero ? 'mayor o igual que cero' : 'mayor que cero'}`,
+    );
   }
 
   if (centavos > BigInt(MAX_IMPORTE_CENTAVOS)) {
@@ -49,6 +52,21 @@ function normalizarImporteACentavos(value, { campo = 'importe' } = {}) {
   }
 
   return Number(centavos);
+}
+
+function normalizarImporteACentavos(value, { campo = 'importe' } = {}) {
+  return convertirImporteACentavos(value, { campo, permitirCero: false });
+}
+
+function normalizarImporteNoNegativoACentavos(value, { campo = 'importe' } = {}) {
+  return convertirImporteACentavos(value, { campo, permitirCero: true });
+}
+
+function centavosAImporteDecimal(centavos) {
+  validarCentavosNoNegativos(centavos, 'centavos');
+  const parteEntera = Math.floor(centavos / 100);
+  const parteDecimal = String(centavos % 100).padStart(2, '0');
+  return `${parteEntera}.${parteDecimal}`;
 }
 
 function normalizarMetodoPago(value) {
@@ -94,7 +112,11 @@ function validarPagoNoExcedeSaldo({ importePagoCentavos, saldoCentavos }) {
 }
 
 function normalizarFechaAdministrativa(value, { campo = 'fecha' } = {}) {
-  const texto = String(value || '').trim();
+  if (typeof value !== 'string') {
+    throw crearError('FECHA_INVALIDA', `${campo} debe usar el formato YYYY-MM-DD`);
+  }
+
+  const texto = value.trim();
   const coincidencia = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto);
   if (!coincidencia) {
     throw crearError('FECHA_INVALIDA', `${campo} debe usar el formato YYYY-MM-DD`);
@@ -180,9 +202,11 @@ module.exports = {
   MAX_IMPORTE_CENTAVOS,
   METODOS_PAGO,
   calcularEstadoCobro,
+  centavosAImporteDecimal,
   crearSnapshotCargo,
   normalizarFechaAdministrativa,
   normalizarImporteACentavos,
+  normalizarImporteNoNegativoACentavos,
   normalizarMetodoPago,
   obtenerFechaAdministrativaActual,
   validarDatosPrincipalesCargoEditables,

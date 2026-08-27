@@ -1,47 +1,43 @@
 const pagosService = require('../services/pagosService');
+const { responderErrorPagos } = require('../utils/pagosHttp');
 
 async function listarPagos(req, res) {
   try {
-    const { pacienteId, desde, hasta } = req.query;
-    const pagos = await pagosService.listarPagos({ pacienteId, desde, hasta });
-    return res.status(200).json({ pagos });
+    const resultado = await pagosService.listarPagos(req.query || {});
+    return res.status(200).json(resultado);
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al listar pagos' });
+    return responderErrorPagos(res, error, 'Error interno al listar pagos');
   }
 }
 
-async function resumenPaciente(req, res) {
+async function registrarPago(req, res) {
   try {
-    const { pacienteId } = req.params;
-    const data = await pagosService.obtenerResumenPaciente(pacienteId);
-    return res.status(200).json(data);
+    const resultado = await pagosService.registrarPago(req.body || {});
+    req.auditMeta = {
+      pago_id: resultado.pago.id,
+      cargo_id: resultado.pago.cargo_id,
+    };
+    return res.status(201).json({ mensaje: 'Pago registrado', ...resultado });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al obtener resumen del paciente' });
+    return responderErrorPagos(res, error, 'Error interno al registrar el pago');
   }
 }
 
-async function crearPago(req, res) {
+async function anularPago(req, res) {
   try {
-    const pago = await pagosService.crearPago(req.body || {});
-    return res.status(201).json({ mensaje: 'Pago registrado', pago });
+    const resultado = await pagosService.anularPago(req.params.id, {
+      motivo: req.body?.motivo,
+      usuarioId: req.user?.id,
+    });
+    req.auditMeta = { cargo_id: resultado.pago.cargo_id };
+    return res.status(200).json({ mensaje: 'Pago anulado', ...resultado });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al registrar pago' });
-  }
-}
-
-async function actualizarPago(req, res) {
-  try {
-    const { id } = req.params;
-    const pago = await pagosService.actualizarPago(id, req.body || {});
-    return res.status(200).json({ mensaje: 'Pago actualizado', pago });
-  } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al actualizar pago' });
+    return responderErrorPagos(res, error, 'Error interno al anular el pago');
   }
 }
 
 module.exports = {
+  anularPago,
   listarPagos,
-  crearPago,
-  actualizarPago,
-  resumenPaciente,
+  registrarPago,
 };

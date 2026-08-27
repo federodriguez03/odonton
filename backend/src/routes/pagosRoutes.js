@@ -1,12 +1,17 @@
 const express = require('express');
-const router = express.Router();
 
-const { listarPagos, crearPago, actualizarPago, resumenPaciente } = require('../controllers/pagosController');
+const {
+  anularPago,
+  listarPagos,
+  registrarPago,
+} = require('../controllers/pagosController');
 const {
   middlewareAutenticacion,
   autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+
+const router = express.Router();
 
 router.get(
   '/',
@@ -20,18 +25,6 @@ router.get(
   listarPagos,
 );
 
-router.get(
-  '/resumen/:pacienteId',
-  middlewareAutenticacion,
-  autorizarOdontologo,
-  middlewareAuditoria,
-  (req, res, next) => {
-    req.auditAction = 'resumen_pagos_paciente';
-    next();
-  },
-  resumenPaciente,
-);
-
 router.post(
   '/',
   middlewareAutenticacion,
@@ -41,19 +34,19 @@ router.post(
     req.auditAction = 'crear_pago';
     next();
   },
-  crearPago,
+  registrarPago,
 );
 
-router.put(
-  '/:id',
+router.post(
+  '/:id/anular',
   middlewareAutenticacion,
   autorizarOdontologo,
   middlewareAuditoria,
   (req, res, next) => {
-    req.auditAction = 'actualizar_pago';
+    req.auditAction = 'anular_pago';
     next();
   },
-  actualizarPago,
+  anularPago,
 );
 
 module.exports = router;

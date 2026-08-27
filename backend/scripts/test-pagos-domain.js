@@ -3,8 +3,10 @@ const assert = require('node:assert/strict');
 const {
   ESTADOS_COBRO,
   calcularEstadoCobro,
+  centavosAImporteDecimal,
   crearSnapshotCargo,
   normalizarImporteACentavos,
+  normalizarImporteNoNegativoACentavos,
   normalizarMetodoPago,
   validarDatosPrincipalesCargoEditables,
   validarFechaNoFutura,
@@ -20,6 +22,8 @@ function run() {
   assert.throws(() => normalizarImporteACentavos('10.001'), /dos decimales/);
   assert.equal(normalizarImporteACentavos('0.30'), 30);
   assert.throws(() => normalizarImporteACentavos(0.1 + 0.2), /dos decimales/);
+  assert.equal(normalizarImporteNoNegativoACentavos('0.00'), 0);
+  assert.equal(centavosAImporteDecimal(10_025), '100.25');
 
   assert.equal(normalizarMetodoPago('efectivo'), 'efectivo');
   assert.equal(normalizarMetodoPago(' TARJETA '), 'tarjeta');
@@ -68,6 +72,13 @@ function run() {
     }),
     /no puede ser futura/,
   );
+  assert.throws(
+    () => validarFechaNoFutura(['2026-08-25'], {
+      campo: 'fecha_cargo',
+      hoy: '2026-08-27',
+    }),
+    /formato YYYY-MM-DD/,
+  );
 
   const prestacion = { nombre: 'Limpieza dental', precio_base: '30000.00' };
   const snapshot = crearSnapshotCargo({
@@ -90,7 +101,7 @@ function run() {
     /tiene pagos historicos/,
   );
 
-  console.log('OK: dominio de Cargos/Pagos (22 escenarios, sin PostgreSQL ni WhatsApp)');
+  console.log('OK: dominio de Cargos/Pagos (25 escenarios, sin PostgreSQL ni WhatsApp)');
 }
 
 try {

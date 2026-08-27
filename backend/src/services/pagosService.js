@@ -1,241 +1,363 @@
 const { pool } = require('../config/db');
+const {
+  centavosAImporteDecimal,
+  normalizarFechaAdministrativa,
+  normalizarImporteACentavos,
+  normalizarMetodoPago,
+  obtenerFechaAdministrativaActual,
+  validarFechasAdministrativas,
+  validarPagoNoExcedeSaldo,
+} = require('../domain/pagosRules');
+const {
+  construirResumenCargo,
+  normalizarId,
+  obtenerCargoBase,
+  obtenerTotalAbonadoCentavos,
+} = require('./cargosService');
 
-let pagosTableReady = false;
-
-async function asegurarTablaPagos() {
-  if (pagosTableReady) return;
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS pagos (
-      id SERIAL PRIMARY KEY,
-      paciente_id INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
-      turno_id INTEGER REFERENCES turnos(id) ON DELETE SET NULL,
-      monto NUMERIC(12,2) NOT NULL,
-      metodo TEXT NOT NULL,
-      estado TEXT NOT NULL DEFAULT 'pagado',
-      fecha_pago TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      observaciones TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ
-    );
-  `);
-
-  await pool.query(`ALTER TABLE pagos ADD COLUMN IF NOT EXISTS turno_id INTEGER REFERENCES turnos(id) ON DELETE SET NULL`);
-  await pool.query(`ALTER TABLE pagos ADD COLUMN IF NOT EXISTS monto NUMERIC(12,2)`);
-  await pool.query(`ALTER TABLE pagos ADD COLUMN IF NOT EXISTS metodo TEXT`);
-  await pool.query(`ALTER TABLE pagos ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'pagado'`);
-  await pool.query(`ALTER TABLE pagos ADD COLUMN IF NOT EXISTS fecha_pago TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE pagos ADD COLUMN IF NOT EXISTS observaciones TEXT`);
-  await pool.query(`ALTER TABLE pagos ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
-  await pool.query(`ALTER TABLE pagos ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`);
-
-  await pool.query(`
-    UPDATE pagos
-    SET fecha_pago = COALESCE(fecha_pago, created_at, NOW())
-    WHERE fecha_pago IS NULL
-  `);
-
-  await pool.query(`
-    UPDATE pagos
-    SET estado = COALESCE(NULLIF(TRIM(estado), ''), 'pagado')
-    WHERE estado IS NULL OR TRIM(estado) = ''
-  `);
-
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_pagos_paciente_fecha ON pagos(paciente_id, fecha_pago DESC)`);
-
-  pagosTableReady = true;
+function crearError(codigo, mensaje) {
+  const error = new Error(mensaje);
+  error.code = codigo;
+  return error;
 }
 
-function validarPago({ paciente_id, monto, metodo, estado }) {
-  if (!paciente_id) throw new Error('paciente_id requerido');
-  const montoNum = Number(monto);
-  if (!Number.isFinite(montoNum) || montoNum <= 0) throw new Error('monto invalido');
-  if (!metodo || !String(metodo).trim()) throw new Error('metodo requerido');
-
-  const estadosValidos = ['pendiente', 'parcial', 'pagado'];
-  const estadoNorm = estado ? String(estado).toLowerCase() : 'pagado';
-  if (!estadosValidos.includes(estadoNorm)) throw new Error('estado invalido');
-
-  return { montoNum, estadoNorm };
+function normalizarTextoOpcional(
+  value,
+  { campo = 'texto', codigo = 'TEXTO_INVALIDO' } = {},
+) {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string') {
+    throw crearError(codigo, `${campo} debe ser texto`);
+  }
+  const texto = value.trim();
+  return texto || null;
 }
 
-async function listarPagos({ pacienteId, desde, hasta }) {
-  await asegurarTablaPagos();
-
-  const where = ['1=1'];
-  const values = [];
-  let idx = 1;
-
-  if (pacienteId) {
-    where.push(`p.paciente_id = $${idx++}`);
-    values.push(pacienteId);
+function normalizarPaginacion(page, limit) {
+  const pageNumber = page === undefined || page === '' ? 1 : Number(page);
+  const limitNumber = limit === undefined || limit === '' ? 20 : Number(limit);
+  if (!Number.isSafeInteger(pageNumber) || pageNumber < 1) {
+    throw crearError('FILTRO_INVALIDO', 'page debe ser un entero mayor o igual que 1');
   }
-  if (desde) {
-    where.push(`p.fecha_pago >= $${idx++}`);
-    values.push(desde);
+  if (!Number.isSafeInteger(limitNumber) || limitNumber < 1 || limitNumber > 100) {
+    throw crearError('FILTRO_INVALIDO', 'limit debe ser un entero entre 1 y 100');
   }
-  if (hasta) {
-    where.push(`p.fecha_pago <= $${idx++}`);
-    values.push(hasta);
-  }
-
-  const query = `
-    WITH pagos_por_turno AS (
-      SELECT
-        turno_id,
-        COALESCE(SUM(CASE WHEN estado IN ('parcial', 'pagado') THEN monto ELSE 0 END), 0) AS total_pagado_turno
-      FROM pagos
-      WHERE turno_id IS NOT NULL
-      GROUP BY turno_id
-    )
-    SELECT
-      p.id,
-      p.paciente_id,
-      p.turno_id,
-      p.monto,
-      p.metodo,
-      p.estado,
-      p.fecha_pago,
-      p.observaciones,
-      pa.nombre AS paciente_nombre,
-      pa.apellido AS paciente_apellido,
-      pa.dni AS paciente_dni,
-      pr.nombre AS prestacion_nombre,
-      COALESCE(pr.precio_base, 0) AS precio_base_turno,
-      GREATEST(COALESCE(pr.precio_base, 0) - COALESCE(pt.total_pagado_turno, 0), 0) AS saldo_pendiente_turno
-    FROM pagos p
-    LEFT JOIN pacientes pa ON pa.id = p.paciente_id
-    LEFT JOIN turnos t ON t.id = p.turno_id
-    LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
-    LEFT JOIN pagos_por_turno pt ON pt.turno_id = p.turno_id
-    WHERE ${where.join(' AND ')}
-    ORDER BY p.fecha_pago DESC
-  `;
-
-  const { rows } = await pool.query(query, values);
-  return rows;
+  return { page: pageNumber, limit: limitNumber, offset: (pageNumber - 1) * limitNumber };
 }
 
-async function obtenerResumenPaciente(pacienteId) {
-  await asegurarTablaPagos();
-  if (!pacienteId) throw new Error('paciente_id requerido');
-
-  const pacienteRes = await pool.query(
-    `
-      SELECT id, nombre, apellido, dni
-      FROM pacientes
-      WHERE id = $1
-      LIMIT 1
-    `,
-    [pacienteId],
-  );
-
-  if (!pacienteRes.rows.length) {
-    throw new Error('Paciente no encontrado');
-  }
-
-  const conceptosRes = await pool.query(
-    `
-      SELECT
-        t.id AS turno_id,
-        t.fecha_hora_inicio,
-        t.estado AS turno_estado,
-        pr.nombre AS prestacion_nombre,
-        COALESCE(pr.precio_base, 0) AS precio_base,
-        COALESCE(SUM(CASE WHEN p.estado IN ('parcial', 'pagado') THEN p.monto ELSE 0 END), 0) AS total_pagado
-      FROM turnos t
-      LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
-      LEFT JOIN pagos p ON p.turno_id = t.id
-      WHERE t.paciente_id = $1
-        AND t.estado IN ('programado', 'confirmado', 'reprogramado', 'realizado')
-      GROUP BY t.id, t.fecha_hora_inicio, t.estado, pr.nombre, pr.precio_base
-      ORDER BY t.fecha_hora_inicio DESC
-    `,
-    [pacienteId],
-  );
-
-  const conceptos = conceptosRes.rows
-    .map((row) => {
-      const precioBase = Number(row.precio_base) || 0;
-      const totalPagado = Number(row.total_pagado) || 0;
-      const saldoPendiente = Math.max(precioBase - totalPagado, 0);
-      return {
-        turno_id: row.turno_id,
-        fecha_hora_inicio: row.fecha_hora_inicio,
-        turno_estado: row.turno_estado,
-        prestacion_nombre: row.prestacion_nombre || 'Prestacion',
-        precio_base: precioBase,
-        total_pagado: totalPagado,
-        saldo_pendiente: saldoPendiente,
-      };
-    })
-    .filter((row) => row.saldo_pendiente > 0);
-
-  const resumen = conceptos.reduce(
-    (acc, item) => {
-      acc.total_deuda += item.saldo_pendiente;
-      acc.conceptos_pendientes += 1;
-      return acc;
-    },
-    { total_deuda: 0, conceptos_pendientes: 0 },
-  );
-
+function construirPagoSalida(pago) {
   return {
-    paciente: pacienteRes.rows[0],
-    resumen,
-    conceptos,
+    ...pago,
+    importe: centavosAImporteDecimal(normalizarImporteACentavos(pago.importe)),
   };
 }
 
-async function crearPago({ paciente_id, turno_id = null, monto, metodo, estado = 'pagado', fecha_pago = null, observaciones = null }) {
-  await asegurarTablaPagos();
-  const { montoNum, estadoNorm } = validarPago({ paciente_id, monto, metodo, estado });
-
-  const { rows } = await pool.query(
-    `
-      INSERT INTO pagos (paciente_id, turno_id, monto, metodo, estado, fecha_pago, observaciones)
-      VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()), $7)
-      RETURNING *
-    `,
-    [paciente_id, turno_id, montoNum, metodo, estadoNorm, fecha_pago, observaciones],
+function seleccionarResumenCargo(cargo, totalAbonadoCentavos) {
+  const resumen = construirResumenCargo(
+    cargo,
+    centavosAImporteDecimal(totalAbonadoCentavos),
   );
-
-  return rows[0];
+  return {
+    importe_total: resumen.importe_total,
+    total_abonado: resumen.total_abonado,
+    saldo: resumen.saldo,
+    estado_cobro: resumen.estado_cobro,
+  };
 }
 
-async function actualizarPago(id, { monto, metodo, estado, fecha_pago = null, observaciones = null }) {
-  await asegurarTablaPagos();
-  if (!id) throw new Error('id requerido');
-
-  const { montoNum, estadoNorm } = validarPago({
-    paciente_id: 1,
-    monto,
-    metodo,
-    estado,
+async function registrarPago({
+  cargo_id,
+  importe,
+  metodo_pago,
+  fecha_pago = null,
+  observaciones = null,
+}) {
+  const cargoId = normalizarId(cargo_id, 'cargo_id');
+  const importePagoCentavos = normalizarImporteACentavos(importe, { campo: 'importe' });
+  const metodoPago = normalizarMetodoPago(metodo_pago);
+  const observacionesNormalizadas = normalizarTextoOpcional(observaciones, {
+    campo: 'observaciones',
   });
 
-  const { rows } = await pool.query(
-    `
-      UPDATE pagos
-      SET monto = $1,
-          metodo = $2,
-          estado = $3,
-          fecha_pago = COALESCE($4, fecha_pago),
-          observaciones = $5,
-          updated_at = NOW()
-      WHERE id = $6
-      RETURNING *
-    `,
-    [montoNum, metodo, estadoNorm, fecha_pago, observaciones, id],
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (!rows.length) throw new Error('Pago no encontrado');
-  return rows[0];
+    // La fila del cargo serializa todas las altas y anulaciones que afectan su saldo.
+    const cargo = await obtenerCargoBase(client, cargoId, { forUpdate: true });
+    if (!cargo) throw crearError('CARGO_NO_ENCONTRADO', 'Cargo no encontrado');
+
+    const fechaPago = fecha_pago === undefined || fecha_pago === null
+      ? obtenerFechaAdministrativaActual()
+      : fecha_pago;
+    const { fechaPago: fechaPagoNormalizada } = validarFechasAdministrativas({
+      fechaCargo: cargo.fecha_cargo,
+      fechaPago,
+    });
+
+    const importeTotalCentavos = normalizarImporteACentavos(cargo.importe_total, {
+      campo: 'importe_total',
+    });
+    const totalAbonadoCentavos = await obtenerTotalAbonadoCentavos(client, cargo.id);
+    const saldoCentavos = importeTotalCentavos - totalAbonadoCentavos;
+    if (saldoCentavos < 0) {
+      throw crearError('SOBREPAGO', 'El cargo posee pagos activos superiores a su importe');
+    }
+    validarPagoNoExcedeSaldo({ importePagoCentavos, saldoCentavos });
+
+    const { rows } = await client.query(
+      `
+        INSERT INTO pagos (
+          cargo_id,
+          importe,
+          metodo_pago,
+          fecha_pago,
+          observaciones,
+          estado
+        )
+        VALUES ($1, $2, $3, $4, $5, 'activo')
+        RETURNING
+          id,
+          cargo_id,
+          importe,
+          metodo_pago,
+          fecha_pago::text AS fecha_pago,
+          observaciones,
+          estado,
+          fecha_anulacion,
+          motivo_anulacion,
+          anulado_por_usuario_id,
+          created_at,
+          updated_at
+      `,
+      [
+        cargo.id,
+        centavosAImporteDecimal(importePagoCentavos),
+        metodoPago,
+        fechaPagoNormalizada,
+        observacionesNormalizadas,
+      ],
+    );
+
+    const totalActualizadoCentavos = await obtenerTotalAbonadoCentavos(client, cargo.id);
+    const resumenCargo = seleccionarResumenCargo(cargo, totalActualizadoCentavos);
+
+    await client.query('COMMIT');
+    return {
+      pago: construirPagoSalida(rows[0]),
+      resumen_cargo: resumenCargo,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function anularPago(pagoIdValue, { motivo, usuarioId }) {
+  const pagoId = normalizarId(pagoIdValue, 'pago_id');
+  const usuarioIdNormalizado = normalizarId(usuarioId, 'usuario_id');
+  const motivoNormalizado = normalizarTextoOpcional(motivo, {
+    campo: 'motivo',
+    codigo: 'MOTIVO_ANULACION_INVALIDO',
+  });
+  if (!motivoNormalizado) {
+    throw crearError('MOTIVO_ANULACION_INVALIDO', 'motivo requerido');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const referenciaRes = await client.query(
+      'SELECT id, cargo_id FROM pagos WHERE id = $1',
+      [pagoId],
+    );
+    const referencia = referenciaRes.rows[0] || null;
+    if (!referencia) throw crearError('PAGO_NO_ENCONTRADO', 'Pago no encontrado');
+
+    // Todas las operaciones toman primero el cargo y luego el pago para evitar deadlocks.
+    const cargo = await obtenerCargoBase(client, referencia.cargo_id, { forUpdate: true });
+    if (!cargo) throw crearError('CARGO_NO_ENCONTRADO', 'Cargo no encontrado');
+
+    const pagoRes = await client.query(
+      `
+        SELECT
+          id,
+          cargo_id,
+          importe,
+          metodo_pago,
+          fecha_pago::text AS fecha_pago,
+          observaciones,
+          estado,
+          fecha_anulacion,
+          motivo_anulacion,
+          anulado_por_usuario_id,
+          created_at,
+          updated_at
+        FROM pagos
+        WHERE id = $1
+          AND cargo_id = $2
+        FOR UPDATE
+      `,
+      [pagoId, cargo.id],
+    );
+    const pago = pagoRes.rows[0] || null;
+    if (!pago) throw crearError('PAGO_NO_ENCONTRADO', 'Pago no encontrado');
+    if (pago.estado === 'anulado') {
+      throw crearError('PAGO_YA_ANULADO', 'El pago ya fue anulado');
+    }
+
+    const { rows } = await client.query(
+      `
+        UPDATE pagos
+        SET estado = 'anulado',
+            fecha_anulacion = NOW(),
+            motivo_anulacion = $1,
+            anulado_por_usuario_id = $2,
+            updated_at = NOW()
+        WHERE id = $3
+          AND estado = 'activo'
+        RETURNING
+          id,
+          cargo_id,
+          importe,
+          metodo_pago,
+          fecha_pago::text AS fecha_pago,
+          observaciones,
+          estado,
+          fecha_anulacion,
+          motivo_anulacion,
+          anulado_por_usuario_id,
+          created_at,
+          updated_at
+      `,
+      [motivoNormalizado, usuarioIdNormalizado, pago.id],
+    );
+    if (!rows.length) throw crearError('PAGO_YA_ANULADO', 'El pago ya fue anulado');
+
+    const totalActualizadoCentavos = await obtenerTotalAbonadoCentavos(client, cargo.id);
+    const resumenCargo = seleccionarResumenCargo(cargo, totalActualizadoCentavos);
+
+    await client.query('COMMIT');
+    return {
+      pago: construirPagoSalida(rows[0]),
+      resumen_cargo: resumenCargo,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function listarPagos({
+  paciente_id = null,
+  cargo_id = null,
+  estado = null,
+  desde = null,
+  hasta = null,
+  page = 1,
+  limit = 20,
+} = {}) {
+  const pacienteId = normalizarId(paciente_id, 'paciente_id', { opcional: true });
+  const cargoId = normalizarId(cargo_id, 'cargo_id', { opcional: true });
+  const estadoNormalizado = estado ? String(estado).trim().toLowerCase() : null;
+  if (estadoNormalizado && !['activo', 'anulado'].includes(estadoNormalizado)) {
+    throw crearError('FILTRO_INVALIDO', 'estado invalido');
+  }
+  const fechaDesde = desde ? normalizarFechaAdministrativa(desde, { campo: 'desde' }) : null;
+  const fechaHasta = hasta ? normalizarFechaAdministrativa(hasta, { campo: 'hasta' }) : null;
+  if (fechaDesde && fechaHasta && fechaDesde > fechaHasta) {
+    throw crearError('FILTRO_INVALIDO', 'desde no puede ser posterior a hasta');
+  }
+  const paginacion = normalizarPaginacion(page, limit);
+
+  const where = [];
+  const values = [];
+  if (pacienteId !== null) {
+    values.push(pacienteId);
+    where.push(`c.paciente_id = $${values.length}`);
+  }
+  if (cargoId !== null) {
+    values.push(cargoId);
+    where.push(`p.cargo_id = $${values.length}`);
+  }
+  if (estadoNormalizado) {
+    values.push(estadoNormalizado);
+    where.push(`p.estado = $${values.length}`);
+  }
+  if (fechaDesde) {
+    values.push(fechaDesde);
+    where.push(`p.fecha_pago >= $${values.length}`);
+  }
+  if (fechaHasta) {
+    values.push(fechaHasta);
+    where.push(`p.fecha_pago <= $${values.length}`);
+  }
+
+  const dataValues = [...values, paginacion.limit, paginacion.offset];
+  const limitParam = `$${values.length + 1}`;
+  const offsetParam = `$${values.length + 2}`;
+  const fromWhereSql = `
+    FROM pagos p
+    JOIN cargos c ON c.id = p.cargo_id
+    JOIN pacientes pa ON pa.id = c.paciente_id
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+  `;
+
+  const [totalResult, dataResult] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*)::INTEGER AS total ${fromWhereSql}`,
+      values,
+    ),
+    pool.query(
+      `
+      SELECT
+        p.id,
+        p.cargo_id,
+        p.importe,
+        p.metodo_pago,
+        p.fecha_pago::text AS fecha_pago,
+        p.observaciones,
+        p.estado,
+        p.fecha_anulacion,
+        p.motivo_anulacion,
+        p.anulado_por_usuario_id,
+        p.created_at,
+        p.updated_at,
+        c.paciente_id,
+        c.concepto,
+        pa.nombre AS paciente_nombre,
+        pa.apellido AS paciente_apellido,
+        pa.dni AS paciente_dni
+      ${fromWhereSql}
+      ORDER BY p.fecha_pago DESC, p.id DESC
+      LIMIT ${limitParam}
+      OFFSET ${offsetParam}
+      `,
+      dataValues,
+    ),
+  ]);
+
+  const total = Number(totalResult.rows[0]?.total || 0);
+  const pagos = dataResult.rows.map(construirPagoSalida);
+
+  return {
+    pagos,
+    paginacion: {
+      page: paginacion.page,
+      limit: paginacion.limit,
+      total,
+      total_pages: total ? Math.ceil(total / paginacion.limit) : 0,
+    },
+  };
 }
 
 module.exports = {
+  anularPago,
   listarPagos,
-  crearPago,
-  actualizarPago,
-  obtenerResumenPaciente,
+  registrarPago,
 };
