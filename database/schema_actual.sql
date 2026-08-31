@@ -149,6 +149,46 @@ ALTER SEQUENCE public.auditoria_id_seq OWNED BY public.auditoria.id;
 
 
 --
+-- Name: cargos; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.cargos (
+    id integer NOT NULL,
+    paciente_id integer NOT NULL,
+    turno_id integer,
+    prestacion_id integer,
+    concepto text NOT NULL,
+    importe_total numeric(12,2) NOT NULL,
+    fecha_cargo date DEFAULT CURRENT_DATE NOT NULL,
+    observaciones text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT cargos_concepto_no_vacio_check CHECK ((btrim(concepto) <> ''::text)),
+    CONSTRAINT cargos_importe_total_positivo_check CHECK ((importe_total > (0)::numeric))
+);
+
+
+--
+-- Name: cargos_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.cargos_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: cargos_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.cargos_id_seq OWNED BY public.cargos.id;
+
+
+--
 -- Name: configuracion_consultorio; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -437,17 +477,21 @@ ALTER SEQUENCE public.pacientes_id_seq OWNED BY public.pacientes.id;
 
 CREATE TABLE public.pagos (
     id integer NOT NULL,
-    paciente_id integer NOT NULL,
-    turno_id integer,
-    monto numeric(10,2) NOT NULL,
-    metodo_pago character varying(50),
-    estado character varying(30) DEFAULT 'pagado'::character varying,
-    created_at timestamp with time zone DEFAULT now(),
-    fecha_pago timestamp with time zone,
-    updated_at timestamp with time zone,
-    metodo text,
+    cargo_id integer NOT NULL,
+    importe numeric(12,2) NOT NULL,
+    metodo_pago character varying(30) NOT NULL,
+    fecha_pago date DEFAULT CURRENT_DATE NOT NULL,
     observaciones text,
-    CONSTRAINT pagos_monto_check CHECK ((monto > (0)::numeric))
+    estado character varying(10) DEFAULT 'activo'::character varying NOT NULL,
+    fecha_anulacion timestamp with time zone,
+    motivo_anulacion text,
+    anulado_por_usuario_id integer,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT pagos_anulacion_coherente_check CHECK (((((estado)::text = 'activo'::text) AND (fecha_anulacion IS NULL) AND (motivo_anulacion IS NULL) AND (anulado_por_usuario_id IS NULL)) OR (((estado)::text = 'anulado'::text) AND (fecha_anulacion IS NOT NULL) AND (motivo_anulacion IS NOT NULL) AND (btrim(motivo_anulacion) <> ''::text) AND (anulado_por_usuario_id IS NOT NULL)))),
+    CONSTRAINT pagos_estado_check CHECK (((estado)::text = ANY ((ARRAY['activo'::character varying, 'anulado'::character varying])::text[]))),
+    CONSTRAINT pagos_importe_positivo_check CHECK ((importe > (0)::numeric)),
+    CONSTRAINT pagos_metodo_pago_check CHECK (((metodo_pago)::text = ANY ((ARRAY['efectivo'::character varying, 'tarjeta'::character varying, 'transferencia'::character varying])::text[])))
 );
 
 
@@ -864,6 +908,13 @@ ALTER TABLE ONLY public.auditoria ALTER COLUMN id SET DEFAULT nextval('public.au
 
 
 --
+-- Name: cargos id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cargos ALTER COLUMN id SET DEFAULT nextval('public.cargos_id_seq'::regclass);
+
+
+--
 -- Name: configuracion_consultorio id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1010,6 +1061,14 @@ ALTER TABLE ONLY public.archivos_clinicos
 
 ALTER TABLE ONLY public.auditoria
     ADD CONSTRAINT auditoria_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: cargos cargos_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cargos
+    ADD CONSTRAINT cargos_pkey PRIMARY KEY (id);
 
 
 --
@@ -1229,6 +1288,27 @@ ALTER TABLE ONLY public.whatsapp_reminders
 
 
 --
+-- Name: idx_cargos_paciente_fecha; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cargos_paciente_fecha ON public.cargos USING btree (paciente_id, fecha_cargo DESC);
+
+
+--
+-- Name: idx_cargos_prestacion; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cargos_prestacion ON public.cargos USING btree (prestacion_id) WHERE (prestacion_id IS NOT NULL);
+
+
+--
+-- Name: idx_cargos_turno; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_cargos_turno ON public.cargos USING btree (turno_id) WHERE (turno_id IS NOT NULL);
+
+
+--
 -- Name: idx_documentos_paciente_fecha; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1285,17 +1365,24 @@ CREATE INDEX idx_pacientes_nombre_trgm ON public.pacientes USING gin (nombre pub
 
 
 --
--- Name: idx_pagos_paciente; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_pagos_cargo; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_pagos_paciente ON public.pagos USING btree (paciente_id);
+CREATE INDEX idx_pagos_cargo ON public.pagos USING btree (cargo_id);
 
 
 --
--- Name: idx_pagos_paciente_fecha; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_pagos_cargo_activos; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_pagos_paciente_fecha ON public.pagos USING btree (paciente_id, fecha_pago DESC);
+CREATE INDEX idx_pagos_cargo_activos ON public.pagos USING btree (cargo_id) WHERE ((estado)::text = 'activo'::text);
+
+
+--
+-- Name: idx_pagos_fecha_estado; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_pagos_fecha_estado ON public.pagos USING btree (fecha_pago DESC, estado);
 
 
 --
@@ -1406,6 +1493,30 @@ ALTER TABLE ONLY public.archivos_clinicos
 
 
 --
+-- Name: cargos fk_cargo_paciente; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cargos
+    ADD CONSTRAINT fk_cargo_paciente FOREIGN KEY (paciente_id) REFERENCES public.pacientes(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: cargos fk_cargo_prestacion; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cargos
+    ADD CONSTRAINT fk_cargo_prestacion FOREIGN KEY (prestacion_id) REFERENCES public.prestaciones(id) ON DELETE SET NULL;
+
+
+--
+-- Name: cargos fk_cargo_turno; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.cargos
+    ADD CONSTRAINT fk_cargo_turno FOREIGN KEY (turno_id) REFERENCES public.turnos(id) ON DELETE SET NULL;
+
+
+--
 -- Name: historias_clinicas fk_historia_paciente; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1422,19 +1533,19 @@ ALTER TABLE ONLY public.historias_clinicas
 
 
 --
--- Name: pagos fk_pago_paciente; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: pagos fk_pago_anulado_por_usuario; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.pagos
-    ADD CONSTRAINT fk_pago_paciente FOREIGN KEY (paciente_id) REFERENCES public.pacientes(id) ON DELETE RESTRICT;
+    ADD CONSTRAINT fk_pago_anulado_por_usuario FOREIGN KEY (anulado_por_usuario_id) REFERENCES public.usuarios(id) ON DELETE RESTRICT;
 
 
 --
--- Name: pagos fk_pago_turno; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: pagos fk_pago_cargo; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.pagos
-    ADD CONSTRAINT fk_pago_turno FOREIGN KEY (turno_id) REFERENCES public.turnos(id) ON DELETE SET NULL;
+    ADD CONSTRAINT fk_pago_cargo FOREIGN KEY (cargo_id) REFERENCES public.cargos(id) ON DELETE RESTRICT;
 
 
 --
