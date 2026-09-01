@@ -5,7 +5,6 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const { verificarConexion } = require('./config/db');
 const { startReminderScheduler } = require('./jobs/reminderScheduler');
 
@@ -47,8 +46,6 @@ app.use('/api/cargos', cargosRoutes);
 app.use('/api/pagos', pagosRoutes);
 app.use('/api/configuracion', configuracionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
-
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 app.get('/health', (req, res) => {
   res.status(200).json({ estado: 'OK', timestamp: new Date().toISOString() });

@@ -327,14 +327,6 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
         [pacienteId]
     );
 
-    // Guardar registro de consulta en historias_clinicas
-    const descripcion = `Consulta de ficha clínica`;
-    await pool.query(
-        `INSERT INTO historias_clinicas (paciente_id, turno_id, descripcion, created_at)
-         VALUES ($1, NULL, $2, NOW())`,
-        [pacienteId, descripcion]
-    );
-
     return {
         paciente: {
             id: paciente.id,
