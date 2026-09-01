@@ -60,6 +60,7 @@ async function estadisticasTopPrestaciones({ fechaDesde, fechaHasta, limit = 10 
     FROM turnos t
     JOIN prestaciones pr ON pr.id = t.prestacion_id
     WHERE t.fecha_hora_inicio >= $1 AND t.fecha_hora_inicio < $2
+      AND t.estado = 'realizado'
     GROUP BY pr.id, pr.nombre
     ORDER BY cantidad DESC, prestacion_nombre ASC
     LIMIT $3

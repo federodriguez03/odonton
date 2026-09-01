@@ -156,7 +156,7 @@
           <div class="col-sm-6 col-xl-3">
             <div class="stat-card">
               <div class="d-flex justify-content-between align-items-center">
-                <div class="stat-title">Tratamientos realizados</div>
+                <div class="stat-title">Tratamientos realizados este mes</div>
                 <div class="stat-icon"><i class="bi bi-clipboard-check"></i></div>
               </div>
               <div class="stat-value" id="stat-tratamientos">-</div>
@@ -188,6 +188,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                   <h3 class="h6 mb-0">Tratamientos mas realizados</h3>
+                  <span class="text-secondary small">Ultimos 6 meses</span>
                 </div>
                 <canvas id="chart-tratamientos" height="200"></canvas>
               </div>
@@ -739,20 +740,20 @@
                 <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
                   <div>
                     <h2 class="h5 mb-1">WhatsApp Web</h2>
-                    <p class="text-secondary small mb-0">Escaneá el QR para conectar el WhatsApp del consultorio.</p>
+                    <p class="text-secondary small mb-0">Conectá y verificá el WhatsApp del consultorio desde un único lugar.</p>
                   </div>
                   <div class="d-flex flex-wrap gap-2">
                     <button id="config-whatsapp-refresh-btn" class="btn btn-outline-secondary btn-sm" type="button">
-                      <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+                      <i class="bi bi-arrow-clockwise me-1"></i>Actualizar estado
                     </button>
-                    <button id="config-whatsapp-init-btn" class="btn btn-outline-primary btn-sm" type="button">
-                      <i class="bi bi-play-circle me-1"></i>Iniciar
+                    <button id="config-whatsapp-init-btn" class="btn btn-primary btn-sm" type="button">
+                      <i class="bi bi-whatsapp me-1"></i>Conectar WhatsApp
                     </button>
-                    <button id="config-whatsapp-reset-btn" class="btn btn-outline-danger btn-sm" type="button">
-                      <i class="bi bi-qr-code me-1"></i>Nuevo QR
+                    <button id="config-whatsapp-reset-btn" class="btn btn-outline-primary btn-sm d-none" type="button">
+                      <i class="bi bi-qr-code me-1"></i>Generar otro QR
                     </button>
-                    <button id="config-whatsapp-logout-btn" class="btn btn-outline-dark btn-sm" type="button">
-                      <i class="bi bi-box-arrow-right me-1"></i>Cerrar sesión
+                    <button id="config-whatsapp-logout-btn" class="btn btn-outline-danger btn-sm d-none" type="button">
+                      <i class="bi bi-link-45deg me-1"></i>Desvincular WhatsApp
                     </button>
                   </div>
                 </div>
@@ -762,7 +763,7 @@
                     <div class="whatsapp-qr-box">
                       <canvas id="config-whatsapp-qr" class="d-none" width="240" height="240"></canvas>
                       <div id="config-whatsapp-qr-empty" class="text-center text-secondary small">
-                        QR no disponible
+                        Sin código QR pendiente
                       </div>
                     </div>
                   </div>
@@ -771,8 +772,8 @@
                       <span id="config-whatsapp-status-badge" class="badge bg-secondary">Desconectado</span>
                     </div>
                     <p id="config-whatsapp-status-text" class="text-secondary mb-2">Sin actividad reciente.</p>
-                    <p class="small text-secondary mb-0">
-                      Desde WhatsApp: Dispositivos vinculados > Vincular dispositivo.
+                    <p id="config-whatsapp-instructions" class="small text-secondary mb-0">
+                      Para comenzar, seleccioná Conectar WhatsApp.
                     </p>
                   </div>
                 </div>

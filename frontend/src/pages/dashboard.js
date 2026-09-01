@@ -2,7 +2,6 @@ import {
   getEstadisticas,
   getPacientes,
   getResumenClinicoFinanciero,
-  getTratamientos,
   getTurnos,
 } from '../js/api.js';
 
@@ -30,6 +29,10 @@ function startOfMonth(date) {
 
 function endOfMonth(date) {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
+function startOfSixMonthWindow(date) {
+  return new Date(date.getFullYear(), date.getMonth() - 5, 1);
 }
 
 function formatDateForApi(date) {
@@ -64,7 +67,7 @@ function aggregateByMonth(rows = []) {
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     const bucket = map.get(key);
     if (!bucket) return;
-    bucket.turnos += Number(row.total_turnos) || 0;
+    bucket.turnos += Number(row.total_realizados) || 0;
   });
 
   return buckets;
@@ -78,25 +81,14 @@ let chartAtenciones = null;
 let chartIngresos = null;
 let chartTratamientos = null;
 
-function renderCharts({ turnosPorDia = [], topPrestaciones = [], ingresosPorMetodo = {} }) {
+function renderCharts({ turnosPorDia, topPrestaciones, ingresosPorMetodo } = {}) {
   if (typeof window.Chart !== 'function') return;
 
-  const buckets = aggregateByMonth(turnosPorDia);
-
-  const labels = buckets.map((b) => b.label);
-  const dataTurnos = buckets.map((b) => b.turnos);
-  const metodosLabels = ['Efectivo', 'Tarjeta', 'Transferencia'];
-  const dataIngresos = [
-    ingresosPorMetodo.efectivo,
-    ingresosPorMetodo.tarjeta,
-    ingresosPorMetodo.transferencia,
-  ].map((value) => Number(value) || 0);
-
-  destroyChart(chartAtenciones);
-  destroyChart(chartIngresos);
-  destroyChart(chartTratamientos);
-
-  if (ui.chartAtenciones) {
+  if (ui.chartAtenciones && Array.isArray(turnosPorDia)) {
+    const buckets = aggregateByMonth(turnosPorDia);
+    const labels = buckets.map((b) => b.label);
+    const dataTurnos = buckets.map((b) => b.turnos);
+    destroyChart(chartAtenciones);
     chartAtenciones = new window.Chart(ui.chartAtenciones, {
       type: 'line',
       data: {
@@ -120,7 +112,14 @@ function renderCharts({ turnosPorDia = [], topPrestaciones = [], ingresosPorMeto
     });
   }
 
-  if (ui.chartIngresos) {
+  if (ui.chartIngresos && ingresosPorMetodo) {
+    const metodosLabels = ['Efectivo', 'Tarjeta', 'Transferencia'];
+    const dataIngresos = [
+      ingresosPorMetodo.efectivo,
+      ingresosPorMetodo.tarjeta,
+      ingresosPorMetodo.transferencia,
+    ].map((value) => Number(value) || 0);
+    destroyChart(chartIngresos);
     chartIngresos = new window.Chart(ui.chartIngresos, {
       type: 'bar',
       data: {
@@ -141,9 +140,10 @@ function renderCharts({ turnosPorDia = [], topPrestaciones = [], ingresosPorMeto
     });
   }
 
-  if (ui.chartTratamientos) {
+  if (ui.chartTratamientos && Array.isArray(topPrestaciones)) {
     const labelsTrat = topPrestaciones.map((p) => p.prestacion_nombre);
     const dataTrat = topPrestaciones.map((p) => p.cantidad);
+    destroyChart(chartTratamientos);
     chartTratamientos = new window.Chart(ui.chartTratamientos, {
       type: 'doughnut',
       data: {
@@ -164,30 +164,29 @@ export async function loadDashboard() {
   const now = new Date();
   const desdeMes = formatDateForApi(startOfMonth(now));
   const hastaMes = formatDateForApi(endOfMonth(now));
+  const desdeSeisMeses = formatDateForApi(startOfSixMonthWindow(now));
   const today = formatDateForApi(now);
 
-  const [statsResult, financialResult, pacientesResult, turnosResult, tratamientosResult] = await Promise.allSettled([
-    getEstadisticas({ fecha_desde: desdeMes, fecha_hasta: hastaMes }),
+  const [statsResult, financialResult, pacientesResult, turnosResult] = await Promise.allSettled([
+    getEstadisticas({ fecha_desde: desdeSeisMeses, fecha_hasta: hastaMes }),
     getResumenClinicoFinanciero({ fecha_desde: desdeMes, fecha_hasta: hastaMes, resumen: 'true' }),
     getPacientes({ limit: 1, page: 1 }),
     getTurnos({ limit: 1, page: 1, fecha_desde: today, fecha_hasta: today }),
-    getTratamientos({ desde: desdeMes, hasta: hastaMes }),
   ]);
 
   if (statsResult.status === 'fulfilled') {
     const stats = statsResult.value;
-    ui.tratamientos.textContent = stats.resumen?.total_realizados ?? '-';
     renderCharts({
       turnosPorDia: stats.turnos_por_dia || [],
       topPrestaciones: stats.top_prestaciones || [],
-      ingresosPorMetodo: financialResult.status === 'fulfilled'
-        ? financialResult.value.financiero?.ingresos_por_metodo
-        : {},
     });
   }
 
   if (financialResult.status === 'fulfilled') {
-    ui.ingresos.textContent = formatCurrency(financialResult.value.financiero?.ingresos_reales);
+    const report = financialResult.value;
+    ui.tratamientos.textContent = report.clinico?.resumen?.total_realizados ?? '-';
+    ui.ingresos.textContent = formatCurrency(report.financiero?.ingresos_reales);
+    renderCharts({ ingresosPorMetodo: report.financiero?.ingresos_por_metodo || {} });
   }
 
   if (pacientesResult.status === 'fulfilled') {
@@ -200,14 +199,7 @@ export async function loadDashboard() {
     ui.turnosHoy.textContent = turnosHoy.total ?? '-';
   }
 
-  if (tratamientosResult.status === 'fulfilled') {
-    const tratamientos = tratamientosResult.value;
-    if (Array.isArray(tratamientos.tratamientos)) {
-      ui.tratamientos.textContent = tratamientos.tratamientos.length;
-    }
-  }
-
-  const failures = [statsResult, financialResult, pacientesResult, turnosResult, tratamientosResult]
+  const failures = [statsResult, financialResult, pacientesResult, turnosResult]
     .filter((result) => result.status === 'rejected');
   if (failures.length) {
     console.warn(`[DASHBOARD] No se pudieron cargar ${failures.length} indicadores.`);

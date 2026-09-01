@@ -24,32 +24,64 @@ const ui = {
 };
 
 const REMEMBER_EMAIL_KEY = 'odonton_email';
+const ACTIVE_SECTION_KEY = 'odonton_active_section';
+const SECTION_MAP = {
+  dashboard: 'section-dashboard',
+  pacientes: 'section-pacientes',
+  turnos: 'section-turnos',
+  prestaciones: 'section-prestaciones',
+  reportes: 'section-reportes',
+  historia: 'section-historia',
+  pagos: 'section-pagos',
+  configuracion: 'section-configuracion',
+};
 let appInitialized = false;
+
+function getStoredSection() {
+  try {
+    return sessionStorage.getItem(ACTIVE_SECTION_KEY);
+  } catch (_) {
+    return null;
+  }
+}
+
+function storeSection(section) {
+  try {
+    sessionStorage.setItem(ACTIVE_SECTION_KEY, section);
+  } catch (_) {
+    // La navegación sigue funcionando aunque el navegador bloquee sessionStorage.
+  }
+}
+
+function clearStoredSection() {
+  try {
+    sessionStorage.removeItem(ACTIVE_SECTION_KEY);
+  } catch (_) {
+    // La limpieza de sesión no debe impedir el logout.
+  }
+}
+
+function activateSection(requestedSection, { persist = true } = {}) {
+  const tabs = Array.from(document.querySelectorAll('#main-tabs .nav-link'));
+  const requestedTab = tabs.find((tab) => tab.dataset.section === requestedSection);
+  const section = requestedTab && SECTION_MAP[requestedSection] ? requestedSection : 'dashboard';
+
+  tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.section === section));
+  Object.entries(SECTION_MAP).forEach(([key, id]) => {
+    const element = document.getElementById(id);
+    if (element) element.classList.toggle('d-none', section !== key);
+  });
+
+  if (persist) storeSection(section);
+  return section;
+}
 
 function bindTabs() {
   const tabs = Array.from(document.querySelectorAll('#main-tabs .nav-link'));
-  const sectionMap = {
-    dashboard: 'section-dashboard',
-    pacientes: 'section-pacientes',
-    turnos: 'section-turnos',
-    prestaciones: 'section-prestaciones',
-    reportes: 'section-reportes',
-    estadisticas: 'section-estadisticas',
-    historia: 'section-historia',
-    pagos: 'section-pagos',
-    configuracion: 'section-configuracion',
-  };
 
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      tabs.forEach((item) => item.classList.remove('active'));
-      tab.classList.add('active');
-
-      const section = tab.dataset.section;
-      Object.entries(sectionMap).forEach(([key, id]) => {
-        const el = document.getElementById(id);
-        if (el) el.classList.toggle('d-none', section !== key);
-      });
+      activateSection(tab.dataset.section);
     });
   });
 }
@@ -90,6 +122,7 @@ function showApp(user) {
 async function initAppOnce() {
   if (appInitialized) return;
   bindTabs();
+  activateSection(getStoredSection(), { persist: false });
   await initPacientesView();
   await initTurnosView();
   await initPrestacionesView();
@@ -131,8 +164,9 @@ async function handleLoginSubmit(event) {
     }
     const result = await login({ email, password });
     setToken(result.token);
-    showApp(result.user);
+    showLoadingScreen('Preparando aplicación...');
     await initAuthenticatedApp();
+    showApp(result.user);
     if (ui.loginError) ui.loginError.classList.add('d-none');
     renderAlert(ui.alertContainer, 'Sesión iniciada correctamente.', 'success');
 
@@ -164,8 +198,8 @@ async function restoreSession() {
   try {
     showLoadingScreen();
     const data = await getMe();
-    showApp(data.user);
     await initAuthenticatedApp();
+    showApp(data.user);
   } catch (error) {
     clearToken();
     showLoginScreen('Sesión expirada. Volvé a iniciar sesión.');
@@ -176,9 +210,13 @@ function bindAuthEvents() {
   ui.loginForm?.addEventListener('submit', handleLoginSubmit);
   ui.logoutBtn?.addEventListener('click', () => {
     clearToken();
+    clearStoredSection();
+    activateSection('dashboard', { persist: false });
     showLoginScreen('Sesión cerrada.');
   });
   window.addEventListener('auth:logout', () => {
+    clearStoredSection();
+    activateSection('dashboard', { persist: false });
     showLoginScreen('Sesión expirada. Volvé a iniciar sesión.');
   });
 }
