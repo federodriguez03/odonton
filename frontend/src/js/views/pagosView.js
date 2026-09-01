@@ -4,6 +4,7 @@ import {
   createPago,
   getCargoById,
   getCargos,
+  getConstanciaPago,
   getPacientes,
   getPrestaciones,
   getTurnos,
@@ -30,6 +31,7 @@ const state = {
   pagoAAnular: null,
   conceptoSugerido: '',
   importeSugerido: '',
+  constancia: null,
 };
 
 const ui = {
@@ -59,6 +61,9 @@ const ui = {
   detalleContenido: document.getElementById('cargo-detail-content'),
   detallePagosTbody: document.getElementById('cargo-pagos-tbody'),
   detallePagar: document.getElementById('cargo-detail-pay'),
+  constanciaModalEl: document.getElementById('constancia-modal'),
+  constanciaContenido: document.getElementById('constancia-print-root'),
+  constanciaImprimir: document.getElementById('constancia-print-btn'),
   pagoModalEl: document.getElementById('pago-modal'),
   pagoForm: document.getElementById('pago-form'),
   pagoSaldo: document.getElementById('pago-saldo-actual'),
@@ -371,12 +376,89 @@ function renderDetail() {
           <td>${escapeHtml(methodLabel(payment.metodo_pago))}</td>
           <td><span class="badge ${annulled ? 'text-bg-secondary' : 'text-bg-success'}">${annulled ? 'Anulado' : 'Activo'}</span></td>
           <td>${escapeHtml(observations || 'Sin observaciones')}</td>
-          <td class="text-end">${annulled ? '' : `<button type="button" class="btn btn-sm btn-outline-danger" data-action="annul" data-id="${escapeHtml(payment.id)}">Anular</button>`}</td>
+          <td class="text-end text-nowrap">
+            <button type="button" class="btn btn-sm btn-outline-primary" data-action="receipt" data-id="${escapeHtml(payment.id)}">Constancia</button>
+            ${annulled ? '' : `<button type="button" class="btn btn-sm btn-outline-danger ms-1" data-action="annul" data-id="${escapeHtml(payment.id)}">Anular</button>`}
+          </td>
         </tr>
       `;
     }).join('');
   }
   ui.detallePagar.classList.toggle('d-none', isZeroAmount(cargo.saldo));
+}
+
+function renderReceipt() {
+  const { consultorio, paciente, pago, cargo, generado_en: generatedAt } = state.constancia;
+  const annulled = pago.estado === 'anulado';
+  const clinicDetails = [
+    consultorio.telefono ? `Teléfono: ${consultorio.telefono}` : null,
+    consultorio.timezone ? `Zona administrativa: ${consultorio.timezone}` : null,
+  ].filter(Boolean);
+  const observations = [
+    pago.observaciones ? `<div><span class="payment-receipt-label">Observaciones del pago</span>${escapeHtml(pago.observaciones)}</div>` : '',
+    cargo.observaciones ? `<div><span class="payment-receipt-label">Observaciones del cargo</span>${escapeHtml(cargo.observaciones)}</div>` : '',
+  ].filter(Boolean).join('');
+
+  ui.constanciaContenido.innerHTML = `
+    <header class="payment-receipt-header">
+      <div class="payment-receipt-brand">${escapeHtml(consultorio.nombre || 'Odonton')}</div>
+      <h3 class="payment-receipt-title">Constancia interna de pago — no fiscal</h3>
+      ${clinicDetails.length ? `<div class="small text-secondary mt-2">${clinicDetails.map(escapeHtml).join(' · ')}</div>` : ''}
+    </header>
+
+    ${annulled ? '<div class="payment-receipt-annulled">PAGO ANULADO</div>' : ''}
+
+    <section class="payment-receipt-section">
+      <div class="payment-receipt-section-title">Paciente</div>
+      <div class="payment-receipt-grid">
+        <div><span class="payment-receipt-label">Nombre y apellido</span><strong>${escapeHtml(`${paciente.nombre || ''} ${paciente.apellido || ''}`.trim())}</strong></div>
+        <div><span class="payment-receipt-label">DNI</span><strong>${escapeHtml(paciente.dni || '-')}</strong></div>
+      </div>
+    </section>
+
+    <section class="payment-receipt-section">
+      <div class="payment-receipt-section-title">Pago</div>
+      <div class="payment-receipt-grid">
+        <div><span class="payment-receipt-label">Número interno</span><strong>N.º ${escapeHtml(pago.id)}</strong></div>
+        <div><span class="payment-receipt-label">Fecha</span><strong>${formatDate(pago.fecha_pago)}</strong></div>
+        <div><span class="payment-receipt-label">Importe abonado</span><strong>${formatCurrency(pago.importe)}</strong></div>
+        <div><span class="payment-receipt-label">Método</span><strong>${escapeHtml(methodLabel(pago.metodo_pago))}</strong></div>
+        <div><span class="payment-receipt-label">Estado</span><strong>${annulled ? 'Anulado' : 'Activo'}</strong></div>
+        ${annulled ? `<div><span class="payment-receipt-label">Fecha de anulación</span><strong>${escapeHtml(formatDateTime(pago.fecha_anulacion))}</strong></div>` : ''}
+        ${annulled ? `<div class="grid-column-full"><span class="payment-receipt-label">Motivo de anulación</span><strong>${escapeHtml(pago.motivo_anulacion || 'Sin motivo informado')}</strong></div>` : ''}
+      </div>
+    </section>
+
+    <section class="payment-receipt-section">
+      <div class="payment-receipt-section-title">Cargo</div>
+      <div class="payment-receipt-grid">
+        <div><span class="payment-receipt-label">Número interno</span><strong>N.º ${escapeHtml(cargo.id)}</strong></div>
+        <div><span class="payment-receipt-label">Concepto histórico</span><strong>${escapeHtml(cargo.concepto)}</strong></div>
+        <div><span class="payment-receipt-label">Importe total</span><strong>${formatCurrency(cargo.importe_total)}</strong></div>
+        <div><span class="payment-receipt-label">Total abonado actual</span><strong>${formatCurrency(cargo.total_abonado)}</strong></div>
+        <div><span class="payment-receipt-label">Saldo restante</span><strong>${formatCurrency(cargo.saldo)}</strong></div>
+        <div><span class="payment-receipt-label">Estado de cobro</span><strong>${escapeHtml(cargo.estado_cobro)}</strong></div>
+      </div>
+    </section>
+
+    ${observations ? `<section class="payment-receipt-section"><div class="payment-receipt-section-title">Observaciones</div><div class="payment-receipt-grid">${observations}</div></section>` : ''}
+
+    <footer class="payment-receipt-footer">
+      <div>Generada el ${escapeHtml(formatDateTime(generatedAt))}</div>
+      <div class="mt-2 fw-semibold">Constancia administrativa interna sin validez fiscal.</div>
+    </footer>
+  `;
+}
+
+async function openReceipt(paymentId) {
+  try {
+    const data = await getConstanciaPago(paymentId);
+    state.constancia = data.constancia;
+    renderReceipt();
+    switchModal(ui.detalleModalEl, ui.constanciaModalEl);
+  } catch (error) {
+    showAlert(friendlyError(error));
+  }
 }
 
 async function openCargoDetail(cargoId) {
@@ -507,9 +589,14 @@ function bindCargoActions() {
     switchModal(ui.detalleModalEl, ui.pagoModalEl);
   });
 
-  ui.detallePagosTbody.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-action="annul"]');
+  ui.detallePagosTbody.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
     if (!button) return;
+    if (button.dataset.action === 'receipt') {
+      await openReceipt(button.dataset.id);
+      return;
+    }
+    if (button.dataset.action !== 'annul') return;
     const payment = state.cargoDetalle?.pagos.find((item) => String(item.id) === button.dataset.id);
     if (!payment || payment.estado !== 'activo') return;
     state.pagoAAnular = payment;
@@ -588,11 +675,22 @@ function bindPaymentForm() {
   });
 }
 
+function bindReceiptPrint() {
+  ui.constanciaImprimir.addEventListener('click', () => {
+    const clearPrintMode = () => document.body.classList.remove('constancia-print-active');
+    document.body.classList.add('constancia-print-active');
+    window.addEventListener('afterprint', clearPrintMode, { once: true });
+    window.print();
+    window.setTimeout(clearPrintMode, 60000);
+  });
+}
+
 export async function initPagosView() {
   bindFiltersAndPagination();
   bindCargoCreation();
   bindCargoActions();
   bindPaymentForm();
+  bindReceiptPrint();
 
   try {
     await Promise.all([loadPatients(), loadPrestations()]);

@@ -294,6 +294,10 @@ export function getPagos(params = {}) {
   return request(`/api/pagos${suffix}`);
 }
 
+export function getConstanciaPago(id) {
+  return request(`/api/pagos/${id}/constancia`);
+}
+
 export function createPago(payload) {
   return request('/api/pagos', {
     method: 'POST',

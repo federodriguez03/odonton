@@ -23,6 +23,16 @@ async function registrarPago(req, res) {
   }
 }
 
+async function obtenerConstanciaPago(req, res) {
+  try {
+    const constancia = await pagosService.obtenerConstanciaPago(req.params.id);
+    req.auditMeta = { cargo_id: constancia.cargo.id };
+    return res.status(200).json({ constancia });
+  } catch (error) {
+    return responderErrorPagos(res, error, 'Error interno al generar la constancia de pago');
+  }
+}
+
 async function anularPago(req, res) {
   try {
     const resultado = await pagosService.anularPago(req.params.id, {
@@ -39,5 +49,6 @@ async function anularPago(req, res) {
 module.exports = {
   anularPago,
   listarPagos,
+  obtenerConstanciaPago,
   registrarPago,
 };

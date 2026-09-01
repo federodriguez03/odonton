@@ -3,6 +3,7 @@ const express = require('express');
 const {
   anularPago,
   listarPagos,
+  obtenerConstanciaPago,
   registrarPago,
 } = require('../controllers/pagosController');
 const {
@@ -12,6 +13,18 @@ const {
 } = require('../middlewares/turnosMiddleware');
 
 const router = express.Router();
+
+router.get(
+  '/:id/constancia',
+  middlewareAutenticacion,
+  autorizarOdontologo,
+  middlewareAuditoria,
+  (req, res, next) => {
+    req.auditAction = 'ver_constancia_pago';
+    next();
+  },
+  obtenerConstanciaPago,
+);
 
 router.get(
   '/',

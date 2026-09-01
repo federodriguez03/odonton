@@ -31,7 +31,10 @@ function crearBaseFalsa() {
   let paymentInsertedInTransaction = false;
 
   const defaults = {
-    pacientes: [{ id: 1 }, { id: 2 }],
+    pacientes: [
+      { id: 1, nombre: 'Rita', apellido: 'Quinteros', dni: '10173234' },
+      { id: 2, nombre: 'Mario', apellido: 'Paz', dni: '22333444' },
+    ],
     turnos: [
       { id: 10, paciente_id: 1, prestacion_id: 100 },
       { id: 20, paciente_id: 2, prestacion_id: 100 },
@@ -41,6 +44,11 @@ function crearBaseFalsa() {
     ],
     cargos: [],
     pagos: [],
+    configuracion: {
+      nombre_consultorio: 'Odonton CBA',
+      whatsapp_numero: '3510000000',
+      timezone: 'America/Argentina/Buenos_Aires',
+    },
   };
 
   function currentStore() {
@@ -232,6 +240,43 @@ function crearBaseFalsa() {
       return result(pagos);
     }
 
+    if (
+      lower.includes('p.id as pago_id')
+      && lower.includes('join cargos c on c.id = p.cargo_id')
+      && lower.includes('join pacientes pa on pa.id = c.paciente_id')
+      && lower.includes('from configuracion_consultorio')
+    ) {
+      const pago = findById(store.pagos, params[0]);
+      if (!pago) return result();
+      const cargo = findById(store.cargos, pago.cargo_id);
+      const paciente = cargo ? findById(store.pacientes, cargo.paciente_id) : null;
+      if (!cargo || !paciente) return result();
+      return result([{
+        pago_id: pago.id,
+        pago_importe: pago.importe,
+        metodo_pago: pago.metodo_pago,
+        fecha_pago: pago.fecha_pago,
+        pago_observaciones: pago.observaciones,
+        pago_estado: pago.estado,
+        fecha_anulacion: pago.fecha_anulacion,
+        motivo_anulacion: pago.motivo_anulacion,
+        cargo_id: cargo.id,
+        concepto: cargo.concepto,
+        importe_total: cargo.importe_total,
+        fecha_cargo: cargo.fecha_cargo,
+        cargo_observaciones: cargo.observaciones,
+        paciente_id: paciente.id,
+        paciente_nombre: paciente.nombre,
+        paciente_apellido: paciente.apellido,
+        paciente_dni: paciente.dni,
+        nombre_consultorio: store.configuracion?.nombre_consultorio,
+        consultorio_telefono: store.configuracion?.whatsapp_numero,
+        consultorio_timezone: store.configuracion?.timezone,
+        total_abonado: totalAbonado(store, cargo.id),
+        generado_en: '2026-01-15T12:30:00.000Z',
+      }]);
+    }
+
     if (lower === 'select count(*)::integer as cantidad from pagos where cargo_id = $1') {
       const cantidad = store.pagos.filter(
         (pago) => Number(pago.cargo_id) === Number(params[0]),
@@ -258,6 +303,7 @@ function crearBaseFalsa() {
       prestaciones: options.prestaciones || defaults.prestaciones,
       cargos: options.cargos || defaults.cargos,
       pagos: options.pagos || defaults.pagos,
+      configuracion: options.configuracion || defaults.configuracion,
     });
     transaction = null;
     log = [];
@@ -608,6 +654,77 @@ test('13. no persiste saldo, total abonado ni estado de cobro', async () => {
   for (const entry of inserts) {
     assert.doesNotMatch(entry.text, /\b(saldo|total_abonado|estado_cobro)\b/i);
   }
+});
+
+test('14. genera la constancia de un pago activo', async () => {
+  prepararCargoConPagos([pagoBase()]);
+  const constancia = await pagosService.obtenerConstanciaPago(1);
+
+  assert.equal(constancia.titulo, 'Constancia interna de pago — no fiscal');
+  assert.equal(constancia.pago.id, 1);
+  assert.equal(constancia.pago.estado, 'activo');
+  assert.equal(constancia.consultorio.nombre, 'Odonton CBA');
+});
+
+test('15. conserva estado y metadatos en la constancia de un pago anulado', async () => {
+  prepararCargoConPagos([pagoBase({
+    estado: 'anulado',
+    fecha_anulacion: '2026-01-15T12:10:00.000Z',
+    motivo_anulacion: 'Registro duplicado',
+  })]);
+  const constancia = await pagosService.obtenerConstanciaPago(1);
+
+  assert.equal(constancia.pago.estado, 'anulado');
+  assert.equal(constancia.pago.motivo_anulacion, 'Registro duplicado');
+  assert.equal(constancia.pago.fecha_anulacion, '2026-01-15T12:10:00.000Z');
+});
+
+test('16. rechaza una constancia para un pago inexistente', async () => {
+  prepararCargoConPagos();
+  await assert.rejects(
+    () => pagosService.obtenerConstanciaPago(999),
+    assertErrorCode('PAGO_NO_ENCONTRADO'),
+  );
+});
+
+test('17. calcula saldo y total abonado solo desde pagos activos', async () => {
+  prepararCargoConPagos([
+    pagoBase({ id: 1, importe: '25.00' }),
+    pagoBase({ id: 2, importe: '40.00', estado: 'anulado', motivo_anulacion: 'Duplicado' }),
+  ]);
+  const constancia = await pagosService.obtenerConstanciaPago(1);
+
+  assert.equal(constancia.cargo.total_abonado, '25.00');
+  assert.equal(constancia.cargo.saldo, '75.00');
+  assert.equal(constancia.cargo.estado_cobro, 'PARCIAL');
+});
+
+test('18. obtiene el paciente a traves del cargo del pago', async () => {
+  prepararCargoConPagos([pagoBase()]);
+  const constancia = await pagosService.obtenerConstanciaPago(1);
+
+  assert.deepEqual(constancia.paciente, {
+    id: 1,
+    nombre: 'Rita',
+    apellido: 'Quinteros',
+    dni: '10173234',
+  });
+});
+
+test('19. utiliza el concepto historico guardado en el cargo', async () => {
+  prepararCargoConPagos([pagoBase()]);
+  fakeDb.updatePrestacion(100, { nombre: 'Nombre nuevo' });
+  const constancia = await pagosService.obtenerConstanciaPago(1);
+
+  assert.equal(constancia.cargo.concepto, 'Limpieza dental');
+});
+
+test('20. expone el estado anulado para que la vista no presente un pago vigente', async () => {
+  prepararCargoConPagos([pagoBase({ estado: 'anulado', motivo_anulacion: 'Error de carga' })]);
+  const constancia = await pagosService.obtenerConstanciaPago(1);
+
+  assert.equal(constancia.pago.estado, 'anulado');
+  assert.notEqual(constancia.pago.estado, 'activo');
 });
 
 async function run() {

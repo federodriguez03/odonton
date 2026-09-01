@@ -65,6 +65,99 @@ function seleccionarResumenCargo(cargo, totalAbonadoCentavos) {
   };
 }
 
+/**
+ * Reconstruye una constancia interna desde datos persistidos, sin confiar en el frontend.
+ */
+async function obtenerConstanciaPago(pagoIdValue) {
+  const pagoId = normalizarId(pagoIdValue, 'pago_id');
+  const { rows } = await pool.query(
+    `
+      SELECT
+        p.id AS pago_id,
+        p.importe AS pago_importe,
+        p.metodo_pago,
+        p.fecha_pago::text AS fecha_pago,
+        p.observaciones AS pago_observaciones,
+        p.estado AS pago_estado,
+        p.fecha_anulacion,
+        p.motivo_anulacion,
+        c.id AS cargo_id,
+        c.concepto,
+        c.importe_total,
+        c.fecha_cargo::text AS fecha_cargo,
+        c.observaciones AS cargo_observaciones,
+        pa.id AS paciente_id,
+        pa.nombre AS paciente_nombre,
+        pa.apellido AS paciente_apellido,
+        pa.dni AS paciente_dni,
+        cc.nombre_consultorio,
+        cc.whatsapp_numero AS consultorio_telefono,
+        cc.timezone AS consultorio_timezone,
+        COALESCE((
+          SELECT SUM(p_activo.importe)
+          FROM pagos p_activo
+          WHERE p_activo.cargo_id = c.id
+            AND p_activo.estado = 'activo'
+        ), 0)::NUMERIC(12,2) AS total_abonado,
+        CURRENT_TIMESTAMP AS generado_en
+      FROM pagos p
+      JOIN cargos c ON c.id = p.cargo_id
+      JOIN pacientes pa ON pa.id = c.paciente_id
+      LEFT JOIN LATERAL (
+        SELECT nombre_consultorio, whatsapp_numero, timezone
+        FROM configuracion_consultorio
+        ORDER BY id ASC
+        LIMIT 1
+      ) cc ON true
+      WHERE p.id = $1
+    `,
+    [pagoId],
+  );
+
+  const row = rows[0];
+  if (!row) throw crearError('PAGO_NO_ENCONTRADO', 'Pago no encontrado');
+
+  const cargo = construirResumenCargo(
+    {
+      id: row.cargo_id,
+      concepto: row.concepto,
+      importe_total: row.importe_total,
+      fecha_cargo: row.fecha_cargo,
+      observaciones: row.cargo_observaciones,
+    },
+    row.total_abonado,
+  );
+  const pago = construirPagoSalida({
+    id: row.pago_id,
+    cargo_id: row.cargo_id,
+    importe: row.pago_importe,
+    metodo_pago: row.metodo_pago,
+    fecha_pago: row.fecha_pago,
+    observaciones: row.pago_observaciones,
+    estado: row.pago_estado,
+    fecha_anulacion: row.fecha_anulacion,
+    motivo_anulacion: row.motivo_anulacion,
+  });
+
+  return {
+    titulo: 'Constancia interna de pago — no fiscal',
+    consultorio: {
+      nombre: row.nombre_consultorio || 'Odonton',
+      telefono: row.consultorio_telefono || null,
+      timezone: row.consultorio_timezone || null,
+    },
+    paciente: {
+      id: row.paciente_id,
+      nombre: row.paciente_nombre,
+      apellido: row.paciente_apellido,
+      dni: row.paciente_dni,
+    },
+    pago,
+    cargo,
+    generado_en: row.generado_en,
+  };
+}
+
 async function registrarPago({
   cargo_id,
   importe,
@@ -359,5 +452,6 @@ async function listarPagos({
 module.exports = {
   anularPago,
   listarPagos,
+  obtenerConstanciaPago,
   registrarPago,
 };
