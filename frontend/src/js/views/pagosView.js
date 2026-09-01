@@ -1,322 +1,603 @@
-import { createPago, getPacientes, getPagos, getResumenPagosPaciente, updatePago } from '../api.js';
+import {
+  anularPago,
+  createCargo,
+  createPago,
+  getCargoById,
+  getCargos,
+  getPacientes,
+  getPrestaciones,
+  getTurnos,
+} from '../api.js';
 import { renderAlert } from '../components/alerts.js';
 
+const PAGE_SIZE = 20;
+const FRIENDLY_ERRORS = Object.freeze({
+  SOBREPAGO: 'El importe supera el saldo disponible del cargo.',
+  PAGO_YA_ANULADO: 'El pago ya se encuentra anulado.',
+  TURNO_PACIENTE_INCOMPATIBLE: 'El turno seleccionado no pertenece al paciente.',
+  PRESTACION_TURNO_INCOMPATIBLE: 'La prestación no coincide con la asociada al turno.',
+  CARGO_NO_ENCONTRADO: 'El cargo ya no está disponible.',
+  PAGO_NO_ENCONTRADO: 'El pago ya no está disponible.',
+});
+
 const state = {
-  pagos: [],
-  resumenPaciente: null,
-  mode: 'create',
-  editId: null,
-  selectedConceptTurnoId: null,
+  cargos: [],
+  pacientes: [],
+  prestaciones: [],
+  turnos: [],
+  paginacion: { page: 1, limit: PAGE_SIZE, total: 0, total_pages: 0 },
+  cargoDetalle: null,
+  pagoAAnular: null,
+  conceptoSugerido: '',
+  importeSugerido: '',
 };
 
 const ui = {
   alertContainer: document.getElementById('alert-container'),
-  tbody: document.getElementById('pagos-tbody'),
-  form: document.getElementById('pago-form'),
-  filtroForm: document.getElementById('pagos-filter-form'),
-  filtroPaciente: document.getElementById('pagos-filter-paciente'),
-  filtroDesde: document.getElementById('pagos-filter-desde'),
-  filtroHasta: document.getElementById('pagos-filter-hasta'),
-  pacienteSelect: document.getElementById('pago-paciente'),
-  deudaTotal: document.getElementById('pago-deuda-total'),
-  conceptosCount: document.getElementById('pago-conceptos-count'),
-  conceptosWrap: document.getElementById('pago-conceptos'),
-  turnoInput: document.getElementById('pago-turno'),
-  montoInput: document.getElementById('pago-monto'),
-  montoAyuda: document.getElementById('pago-monto-ayuda'),
-  metodoSelect: document.getElementById('pago-metodo'),
-  estadoSelect: document.getElementById('pago-estado'),
-  fechaInput: document.getElementById('pago-fecha'),
-  obsInput: document.getElementById('pago-observaciones'),
-  submitBtn: document.getElementById('pago-submit'),
+  nuevoCargoBtn: document.getElementById('nuevo-cargo-btn'),
+  cargosTbody: document.getElementById('cargos-tbody'),
+  filtroForm: document.getElementById('cargos-filter-form'),
+  filtroPaciente: document.getElementById('cargos-filter-paciente'),
+  filtroEstado: document.getElementById('cargos-filter-estado'),
+  filtroDesde: document.getElementById('cargos-filter-desde'),
+  filtroHasta: document.getElementById('cargos-filter-hasta'),
+  filtroLimpiar: document.getElementById('cargos-filter-clear'),
+  paginaInfo: document.getElementById('cargos-pagination-info'),
+  paginaAnterior: document.getElementById('cargos-page-prev'),
+  paginaSiguiente: document.getElementById('cargos-page-next'),
+  cargoModalEl: document.getElementById('cargo-modal'),
+  cargoForm: document.getElementById('cargo-form'),
+  cargoPaciente: document.getElementById('cargo-paciente'),
+  cargoTurno: document.getElementById('cargo-turno'),
+  cargoPrestacion: document.getElementById('cargo-prestacion'),
+  cargoConcepto: document.getElementById('cargo-concepto'),
+  cargoImporte: document.getElementById('cargo-importe'),
+  cargoFecha: document.getElementById('cargo-fecha'),
+  cargoObservaciones: document.getElementById('cargo-observaciones'),
+  cargoSubmit: document.getElementById('cargo-submit'),
+  detalleModalEl: document.getElementById('cargo-detail-modal'),
+  detalleContenido: document.getElementById('cargo-detail-content'),
+  detallePagosTbody: document.getElementById('cargo-pagos-tbody'),
+  detallePagar: document.getElementById('cargo-detail-pay'),
+  pagoModalEl: document.getElementById('pago-modal'),
+  pagoForm: document.getElementById('pago-form'),
+  pagoSaldo: document.getElementById('pago-saldo-actual'),
+  pagoImporte: document.getElementById('pago-importe'),
+  pagoMetodo: document.getElementById('pago-metodo'),
+  pagoFecha: document.getElementById('pago-fecha'),
+  pagoObservaciones: document.getElementById('pago-observaciones'),
+  pagoSubmit: document.getElementById('pago-submit'),
+  anularModalEl: document.getElementById('pago-anular-modal'),
+  anularForm: document.getElementById('pago-anular-form'),
+  anularResumen: document.getElementById('pago-anular-resumen'),
+  anularMotivo: document.getElementById('pago-anular-motivo'),
+  anularSubmit: document.getElementById('pago-anular-submit'),
 };
 
+function getModal(element) {
+  return window.bootstrap.Modal.getOrCreateInstance(element);
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function decimalToCents(value) {
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(String(value ?? '').trim());
+  if (!match) return null;
+  const decimals = String(match[2] || '').padEnd(2, '0');
+  return (BigInt(match[1]) * 100n) + BigInt(decimals || '0');
+}
+
 function formatCurrency(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '$ 0.00';
-  return `$ ${num.toFixed(2)}`;
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(String(value ?? '0').trim());
+  if (!match) return '$ 0,00';
+  const integer = match[1].replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const decimals = String(match[2] || '').padEnd(2, '0');
+  return `$ ${integer},${decimals}`;
+}
+
+function isZeroAmount(value) {
+  return decimalToCents(value) === 0n;
 }
 
 function formatDate(value) {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleDateString('es-AR');
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '-';
 }
 
 function formatDateTime(value) {
   if (!value) return '-';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('es-AR');
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('es-AR');
 }
 
-function setMontoSuggestion(message, isActive = false) {
-  if (!ui.montoAyuda) return;
-  ui.montoAyuda.textContent = message;
-  ui.montoAyuda.classList.toggle('is-active', isActive);
-  ui.montoInput.classList.toggle('payment-input-highlight', isActive);
+function todayInputValue() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
-function renderRows(pagos = []) {
-  if (!pagos.length) {
-    ui.tbody.innerHTML = '<tr><td colspan="9" class="text-center text-secondary">Sin pagos</td></tr>';
+function patientName(id, fallback = null) {
+  const patient = state.pacientes.find((item) => String(item.id) === String(id));
+  if (patient) return `${patient.apellido || ''}, ${patient.nombre || ''}`.replace(/^,\s*/, '');
+  if (fallback) return `${fallback.paciente_apellido || ''}, ${fallback.paciente_nombre || ''}`.replace(/^,\s*/, '');
+  return `Paciente #${id}`;
+}
+
+function prestationName(id) {
+  const prestation = state.prestaciones.find((item) => String(item.id) === String(id));
+  return prestation?.nombre || null;
+}
+
+function methodLabel(method) {
+  return {
+    efectivo: 'Efectivo',
+    tarjeta: 'Tarjeta',
+    transferencia: 'Transferencia',
+  }[method] || method || '-';
+}
+
+function statusBadge(status) {
+  const styles = {
+    PENDIENTE: 'text-bg-warning',
+    PARCIAL: 'text-bg-info',
+    PAGADO: 'text-bg-success',
+  };
+  const normalized = String(status || '').toUpperCase();
+  return `<span class="badge ${styles[normalized] || 'text-bg-secondary'}">${escapeHtml(normalized || '-')}</span>`;
+}
+
+function friendlyError(error) {
+  return FRIENDLY_ERRORS[error?.code] || error?.message || 'No se pudo completar la operación.';
+}
+
+function setSubmitting(button, active, activeText) {
+  if (!button) return;
+  if (active) button.dataset.originalText = button.textContent;
+  button.disabled = active;
+  button.textContent = active ? activeText : (button.dataset.originalText || button.textContent);
+}
+
+function showAlert(message, type = 'danger') {
+  renderAlert(ui.alertContainer, message, type);
+}
+
+function switchModal(currentElement, nextElement) {
+  currentElement.addEventListener('hidden.bs.modal', () => getModal(nextElement).show(), { once: true });
+  getModal(currentElement).hide();
+}
+
+async function hideModalThen(element, callback) {
+  await new Promise((resolve) => {
+    element.addEventListener('hidden.bs.modal', resolve, { once: true });
+    getModal(element).hide();
+  });
+  await callback();
+}
+
+function renderCargos() {
+  if (!state.cargos.length) {
+    ui.cargosTbody.innerHTML = '<tr><td colspan="8" class="text-center text-secondary py-4">No se encontraron cargos.</td></tr>';
     return;
   }
 
-  ui.tbody.innerHTML = pagos
-    .map(
-      (pago) => `
-        <tr>
-          <td>${formatDate(pago.fecha_pago)}</td>
-          <td>${pago.paciente_apellido || ''}, ${pago.paciente_nombre || ''}</td>
-          <td>${pago.paciente_dni || '-'}</td>
-          <td>${pago.prestacion_nombre || (pago.turno_id ? `Turno #${pago.turno_id}` : '-') }</td>
-          <td>${formatCurrency(pago.monto)}</td>
-          <td>${pago.metodo}</td>
-          <td><span class="badge text-bg-light border">${pago.estado}</span></td>
-          <td>${formatCurrency(pago.saldo_pendiente_turno)}</td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-secondary" data-action="edit" data-id="${pago.id}">
-              <i class="bi bi-pencil-square me-1"></i>Editar
-            </button>
-          </td>
-        </tr>
-      `,
-    )
-    .join('');
+  ui.cargosTbody.innerHTML = state.cargos.map((cargo) => {
+    const canPay = !isZeroAmount(cargo.saldo);
+    return `
+      <tr>
+        <td class="text-nowrap">${formatDate(cargo.fecha_cargo)}</td>
+        <td>${escapeHtml(patientName(cargo.paciente_id, cargo))}</td>
+        <td>${escapeHtml(cargo.concepto)}</td>
+        <td class="text-nowrap">${formatCurrency(cargo.importe_total)}</td>
+        <td class="text-nowrap">${formatCurrency(cargo.total_abonado)}</td>
+        <td class="text-nowrap fw-semibold">${formatCurrency(cargo.saldo)}</td>
+        <td>${statusBadge(cargo.estado_cobro)}</td>
+        <td class="text-end text-nowrap">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-action="detail" data-id="${escapeHtml(cargo.id)}">Ver detalle</button>
+          ${canPay ? `<button class="btn btn-sm btn-primary ms-1" type="button" data-action="pay" data-id="${escapeHtml(cargo.id)}">Registrar pago</button>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
-async function loadPagos() {
+function renderPagination() {
+  const { page, total, total_pages: totalPages } = state.paginacion;
+  ui.paginaInfo.textContent = total
+    ? `Página ${page} de ${totalPages} · ${total} cargo${total === 1 ? '' : 's'}`
+    : 'Sin resultados';
+  ui.paginaAnterior.disabled = page <= 1;
+  ui.paginaSiguiente.disabled = totalPages === 0 || page >= totalPages;
+}
+
+async function loadCargos(page = state.paginacion.page) {
+  ui.cargosTbody.innerHTML = '<tr><td colspan="8" class="text-center text-secondary py-4">Cargando cargos...</td></tr>';
   try {
-    const data = await getPagos({
-      pacienteId: ui.filtroPaciente.value || undefined,
+    const data = await getCargos({
+      paciente_id: ui.filtroPaciente.value || undefined,
+      estado_cobro: ui.filtroEstado.value || undefined,
       desde: ui.filtroDesde.value || undefined,
       hasta: ui.filtroHasta.value || undefined,
+      page,
+      limit: PAGE_SIZE,
     });
-    state.pagos = data.pagos || [];
-    renderRows(state.pagos);
+    state.cargos = Array.isArray(data.cargos) ? data.cargos : [];
+    state.paginacion = data.paginacion || { page, limit: PAGE_SIZE, total: 0, total_pages: 0 };
+    renderCargos();
+    renderPagination();
   } catch (error) {
-    renderAlert(ui.alertContainer, error.message, 'danger');
+    state.cargos = [];
+    state.paginacion = { page: 1, limit: PAGE_SIZE, total: 0, total_pages: 0 };
+    renderCargos();
+    renderPagination();
+    showAlert(friendlyError(error));
   }
 }
 
-async function loadPacientes() {
-  try {
-    const data = await getPacientes({ page: 1, limit: 100, sort: 'apellido:asc' });
-    const pacientes = Array.isArray(data.pacientes) ? data.pacientes : [];
-    const options = pacientes
-      .map((p) => `<option value="${p.id}">${p.apellido}, ${p.nombre} (${p.dni})</option>`)
-      .join('');
-    ui.pacienteSelect.innerHTML = pacientes.length
-      ? `<option value="">Seleccionar paciente</option>${options}`
-      : `<option value="">Sin pacientes</option>`;
-    ui.filtroPaciente.innerHTML = pacientes.length
-      ? `<option value="">Todos</option>${options}`
-      : `<option value="">Sin pacientes</option>`;
-  } catch (error) {
-    renderAlert(ui.alertContainer, error.message, 'danger');
-  }
+async function loadPatients() {
+  const patients = [];
+  let page = 1;
+  let total = 0;
+  do {
+    const data = await getPacientes({ page, limit: 100, sort: 'apellido:asc' });
+    const batch = Array.isArray(data.pacientes) ? data.pacientes : [];
+    patients.push(...batch);
+    total = Number(data.total || patients.length);
+    if (!batch.length) break;
+    page += 1;
+  } while (patients.length < total);
+
+  state.pacientes = patients;
+  const options = patients.map((patient) => (
+    `<option value="${escapeHtml(patient.id)}">${escapeHtml(patientName(patient.id))}${patient.dni ? ` (${escapeHtml(patient.dni)})` : ''}</option>`
+  )).join('');
+  ui.cargoPaciente.innerHTML = `<option value="">Seleccionar paciente</option>${options}`;
+  ui.filtroPaciente.innerHTML = `<option value="">Todos los pacientes</option>${options}`;
 }
 
-function renderResumenPaciente() {
-  const data = state.resumenPaciente;
-  if (!data) {
-    ui.deudaTotal.textContent = '$ 0.00';
-    ui.conceptosCount.textContent = '0 conceptos';
-    ui.conceptosWrap.innerHTML = '<div class="payment-empty-copy">Selecciona un paciente para ver conceptos pendientes.</div>';
-    state.selectedConceptTurnoId = null;
-    setMontoSuggestion('Selecciona un concepto pendiente y te sugerimos el importe exacto.');
-    return;
-  }
-
-  ui.deudaTotal.textContent = formatCurrency(data.resumen?.total_deuda);
-  ui.conceptosCount.textContent = `${data.resumen?.conceptos_pendientes || 0} conceptos`;
-
-  if (!Array.isArray(data.conceptos) || !data.conceptos.length) {
-    ui.conceptosWrap.innerHTML = '<div class="payment-empty-copy payment-empty-ok">No tiene deuda pendiente.</div>';
-    state.selectedConceptTurnoId = null;
-    setMontoSuggestion('Este paciente no tiene saldo pendiente.');
-    return;
-  }
-
-  ui.conceptosWrap.innerHTML = data.conceptos
-    .map(
-      (item) => {
-        const precioBase = Number(item.precio_base) || 0;
-        const saldoPendiente = Number(item.saldo_pendiente) || 0;
-        const totalPagado = Math.max(precioBase - saldoPendiente, 0);
-        const progress = precioBase > 0 ? Math.min((totalPagado / precioBase) * 100, 100) : 0;
-        const isSelected = String(state.selectedConceptTurnoId || '') === String(item.turno_id);
-
-        return `
-          <button
-            type="button"
-            class="payment-concept-item${isSelected ? ' is-selected' : ''}"
-            data-action="usar-concepto"
-            data-turno-id="${item.turno_id}"
-            data-monto="${item.saldo_pendiente}"
-            data-label="${item.prestacion_nombre}"
-          >
-            <div class="payment-concept-main">
-              <div>
-                <div class="payment-concept-title">${item.prestacion_nombre}</div>
-                <div class="payment-concept-meta">${formatDateTime(item.fecha_hora_inicio)} - ${item.turno_estado}</div>
-              </div>
-              <span class="payment-concept-chip">Turno #${item.turno_id}</span>
-            </div>
-            <div class="payment-concept-values">
-              <div>
-                <span class="payment-concept-label">Total</span>
-                <strong>${formatCurrency(precioBase)}</strong>
-              </div>
-              <div>
-                <span class="payment-concept-label">Pagado</span>
-                <strong>${formatCurrency(totalPagado)}</strong>
-              </div>
-              <div class="payment-concept-balance">
-                <span class="payment-concept-label">Saldo</span>
-                <strong>${formatCurrency(saldoPendiente)}</strong>
-              </div>
-            </div>
-            <div class="payment-progress-block">
-              <div class="payment-progress-head">
-                <span>Progreso de cobro</span>
-                <span>${progress.toFixed(0)}%</span>
-              </div>
-              <div class="payment-progress-track">
-                <div class="payment-progress-bar" style="width: ${progress}%"></div>
-              </div>
-            </div>
-            <div class="payment-concept-cta">
-              <i class="bi bi-arrow-down-circle me-1"></i>Aplicar este saldo al formulario
-            </div>
-          </button>
-        `;
-      },
-    )
-    .join('');
+async function loadPrestations() {
+  const data = await getPrestaciones();
+  state.prestaciones = Array.isArray(data.prestaciones) ? data.prestaciones : [];
+  const options = state.prestaciones.map((prestation) => (
+    `<option value="${escapeHtml(prestation.id)}">${escapeHtml(prestation.nombre)}${prestation.precio_base !== null && prestation.precio_base !== undefined ? ` · ${formatCurrency(prestation.precio_base)}` : ''}</option>`
+  )).join('');
+  ui.cargoPrestacion.innerHTML = `<option value="">Sin prestación asociada</option>${options}`;
 }
 
-async function loadResumenPaciente(pacienteId) {
-  if (!pacienteId) {
-    state.resumenPaciente = null;
-    renderResumenPaciente();
+function formatTurnLabel(turn) {
+  const date = turn.fecha_hora_inicio ? new Date(turn.fecha_hora_inicio) : null;
+  const dateLabel = date && !Number.isNaN(date.getTime())
+    ? date.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+    : 'Sin fecha asignada';
+  return `#${turn.id} · ${dateLabel} · ${turn.prestacion?.nombre || 'Sin prestación'}`;
+}
+
+async function loadPatientTurns(patientId) {
+  state.turnos = [];
+  ui.cargoTurno.disabled = true;
+  ui.cargoTurno.innerHTML = '<option value="">Cargando turnos...</option>';
+  if (!patientId) {
+    ui.cargoTurno.innerHTML = '<option value="">Primero seleccioná un paciente</option>';
     return;
   }
 
   try {
-    const data = await getResumenPagosPaciente(pacienteId);
-    state.resumenPaciente = data;
-    renderResumenPaciente();
+    const data = await getTurnos({ paciente_id: patientId, page: 1, limit: 100, sort: 'fecha_hora_inicio:desc' });
+    state.turnos = Array.isArray(data.turnos) ? data.turnos : [];
+    const options = state.turnos.map((turn) => (
+      `<option value="${escapeHtml(turn.id)}">${escapeHtml(formatTurnLabel(turn))}</option>`
+    )).join('');
+    ui.cargoTurno.innerHTML = `<option value="">Sin turno asociado</option>${options}`;
+    ui.cargoTurno.disabled = false;
   } catch (error) {
-    state.resumenPaciente = null;
-    renderResumenPaciente();
-    renderAlert(ui.alertContainer, error.message, 'danger');
+    ui.cargoTurno.innerHTML = '<option value="">No se pudieron cargar los turnos</option>';
+    showAlert(friendlyError(error));
   }
 }
 
-function resetForm() {
-  state.mode = 'create';
-  state.editId = null;
-  state.selectedConceptTurnoId = null;
-  ui.form.reset();
-  ui.submitBtn.textContent = 'Registrar pago';
-  setMontoSuggestion('Selecciona un concepto pendiente y te sugerimos el importe exacto.');
-  loadResumenPaciente(ui.pacienteSelect.value || null);
+function applyPrestationSuggestion() {
+  const prestation = state.prestaciones.find((item) => String(item.id) === ui.cargoPrestacion.value);
+  const conceptCanChange = !ui.cargoConcepto.value.trim() || ui.cargoConcepto.value === state.conceptoSugerido;
+  const amountCanChange = !ui.cargoImporte.value.trim() || ui.cargoImporte.value === state.importeSugerido;
+
+  if (!prestation) {
+    state.conceptoSugerido = '';
+    state.importeSugerido = '';
+    return;
+  }
+  if (conceptCanChange) ui.cargoConcepto.value = prestation.nombre || '';
+  if (amountCanChange && prestation.precio_base !== null && prestation.precio_base !== undefined) {
+    ui.cargoImporte.value = String(prestation.precio_base);
+  }
+  state.conceptoSugerido = prestation.nombre || '';
+  state.importeSugerido = prestation.precio_base === null || prestation.precio_base === undefined
+    ? ''
+    : String(prestation.precio_base);
 }
 
-function bindTable() {
-  ui.conceptosWrap.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-action="usar-concepto"]');
-    if (!button) return;
+function resetCargoForm() {
+  ui.cargoForm.reset();
+  const today = todayInputValue();
+  ui.cargoFecha.value = today;
+  ui.cargoFecha.max = today;
+  ui.cargoTurno.disabled = true;
+  ui.cargoTurno.innerHTML = '<option value="">Primero seleccioná un paciente</option>';
+  state.turnos = [];
+  state.conceptoSugerido = '';
+  state.importeSugerido = '';
+}
 
-    state.selectedConceptTurnoId = button.dataset.turnoId || null;
-    ui.turnoInput.value = button.dataset.turnoId || '';
-    ui.montoInput.value = button.dataset.monto || '';
-    ui.estadoSelect.value = 'pagado';
-    setMontoSuggestion(`Importe sugerido aplicado: ${formatCurrency(button.dataset.monto)}`, true);
-    if (!ui.obsInput.value.trim()) {
-      ui.obsInput.value = `Pago aplicado a ${button.dataset.label || 'prestacion'}`;
+function renderDetail() {
+  const { cargo, pagos } = state.cargoDetalle;
+  const patient = patientName(cargo.paciente_id);
+  const prestation = cargo.prestacion_id ? prestationName(cargo.prestacion_id) : null;
+  ui.detalleContenido.innerHTML = `
+    <div class="row g-3">
+      <div class="col-12 col-md-6"><div class="small text-secondary">Paciente</div><strong>${escapeHtml(patient)}</strong></div>
+      <div class="col-12 col-md-6"><div class="small text-secondary">Concepto</div><strong>${escapeHtml(cargo.concepto)}</strong></div>
+      <div class="col-6 col-lg-3"><div class="small text-secondary">Fecha</div><strong>${formatDate(cargo.fecha_cargo)}</strong></div>
+      <div class="col-6 col-lg-3"><div class="small text-secondary">Importe total</div><strong>${formatCurrency(cargo.importe_total)}</strong></div>
+      <div class="col-6 col-lg-2"><div class="small text-secondary">Abonado</div><strong>${formatCurrency(cargo.total_abonado)}</strong></div>
+      <div class="col-6 col-lg-2"><div class="small text-secondary">Saldo</div><strong>${formatCurrency(cargo.saldo)}</strong></div>
+      <div class="col-12 col-lg-2"><div class="small text-secondary">Estado</div>${statusBadge(cargo.estado_cobro)}</div>
+      <div class="col-6"><div class="small text-secondary">Turno</div><span>${cargo.turno_id ? `#${escapeHtml(cargo.turno_id)}` : 'Sin turno asociado'}</span></div>
+      <div class="col-6"><div class="small text-secondary">Prestación</div><span>${escapeHtml(prestation || (cargo.prestacion_id ? `#${cargo.prestacion_id}` : 'Sin prestación asociada'))}</span></div>
+      <div class="col-12"><div class="small text-secondary">Observaciones</div><span>${escapeHtml(cargo.observaciones || 'Sin observaciones')}</span></div>
+    </div>
+  `;
+
+  if (!pagos.length) {
+    ui.detallePagosTbody.innerHTML = '<tr><td colspan="6" class="text-center text-secondary py-4">Este cargo todavía no tiene pagos.</td></tr>';
+  } else {
+    ui.detallePagosTbody.innerHTML = pagos.map((payment) => {
+      const annulled = payment.estado === 'anulado';
+      const observations = [
+        payment.observaciones,
+        annulled && payment.motivo_anulacion ? `Motivo de anulación: ${payment.motivo_anulacion}` : null,
+        annulled && payment.fecha_anulacion ? `Anulado: ${formatDateTime(payment.fecha_anulacion)}` : null,
+      ].filter(Boolean).join(' · ');
+      return `
+        <tr class="${annulled ? 'table-light text-secondary' : ''}">
+          <td class="text-nowrap">${formatDate(payment.fecha_pago)}</td>
+          <td class="text-nowrap ${annulled ? 'text-decoration-line-through' : 'fw-semibold'}">${formatCurrency(payment.importe)}</td>
+          <td>${escapeHtml(methodLabel(payment.metodo_pago))}</td>
+          <td><span class="badge ${annulled ? 'text-bg-secondary' : 'text-bg-success'}">${annulled ? 'Anulado' : 'Activo'}</span></td>
+          <td>${escapeHtml(observations || 'Sin observaciones')}</td>
+          <td class="text-end">${annulled ? '' : `<button type="button" class="btn btn-sm btn-outline-danger" data-action="annul" data-id="${escapeHtml(payment.id)}">Anular</button>`}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+  ui.detallePagar.classList.toggle('d-none', isZeroAmount(cargo.saldo));
+}
+
+async function openCargoDetail(cargoId) {
+  try {
+    const data = await getCargoById(cargoId);
+    state.cargoDetalle = {
+      cargo: data.cargo,
+      pagos: Array.isArray(data.pagos) ? data.pagos : [],
+    };
+    renderDetail();
+    getModal(ui.detalleModalEl).show();
+  } catch (error) {
+    showAlert(friendlyError(error));
+    await loadCargos();
+  }
+}
+
+async function preparePayment(cargoId) {
+  try {
+    const data = await getCargoById(cargoId);
+    state.cargoDetalle = { cargo: data.cargo, pagos: Array.isArray(data.pagos) ? data.pagos : [] };
+    if (isZeroAmount(data.cargo.saldo)) {
+      showAlert('El cargo ya se encuentra pagado.', 'warning');
+      await loadCargos();
+      return false;
     }
-    renderResumenPaciente();
-  });
-
-  ui.tbody.addEventListener('click', (event) => {
-    const button = event.target.closest('button[data-action="edit"]');
-    if (!button) return;
-    const id = button.dataset.id;
-    const pago = state.pagos.find((p) => String(p.id) === String(id));
-    if (!pago) return;
-
-    state.mode = 'edit';
-    state.editId = pago.id;
-    ui.submitBtn.textContent = 'Guardar cambios';
-    ui.pacienteSelect.value = pago.paciente_id;
-    ui.turnoInput.value = pago.turno_id || '';
-    ui.montoInput.value = pago.monto;
-    ui.metodoSelect.value = pago.metodo;
-    ui.estadoSelect.value = pago.estado;
-    ui.fechaInput.value = pago.fecha_pago ? String(pago.fecha_pago).slice(0, 10) : '';
-    ui.obsInput.value = pago.observaciones || '';
-    setMontoSuggestion('Estás editando un pago registrado.', true);
-  });
+    ui.pagoForm.reset();
+    ui.pagoSaldo.textContent = formatCurrency(data.cargo.saldo);
+    ui.pagoImporte.max = data.cargo.saldo;
+    ui.pagoImporte.value = data.cargo.saldo;
+    ui.pagoFecha.value = todayInputValue();
+    ui.pagoFecha.min = data.cargo.fecha_cargo;
+    ui.pagoFecha.max = todayInputValue();
+    return true;
+  } catch (error) {
+    showAlert(friendlyError(error));
+    return false;
+  }
 }
 
-function bindForm() {
-  ui.form.addEventListener('submit', async (event) => {
+function bindFiltersAndPagination() {
+  ui.filtroForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (ui.filtroDesde.value && ui.filtroHasta.value && ui.filtroDesde.value > ui.filtroHasta.value) {
+      showAlert('La fecha desde no puede ser posterior a la fecha hasta.', 'warning');
+      return;
+    }
+    await loadCargos(1);
+  });
+  ui.filtroLimpiar.addEventListener('click', async () => {
+    ui.filtroForm.reset();
+    await loadCargos(1);
+  });
+  ui.paginaAnterior.addEventListener('click', () => loadCargos(state.paginacion.page - 1));
+  ui.paginaSiguiente.addEventListener('click', () => loadCargos(state.paginacion.page + 1));
+}
+
+function bindCargoCreation() {
+  ui.nuevoCargoBtn.addEventListener('click', () => {
+    resetCargoForm();
+    getModal(ui.cargoModalEl).show();
+  });
+  ui.cargoPaciente.addEventListener('change', async () => {
+    await loadPatientTurns(ui.cargoPaciente.value);
+  });
+  ui.cargoTurno.addEventListener('change', () => {
+    const turn = state.turnos.find((item) => String(item.id) === ui.cargoTurno.value);
+    if (turn?.prestacion?.id) {
+      ui.cargoPrestacion.value = String(turn.prestacion.id);
+      applyPrestationSuggestion();
+    }
+  });
+  ui.cargoPrestacion.addEventListener('change', applyPrestationSuggestion);
+
+  ui.cargoForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const amountCents = decimalToCents(ui.cargoImporte.value);
+    if (amountCents === null || amountCents <= 0n) {
+      showAlert('Ingresá un importe total válido, mayor que cero.', 'warning');
+      return;
+    }
+    if (!ui.cargoPrestacion.value && !ui.cargoConcepto.value.trim()) {
+      showAlert('Ingresá un concepto o seleccioná una prestación.', 'warning');
+      return;
+    }
+    if (ui.cargoFecha.value > todayInputValue()) {
+      showAlert('La fecha del cargo no puede ser futura.', 'warning');
+      return;
+    }
 
     const payload = {
-      paciente_id: ui.pacienteSelect.value,
-      turno_id: ui.turnoInput.value || null,
-      monto: ui.montoInput.value,
-      metodo: ui.metodoSelect.value,
-      estado: ui.estadoSelect.value,
-      fecha_pago: ui.fechaInput.value || null,
-      observaciones: ui.obsInput.value || null,
+      paciente_id: ui.cargoPaciente.value,
+      turno_id: ui.cargoTurno.value || null,
+      prestacion_id: ui.cargoPrestacion.value || null,
+      concepto: ui.cargoConcepto.value.trim() || null,
+      importe_total: ui.cargoImporte.value,
+      fecha_cargo: ui.cargoFecha.value,
+      observaciones: ui.cargoObservaciones.value.trim() || null,
     };
 
     try {
-      if (state.mode === 'edit' && state.editId) {
-        await updatePago(state.editId, payload);
-        renderAlert(ui.alertContainer, 'Pago actualizado', 'success');
-      } else {
-        await createPago(payload);
-        renderAlert(ui.alertContainer, 'Pago registrado', 'success');
-      }
-
-      resetForm();
-      await loadPagos();
-      await loadResumenPaciente(ui.pacienteSelect.value || null);
+      setSubmitting(ui.cargoSubmit, true, 'Creando...');
+      await createCargo(payload);
+      getModal(ui.cargoModalEl).hide();
+      showAlert('Cargo registrado correctamente.', 'success');
+      await loadCargos(1);
     } catch (error) {
-      renderAlert(ui.alertContainer, error.message, 'danger');
+      showAlert(friendlyError(error));
+    } finally {
+      setSubmitting(ui.cargoSubmit, false);
     }
   });
 }
 
-function bindFilters() {
-  ui.filtroForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await loadPagos();
+function bindCargoActions() {
+  ui.cargosTbody.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    if (button.dataset.action === 'detail') await openCargoDetail(button.dataset.id);
+    if (button.dataset.action === 'pay' && await preparePayment(button.dataset.id)) {
+      getModal(ui.pagoModalEl).show();
+    }
+  });
+
+  ui.detallePagar.addEventListener('click', async () => {
+    const cargoId = state.cargoDetalle?.cargo?.id;
+    if (!cargoId || !await preparePayment(cargoId)) return;
+    switchModal(ui.detalleModalEl, ui.pagoModalEl);
+  });
+
+  ui.detallePagosTbody.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action="annul"]');
+    if (!button) return;
+    const payment = state.cargoDetalle?.pagos.find((item) => String(item.id) === button.dataset.id);
+    if (!payment || payment.estado !== 'activo') return;
+    state.pagoAAnular = payment;
+    ui.anularForm.reset();
+    ui.anularResumen.textContent = `Pago #${payment.id} por ${formatCurrency(payment.importe)} (${methodLabel(payment.metodo_pago)}).`;
+    switchModal(ui.detalleModalEl, ui.anularModalEl);
   });
 }
 
-function bindPacienteChange() {
-  ui.pacienteSelect.addEventListener('change', async () => {
-    state.selectedConceptTurnoId = null;
-    setMontoSuggestion('Selecciona un concepto pendiente y te sugerimos el importe exacto.');
-    await loadResumenPaciente(ui.pacienteSelect.value || null);
+function bindPaymentForm() {
+  ui.pagoForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const cargo = state.cargoDetalle?.cargo;
+    if (!cargo) return;
+    const amountCents = decimalToCents(ui.pagoImporte.value);
+    const balanceCents = decimalToCents(cargo.saldo);
+    if (amountCents === null || amountCents <= 0n) {
+      showAlert('Ingresá un importe válido, mayor que cero.', 'warning');
+      return;
+    }
+    if (balanceCents !== null && amountCents > balanceCents) {
+      showAlert(FRIENDLY_ERRORS.SOBREPAGO, 'warning');
+      return;
+    }
+    if (ui.pagoFecha.value < cargo.fecha_cargo || ui.pagoFecha.value > todayInputValue()) {
+      showAlert('La fecha debe estar entre la fecha del cargo y hoy.', 'warning');
+      return;
+    }
+
+    try {
+      setSubmitting(ui.pagoSubmit, true, 'Registrando...');
+      await createPago({
+        cargo_id: cargo.id,
+        importe: ui.pagoImporte.value,
+        metodo_pago: ui.pagoMetodo.value,
+        fecha_pago: ui.pagoFecha.value,
+        observaciones: ui.pagoObservaciones.value.trim() || null,
+      });
+      showAlert('Pago registrado correctamente.', 'success');
+      await hideModalThen(ui.pagoModalEl, async () => {
+        await loadCargos();
+        await openCargoDetail(cargo.id);
+      });
+    } catch (error) {
+      showAlert(friendlyError(error));
+    } finally {
+      setSubmitting(ui.pagoSubmit, false);
+    }
+  });
+
+  ui.anularForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payment = state.pagoAAnular;
+    const cargoId = state.cargoDetalle?.cargo?.id;
+    const reason = ui.anularMotivo.value.trim();
+    if (!payment || !cargoId) return;
+    if (!reason) {
+      showAlert('Ingresá el motivo de la anulación.', 'warning');
+      return;
+    }
+
+    try {
+      setSubmitting(ui.anularSubmit, true, 'Anulando...');
+      await anularPago(payment.id, { motivo: reason });
+      showAlert('Pago anulado correctamente.', 'success');
+      state.pagoAAnular = null;
+      await hideModalThen(ui.anularModalEl, async () => {
+        await loadCargos();
+        await openCargoDetail(cargoId);
+      });
+    } catch (error) {
+      showAlert(friendlyError(error));
+    } finally {
+      setSubmitting(ui.anularSubmit, false);
+    }
   });
 }
 
 export async function initPagosView() {
-  await loadPacientes();
-  await loadPagos();
-  bindForm();
-  bindFilters();
-  bindTable();
-  bindPacienteChange();
-  renderResumenPaciente();
-}
+  bindFiltersAndPagination();
+  bindCargoCreation();
+  bindCargoActions();
+  bindPaymentForm();
 
+  try {
+    await Promise.all([loadPatients(), loadPrestations()]);
+  } catch (error) {
+    showAlert(`No se pudieron cargar los datos auxiliares: ${friendlyError(error)}`);
+  }
+  await loadCargos(1);
+}

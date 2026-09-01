@@ -33,7 +33,10 @@ async function request(path, options = {}) {
       clearToken();
       window.dispatchEvent(new Event('auth:logout'));
     }
-    throw new Error(data?.mensaje || `Error ${response.status}`);
+    const error = new Error(data?.mensaje || `Error ${response.status}`);
+    error.code = data?.codigo;
+    error.status = response.status;
+    throw error;
   }
 
   return data;
@@ -58,7 +61,10 @@ async function requestForm(path, formData, options = {}) {
       clearToken();
       window.dispatchEvent(new Event('auth:logout'));
     }
-    throw new Error(data?.mensaje || `Error ${response.status}`);
+    const error = new Error(data?.mensaje || `Error ${response.status}`);
+    error.code = data?.codigo;
+    error.status = response.status;
+    throw error;
   }
 
   return data;
@@ -255,6 +261,28 @@ export function getEstadisticas(params = {}) {
   return request(`/api/estadisticas${suffix}`);
 }
 
+export function getCargos(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.append(key, value);
+    }
+  });
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return request(`/api/cargos${suffix}`);
+}
+
+export function getCargoById(id) {
+  return request(`/api/cargos/${id}`);
+}
+
+export function createCargo(payload) {
+  return request('/api/cargos', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getPagos(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -273,15 +301,11 @@ export function createPago(payload) {
   });
 }
 
-export function updatePago(id, payload) {
-  return request(`/api/pagos/${id}`, {
-    method: 'PUT',
+export function anularPago(id, payload) {
+  return request(`/api/pagos/${id}/anular`, {
+    method: 'POST',
     body: JSON.stringify(payload),
   });
-}
-
-export function getResumenPagosPaciente(pacienteId) {
-  return request(`/api/pagos/resumen/${pacienteId}`);
 }
 
 export function getDocumentos(pacienteId) {
