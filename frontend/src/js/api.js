@@ -239,7 +239,7 @@ export function desactivarPrestacion(id) {
   return request(`/api/prestaciones/${id}/desactivar`, { method: 'PUT' });
 }
 
-export function getReporteAtencionFacturacion(params = {}) {
+export function getResumenClinicoFinanciero(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {
@@ -247,7 +247,7 @@ export function getReporteAtencionFacturacion(params = {}) {
     }
   });
   const suffix = query.toString() ? `?${query.toString()}` : '';
-  return request(`/api/reportes/atencion-facturacion${suffix}`);
+  return request(`/api/reportes/resumen${suffix}`);
 }
 
 export function getEstadisticas(params = {}) {

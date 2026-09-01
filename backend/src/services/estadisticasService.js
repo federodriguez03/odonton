@@ -40,20 +40,15 @@ async function estadisticasTurnosPorDia({ fechaDesde, fechaHasta }) {
       COUNT(*) FILTER (WHERE t.estado = 'realizado')::int AS total_realizados,
       COUNT(*) FILTER (WHERE t.estado = 'cancelado')::int AS total_cancelados,
       COUNT(*) FILTER (WHERE t.estado = 'reprogramado')::int AS total_reprogramados,
-      COUNT(*) FILTER (WHERE t.estado = 'confirmado')::int AS total_confirmados,
-      COALESCE(SUM(pr.precio_base) FILTER (WHERE t.estado = 'realizado'), 0) AS ingresos_estimados
+      COUNT(*) FILTER (WHERE t.estado = 'confirmado')::int AS total_confirmados
     FROM turnos t
-    LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
     WHERE t.fecha_hora_inicio >= $1 AND t.fecha_hora_inicio < $2
     GROUP BY dia
     ORDER BY dia ASC
   `;
 
   const { rows } = await pool.query(query, [fechaDesde, fechaHasta]);
-  return rows.map((row) => ({
-    ...row,
-    ingresos_estimados: Number(row.ingresos_estimados) || 0,
-  }));
+  return rows;
 }
 
 async function estadisticasTopPrestaciones({ fechaDesde, fechaHasta, limit = 10 }) {
@@ -61,8 +56,7 @@ async function estadisticasTopPrestaciones({ fechaDesde, fechaHasta, limit = 10 
     SELECT
       pr.id AS prestacion_id,
       pr.nombre AS prestacion_nombre,
-      COUNT(*)::int AS cantidad,
-      COALESCE(SUM(pr.precio_base) FILTER (WHERE t.estado = 'realizado'), 0) AS ingresos_estimados
+      COUNT(*)::int AS cantidad
     FROM turnos t
     JOIN prestaciones pr ON pr.id = t.prestacion_id
     WHERE t.fecha_hora_inicio >= $1 AND t.fecha_hora_inicio < $2
@@ -72,10 +66,7 @@ async function estadisticasTopPrestaciones({ fechaDesde, fechaHasta, limit = 10 
   `;
 
   const { rows } = await pool.query(query, [fechaDesde, fechaHasta, limit]);
-  return rows.map((row) => ({
-    ...row,
-    ingresos_estimados: Number(row.ingresos_estimados) || 0,
-  }));
+  return rows;
 }
 
 async function estadisticasPacientesNuevos({ fechaDesde, fechaHasta }) {
@@ -109,7 +100,6 @@ async function generarEstadisticas({ fechaDesde, fechaHasta }) {
       acc.total_cancelados += row.total_cancelados;
       acc.total_reprogramados += row.total_reprogramados;
       acc.total_confirmados += row.total_confirmados;
-      acc.ingresos_estimados += row.ingresos_estimados;
       return acc;
     },
     {
@@ -118,7 +108,6 @@ async function generarEstadisticas({ fechaDesde, fechaHasta }) {
       total_cancelados: 0,
       total_reprogramados: 0,
       total_confirmados: 0,
-      ingresos_estimados: 0,
     },
   );
 

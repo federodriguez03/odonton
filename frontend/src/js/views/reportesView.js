@@ -1,4 +1,4 @@
-import { getReporteAtencionFacturacion } from '../api.js';
+import { getResumenClinicoFinanciero } from '../api.js';
 import { renderAlert } from '../components/alerts.js';
 
 const ui = {
@@ -9,304 +9,268 @@ const ui = {
   incluirDetalle: document.getElementById('reportes-detalle'),
   exportCsv: document.getElementById('reportes-export-csv'),
   exportPdf: document.getElementById('reportes-export-pdf'),
-  resumenCards: document.getElementById('reportes-resumen'),
+  financieroCards: document.getElementById('reportes-resumen'),
+  clinicoCards: document.getElementById('reportes-clinico-resumen'),
+  metodosTable: document.getElementById('reportes-metodos-tbody'),
   prestacionTable: document.getElementById('reportes-prestaciones-tbody'),
   turnosWrap: document.getElementById('reportes-turnos-wrap'),
   turnosTable: document.getElementById('reportes-turnos-tbody'),
   rangoLabel: document.getElementById('reportes-rango'),
+  criterioLabel: document.getElementById('reportes-criterio'),
 };
 
 let lastReport = null;
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 function formatCurrency(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '$ 0.00';
-  return `$ ${num.toFixed(2)}`;
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(String(value ?? '0').trim());
+  if (!match) return '$ 0,00';
+  const integer = match[1].replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const decimals = String(match[2] || '').padEnd(2, '0');
+  return `$ ${integer},${decimals}`;
+}
+
+function formatDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value || ''));
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : '-';
 }
 
 function formatDateTime(value) {
   if (!value) return '-';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('es-AR');
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('es-AR');
 }
 
-function renderResumen(resumen) {
-  const items = [
-    { label: 'Total turnos', value: resumen.total_turnos ?? 0 },
-    { label: 'Realizados', value: resumen.total_realizados ?? 0 },
-    { label: 'Cancelados', value: resumen.total_cancelados ?? 0 },
-    { label: 'Reprogramados', value: resumen.total_reprogramados ?? 0 },
-    { label: 'Confirmados', value: resumen.total_confirmados ?? 0 },
-    { label: 'Ingresos estimados', value: formatCurrency(resumen.ingresos_estimados) },
-  ];
-
-  ui.resumenCards.innerHTML = items
-    .map(
-      (item) => `
-        <div class="report-card border rounded-3 p-3 bg-white">
-          <div class="text-secondary small">${item.label}</div>
-          <div class="fw-semibold">${item.value}</div>
-        </div>
-      `,
-    )
-    .join('');
+function renderCards(container, items) {
+  container.innerHTML = items.map((item) => `
+    <div class="report-card border rounded-3 p-3 bg-white">
+      <div class="text-secondary small">${escapeHtml(item.label)}</div>
+      <div class="fw-semibold fs-5">${escapeHtml(item.value)}</div>
+      ${item.help ? `<div class="small text-secondary mt-1">${escapeHtml(item.help)}</div>` : ''}
+    </div>
+  `).join('');
 }
 
-function renderPorPrestacion(rows = []) {
+function renderFinancial(financial = {}) {
+  renderCards(ui.financieroCards, [
+    { label: 'Ingresos reales', value: formatCurrency(financial.ingresos_reales), help: 'Pagos activos del período' },
+    { label: 'Total adeudado', value: formatCurrency(financial.total_adeudado), help: 'Saldo actual de cargos del período' },
+    { label: 'Cargos pendientes', value: financial.cargos_pendientes ?? 0 },
+    { label: 'Cargos parciales', value: financial.cargos_parciales ?? 0 },
+    { label: 'Cargos pagados', value: financial.cargos_pagados ?? 0 },
+    { label: 'Pagos anulados', value: financial.pagos_anulados ?? 0, help: 'Informativo; no suman ingresos' },
+  ]);
+
+  const methods = financial.ingresos_por_metodo || {};
+  ui.metodosTable.innerHTML = [
+    ['Efectivo', methods.efectivo],
+    ['Tarjeta', methods.tarjeta],
+    ['Transferencia', methods.transferencia],
+  ].map(([label, value]) => `<tr><td>${label}</td><td class="text-end">${formatCurrency(value)}</td></tr>`).join('');
+}
+
+function renderClinical(clinical = {}) {
+  const summary = clinical.resumen || {};
+  renderCards(ui.clinicoCards, [
+    { label: 'Total turnos', value: summary.total_turnos ?? 0 },
+    { label: 'Realizados', value: summary.total_realizados ?? 0 },
+    { label: 'Cancelados', value: summary.total_cancelados ?? 0 },
+    { label: 'Reprogramados', value: summary.total_reprogramados ?? 0 },
+    { label: 'Confirmados', value: summary.total_confirmados ?? 0 },
+  ]);
+}
+
+function renderPrestations(rows = []) {
   if (!rows.length) {
-    ui.prestacionTable.innerHTML =
-      '<tr><td colspan="3" class="text-center text-secondary">Sin datos para el rango</td></tr>';
+    ui.prestacionTable.innerHTML = '<tr><td colspan="2" class="text-center text-secondary">Sin prestaciones realizadas en el rango</td></tr>';
     return;
   }
-
-  ui.prestacionTable.innerHTML = rows
-    .map(
-      (row) => `
-        <tr>
-          <td>${row.prestacion_nombre}</td>
-          <td>${row.cantidad}</td>
-          <td>${formatCurrency(row.ingresos_estimados)}</td>
-        </tr>
-      `,
-    )
-    .join('');
+  ui.prestacionTable.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${escapeHtml(row.prestacion_nombre)}</td>
+      <td>${escapeHtml(row.cantidad)}</td>
+    </tr>
+  `).join('');
 }
 
-function renderTurnos(rows = []) {
+function renderTurns(rows = []) {
   if (!rows.length) {
-    ui.turnosTable.innerHTML =
-      '<tr><td colspan="6" class="text-center text-secondary">Sin turnos en el rango</td></tr>';
+    ui.turnosTable.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">Sin turnos en el rango</td></tr>';
     return;
   }
-
-  ui.turnosTable.innerHTML = rows
-    .map(
-      (row) => `
-        <tr>
-          <td>${formatDateTime(row.fecha_hora_inicio)}</td>
-          <td>${row.paciente_apellido || ''}, ${row.paciente_nombre || ''}</td>
-          <td>${row.paciente_dni || '-'}</td>
-          <td>${row.prestacion_nombre || '-'}</td>
-          <td><span class="badge text-bg-light border">${row.estado || '-'}</span></td>
-          <td>${formatCurrency(row.prestacion_precio_base)}</td>
-        </tr>
-      `,
-    )
-    .join('');
+  ui.turnosTable.innerHTML = rows.map((row) => `
+    <tr>
+      <td>${formatDateTime(row.fecha_hora_inicio)}</td>
+      <td>${escapeHtml(`${row.paciente_apellido || ''}, ${row.paciente_nombre || ''}`.replace(/^,\s*/, ''))}</td>
+      <td>${escapeHtml(row.paciente_dni || '-')}</td>
+      <td>${escapeHtml(row.prestacion_nombre || '-')}</td>
+      <td><span class="badge text-bg-light border">${escapeHtml(row.estado || '-')}</span></td>
+    </tr>
+  `).join('');
 }
 
-function renderRango(rango) {
-  if (!rango) {
-    ui.rangoLabel.textContent = '';
-    return;
-  }
-  const desde = new Date(rango.desde).toLocaleDateString('es-AR');
-  const hasta = new Date(rango.hasta).toLocaleDateString('es-AR');
-  ui.rangoLabel.textContent = `Rango: ${desde} - ${hasta}`;
+function renderRange(range) {
+  ui.rangoLabel.textContent = range ? `Período: ${formatDate(range.desde)} al ${formatDate(range.hasta)}` : '';
+  ui.criterioLabel.textContent = range
+    ? 'Ingresos por fecha de pago · Cargos y saldos por fecha de cargo · Fechas inclusivas'
+    : '';
+}
+
+function csvValue(value) {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
 }
 
 function buildCsv(report) {
-  const lines = [];
+  const financial = report.financiero || {};
+  const clinical = report.clinico || {};
+  const summary = clinical.resumen || {};
+  const methods = financial.ingresos_por_metodo || {};
+  const lines = [
+    'Resumen financiero',
+    `Ingresos reales,${financial.ingresos_reales || '0.00'}`,
+    `Total adeudado,${financial.total_adeudado || '0.00'}`,
+    `Cargos pendientes,${financial.cargos_pendientes ?? 0}`,
+    `Cargos parciales,${financial.cargos_parciales ?? 0}`,
+    `Cargos pagados,${financial.cargos_pagados ?? 0}`,
+    `Pagos anulados informativos,${financial.pagos_anulados ?? 0}`,
+    '',
+    'Ingresos reales por método',
+    `Efectivo,${methods.efectivo || '0.00'}`,
+    `Tarjeta,${methods.tarjeta || '0.00'}`,
+    `Transferencia,${methods.transferencia || '0.00'}`,
+    '',
+    'Resumen clínico',
+    `Total turnos,${summary.total_turnos ?? 0}`,
+    `Realizados,${summary.total_realizados ?? 0}`,
+    `Cancelados,${summary.total_cancelados ?? 0}`,
+    `Reprogramados,${summary.total_reprogramados ?? 0}`,
+    `Confirmados,${summary.total_confirmados ?? 0}`,
+    '',
+    'Prestaciones realizadas',
+    'Prestación,Cantidad',
+  ];
 
-  lines.push('Resumen');
-  const resumen = report.resumen || {};
-  lines.push('Total turnos,' + (resumen.total_turnos ?? 0));
-  lines.push('Realizados,' + (resumen.total_realizados ?? 0));
-  lines.push('Cancelados,' + (resumen.total_cancelados ?? 0));
-  lines.push('Reprogramados,' + (resumen.total_reprogramados ?? 0));
-  lines.push('Confirmados,' + (resumen.total_confirmados ?? 0));
-  lines.push('Ingresos estimados,' + (resumen.ingresos_estimados ?? 0));
-  lines.push('');
-
-  lines.push('Resumen por prestacion');
-  lines.push('Prestacion,Cantidad,Ingresos estimados');
-  (report.por_prestacion || []).forEach((row) => {
-    lines.push(`"${row.prestacion_nombre}",${row.cantidad},${row.ingresos_estimados}`);
+  (clinical.prestaciones_realizadas || []).forEach((row) => {
+    lines.push(`${csvValue(row.prestacion_nombre)},${row.cantidad}`);
   });
-  lines.push('');
 
-  if (Array.isArray(report.turnos)) {
-    lines.push('Detalle de turnos');
-    lines.push('Fecha,Paciente,DNI,Prestacion,Estado,Precio base');
-    report.turnos.forEach((row) => {
-      const paciente = `${row.paciente_apellido || ''}, ${row.paciente_nombre || ''}`.trim();
-      lines.push(
-        `"${formatDateTime(row.fecha_hora_inicio)}","${paciente}","${row.paciente_dni || ''}","${row.prestacion_nombre || ''}","${row.estado || ''}",${row.prestacion_precio_base || ''}`,
-      );
+  if (Array.isArray(clinical.turnos)) {
+    lines.push('', 'Detalle clínico', 'Fecha,Paciente,DNI,Prestación,Estado');
+    clinical.turnos.forEach((row) => {
+      const patient = `${row.paciente_apellido || ''}, ${row.paciente_nombre || ''}`.trim();
+      lines.push([
+        csvValue(formatDateTime(row.fecha_hora_inicio)),
+        csvValue(patient),
+        csvValue(row.paciente_dni),
+        csvValue(row.prestacion_nombre),
+        csvValue(row.estado),
+      ].join(','));
     });
   }
-
   return lines.join('\n');
 }
 
 function downloadCsv(report) {
-  const csv = buildCsv(report);
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([buildCsv(report)], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'reporte_atencion_facturacion.csv';
-  a.click();
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'resumen_clinico_financiero.csv';
+  link.click();
   URL.revokeObjectURL(url);
 }
 
-function printPdf(report) {
-  const rango = report.rango || {};
-  const resumen = report.resumen || {};
-  const porPrestacion = report.por_prestacion || [];
-  const turnos = report.turnos || [];
-
-  const resumenRows = [
-    ['Total turnos', resumen.total_turnos ?? 0],
-    ['Realizados', resumen.total_realizados ?? 0],
-    ['Cancelados', resumen.total_cancelados ?? 0],
-    ['Reprogramados', resumen.total_reprogramados ?? 0],
-    ['Confirmados', resumen.total_confirmados ?? 0],
-    ['Ingresos estimados', formatCurrency(resumen.ingresos_estimados)],
+function printReport(report) {
+  const financial = report.financiero || {};
+  const clinical = report.clinico || {};
+  const summary = clinical.resumen || {};
+  const methods = financial.ingresos_por_metodo || {};
+  const rows = [
+    ['Ingresos reales', formatCurrency(financial.ingresos_reales)],
+    ['Total adeudado', formatCurrency(financial.total_adeudado)],
+    ['Cargos pendientes', financial.cargos_pendientes ?? 0],
+    ['Cargos parciales', financial.cargos_parciales ?? 0],
+    ['Cargos pagados', financial.cargos_pagados ?? 0],
+    ['Efectivo', formatCurrency(methods.efectivo)],
+    ['Tarjeta', formatCurrency(methods.tarjeta)],
+    ['Transferencia', formatCurrency(methods.transferencia)],
   ];
-
-  const resumenHtml = resumenRows
-    .map((row) => `<tr><td>${row[0]}</td><td>${row[1]}</td></tr>`)
-    .join('');
-
-  const prestacionHtml = porPrestacion.length
-    ? porPrestacion
-        .map(
-          (row) => `
-          <tr>
-            <td>${row.prestacion_nombre}</td>
-            <td>${row.cantidad}</td>
-            <td>${formatCurrency(row.ingresos_estimados)}</td>
-          </tr>
-        `,
-        )
-        .join('')
-    : '<tr><td colspan="3">Sin datos</td></tr>';
-
-  const turnosHtml = turnos.length
-    ? turnos
-        .map(
-          (row) => `
-          <tr>
-            <td>${formatDateTime(row.fecha_hora_inicio)}</td>
-            <td>${row.paciente_apellido || ''}, ${row.paciente_nombre || ''}</td>
-            <td>${row.paciente_dni || '-'}</td>
-            <td>${row.prestacion_nombre || '-'}</td>
-            <td>${row.estado || '-'}</td>
-            <td>${formatCurrency(row.prestacion_precio_base)}</td>
-          </tr>
-        `,
-        )
-        .join('')
-    : '';
-
-  const html = `<!doctype html>
-  <html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Reporte atencion y facturacion</title>
-    <style>
-      body { font-family: Arial, sans-serif; color: #0f172a; margin: 24px; }
-      h1, h2 { margin: 0 0 12px 0; }
-      table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-      th, td { border: 1px solid #e2e8f0; padding: 6px 8px; font-size: 12px; }
-      th { background: #f8fafc; text-align: left; }
-      .meta { color: #475569; font-size: 12px; margin-bottom: 16px; }
-    </style>
-  </head>
-  <body>
-    <h1>Reporte de atencion y facturacion</h1>
-    <div class="meta">Rango: ${new Date(rango.desde).toLocaleDateString('es-AR')} - ${new Date(rango.hasta).toLocaleDateString('es-AR')}</div>
-
-    <h2>Resumen</h2>
-    <table>
-      <tbody>${resumenHtml}</tbody>
-    </table>
-
-    <h2>Resumen por prestacion</h2>
-    <table>
-      <thead><tr><th>Prestacion</th><th>Cantidad</th><th>Ingresos estimados</th></tr></thead>
-      <tbody>${prestacionHtml}</tbody>
-    </table>
-
-    ${turnos.length ? `
-      <h2>Detalle de turnos</h2>
-      <table>
-        <thead><tr><th>Fecha</th><th>Paciente</th><th>DNI</th><th>Prestacion</th><th>Estado</th><th>Precio base</th></tr></thead>
-        <tbody>${turnosHtml}</tbody>
-      </table>
-    ` : ''}
-  </body>
-  </html>`;
-
-  const win = window.open('', '_blank', 'width=1200,height=900');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  win.print();
+  const clinicalRows = [
+    ['Total turnos', summary.total_turnos ?? 0],
+    ['Realizados', summary.total_realizados ?? 0],
+    ['Cancelados', summary.total_cancelados ?? 0],
+    ['Reprogramados', summary.total_reprogramados ?? 0],
+    ['Confirmados', summary.total_confirmados ?? 0],
+  ];
+  const tableRows = (values) => values.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join('');
+  const reportWindow = window.open('', '_blank', 'width=900,height=800');
+  if (!reportWindow) return;
+  reportWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Resumen clínico y financiero</title><style>body{font-family:Arial,sans-serif;color:#172033;margin:28px}h1{margin-bottom:4px}h2{margin-top:24px}p{color:#526173}table{width:100%;border-collapse:collapse}td{border:1px solid #dbe3eb;padding:8px}td:first-child{font-weight:600}</style></head><body><h1>Resumen clínico y financiero</h1><p>${escapeHtml(ui.rangoLabel.textContent)} · Ingresos por fecha de pago; cargos por fecha de cargo.</p><h2>Resumen financiero</h2><table>${tableRows(rows)}</table><h2>Reporte clínico</h2><table>${tableRows(clinicalRows)}</table></body></html>`);
+  reportWindow.document.close();
+  reportWindow.focus();
+  reportWindow.print();
 }
 
-async function generarReporte() {
-  const desde = ui.fechaDesde.value;
-  const hasta = ui.fechaHasta.value;
-  const resumenOnly = !ui.incluirDetalle.checked;
-
-  if (!desde || !hasta) {
-    renderAlert(ui.alertContainer, 'Seleccione fecha desde y hasta.', 'warning');
+async function generateReport() {
+  const from = ui.fechaDesde.value;
+  const to = ui.fechaHasta.value;
+  if (!from || !to) {
+    renderAlert(ui.alertContainer, 'Seleccioná fecha desde y hasta.', 'warning');
+    return;
+  }
+  if (from > to) {
+    renderAlert(ui.alertContainer, 'La fecha desde no puede ser posterior a la fecha hasta.', 'warning');
     return;
   }
 
   try {
-    const data = await getReporteAtencionFacturacion({
-      fecha_desde: desde,
-      fecha_hasta: hasta,
-      resumen: resumenOnly ? 'true' : 'false',
+    const data = await getResumenClinicoFinanciero({
+      fecha_desde: from,
+      fecha_hasta: to,
+      resumen: ui.incluirDetalle.checked ? 'false' : 'true',
     });
-
     lastReport = data;
-    renderRango(data.rango);
-    renderResumen(data.resumen || {});
-    renderPorPrestacion(data.por_prestacion || []);
-
-    if (resumenOnly) {
-      ui.turnosWrap.classList.add('d-none');
-    } else {
-      ui.turnosWrap.classList.remove('d-none');
-      renderTurnos(data.turnos || []);
-    }
+    renderRange(data.rango);
+    renderFinancial(data.financiero);
+    renderClinical(data.clinico);
+    renderPrestations(data.clinico?.prestaciones_realizadas || []);
+    const turns = data.clinico?.turnos;
+    ui.turnosWrap.classList.toggle('d-none', !Array.isArray(turns));
+    if (Array.isArray(turns)) renderTurns(turns);
   } catch (error) {
     renderAlert(ui.alertContainer, error.message, 'danger');
   }
 }
 
-function bindForm() {
-  ui.form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    await generarReporte();
-  });
-}
-
-function bindExport() {
-  ui.exportCsv?.addEventListener('click', () => {
-    if (!lastReport) {
-      renderAlert(ui.alertContainer, 'Primero generá un reporte.', 'warning');
-      return;
-    }
-    downloadCsv(lastReport);
-  });
-
-  ui.exportPdf?.addEventListener('click', () => {
-    if (!lastReport) {
-      renderAlert(ui.alertContainer, 'Primero generá un reporte.', 'warning');
-      return;
-    }
-    printPdf(lastReport);
-  });
+function setDefaultRange() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  ui.fechaDesde.value = `${year}-${month}-01`;
+  ui.fechaHasta.value = `${year}-${month}-${day}`;
 }
 
 export async function initReportesView() {
-  bindForm();
-  bindExport();
+  setDefaultRange();
+  ui.form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await generateReport();
+  });
+  ui.exportCsv.addEventListener('click', () => {
+    if (lastReport) downloadCsv(lastReport);
+    else renderAlert(ui.alertContainer, 'Primero generá un reporte.', 'warning');
+  });
+  ui.exportPdf.addEventListener('click', () => {
+    if (lastReport) printReport(lastReport);
+    else renderAlert(ui.alertContainer, 'Primero generá un reporte.', 'warning');
+  });
 }

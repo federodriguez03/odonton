@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { reporteAtencionFacturacion } = require('../controllers/reportesController');
+const { obtenerResumenClinicoFinanciero } = require('../controllers/reportesController');
 const {
   middlewareAutenticacion,
   autorizarOdontologo,
@@ -9,15 +9,15 @@ const {
 } = require('../middlewares/turnosMiddleware');
 
 router.get(
-  '/atencion-facturacion',
+  '/resumen',
   middlewareAutenticacion,
   autorizarOdontologo,
   middlewareAuditoria,
   (req, res, next) => {
-    req.auditAction = 'reporte_atencion_facturacion';
+    req.auditAction = 'ver_reporte_clinico_financiero';
     next();
   },
-  reporteAtencionFacturacion,
+  obtenerResumenClinicoFinanciero,
 );
 
 module.exports = router;

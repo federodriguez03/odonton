@@ -15,12 +15,6 @@ const ui = {
   topPrestacionesBody: document.getElementById('estadisticas-prestaciones-tbody'),
 };
 
-function formatCurrency(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '$ 0.00';
-  return `$ ${num.toFixed(2)}`;
-}
-
 function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
@@ -34,7 +28,6 @@ function renderResumen(resumen = {}) {
     { label: 'Cancelados', value: resumen.total_cancelados ?? 0 },
     { label: 'Reprogramados', value: resumen.total_reprogramados ?? 0 },
     { label: 'Confirmados', value: resumen.total_confirmados ?? 0 },
-    { label: 'Ingresos estimados', value: formatCurrency(resumen.ingresos_estimados) },
   ];
 
   ui.resumenCards.innerHTML = items
@@ -154,7 +147,7 @@ function renderPacientesChart(rows = []) {
 function renderTopPrestaciones(rows = []) {
   if (!rows.length) {
     ui.topPrestacionesBody.innerHTML =
-      '<tr><td colspan="3" class="text-center text-secondary">Sin datos</td></tr>';
+      '<tr><td colspan="2" class="text-center text-secondary">Sin datos</td></tr>';
     return;
   }
 
@@ -164,7 +157,6 @@ function renderTopPrestaciones(rows = []) {
         <tr>
           <td>${row.prestacion_nombre}</td>
           <td>${row.cantidad}</td>
-          <td>${formatCurrency(row.ingresos_estimados)}</td>
         </tr>
       `,
     )

@@ -2,6 +2,7 @@ import { initPacientesView } from './views/pacientesView.js';
 import { initTurnosView } from './views/turnosView.js';
 import { initPrestacionesView } from './views/prestacionesView.js';
 import { initPagosView } from './views/pagosView.js';
+import { initReportesView } from './views/reportesView.js';
 import { initConfiguracionView } from './views/configuracionView.js';
 import { loadDashboard } from '../pages/dashboard.js';
 import { clearToken, getMe, getToken, login, setToken } from './api.js';
@@ -93,6 +94,7 @@ async function initAppOnce() {
   await initTurnosView();
   await initPrestacionesView();
   await initPagosView();
+  await initReportesView();
   await initConfiguracionView();
   appInitialized = true;
 }

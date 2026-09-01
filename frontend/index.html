@@ -93,6 +93,11 @@
               <i class="bi bi-credit-card-2-front-fill"></i> Cargos y pagos
             </button>
           </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="reportes-tab" data-section="reportes" type="button">
+              <i class="bi bi-bar-chart-fill"></i> Reportes
+            </button>
+          </li>
             <li class="nav-item" role="presentation">
               <button class="nav-link" id="configuracion-tab" data-section="configuracion" type="button">
                 <i class="bi bi-gear-fill"></i> Configuracion
@@ -193,8 +198,8 @@
             <div class="card border-0 shadow-sm">
               <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                  <h3 class="h6 mb-0">Ingresos por mes</h3>
-                  <span class="text-secondary small">Basado en turnos realizados</span>
+                  <h3 class="h6 mb-0">Ingresos reales por método</h3>
+                  <span class="text-secondary small">Mes actual · pagos activos</span>
                 </div>
                 <canvas id="chart-ingresos" height="120"></canvas>
               </div>
@@ -420,8 +425,9 @@
           <div class="card-body">
             <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
               <div>
-                <h2 class="h5 mb-1">Reportes de atencion y facturacion</h2>
+                <h2 class="h5 mb-1">Resumen clínico y financiero</h2>
                 <small id="reportes-rango" class="text-secondary"></small>
+                <div id="reportes-criterio" class="small text-secondary"></div>
               </div>
             </div>
 
@@ -454,18 +460,35 @@
               </button>
             </div>
 
+            <h3 class="h6 mt-4">Resumen financiero</h3>
+            <p class="small text-secondary">Ingresos efectivamente cobrados y estado actual de los cargos del período.</p>
             <div id="reportes-resumen" class="report-cards"></div>
+
+            <div class="row g-4 mt-1">
+              <div class="col-12 col-lg-6">
+                <h3 class="h6">Ingresos reales por método de pago</h3>
+                <div class="table-responsive">
+                  <table class="table align-middle">
+                    <thead><tr><th>Método</th><th class="text-end">Importe</th></tr></thead>
+                    <tbody id="reportes-metodos-tbody"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
 
             <hr class="my-4" />
 
-            <h3 class="h6">Resumen por prestacion</h3>
+            <h3 class="h6">Reporte clínico</h3>
+            <p class="small text-secondary">Actividad de turnos y prestaciones, separada de los importes cobrados.</p>
+            <div id="reportes-clinico-resumen" class="report-cards mb-4"></div>
+
+            <h3 class="h6">Prestaciones realizadas</h3>
             <div class="table-responsive mb-4">
               <table class="table align-middle">
                 <thead>
                   <tr>
-                    <th>Prestacion</th>
+                    <th>Prestación</th>
                     <th>Cantidad</th>
-                    <th>Ingresos estimados</th>
                   </tr>
                 </thead>
                 <tbody id="reportes-prestaciones-tbody"></tbody>
@@ -473,7 +496,7 @@
             </div>
 
             <div id="reportes-turnos-wrap" class="d-none">
-              <h3 class="h6">Detalle de turnos</h3>
+              <h3 class="h6">Detalle clínico de turnos</h3>
               <div class="table-responsive">
                 <table class="table align-middle">
                   <thead>
@@ -481,9 +504,8 @@
                       <th>Fecha</th>
                       <th>Paciente</th>
                       <th>DNI</th>
-                      <th>Prestacion</th>
+                      <th>Prestación</th>
                       <th>Estado</th>
-                      <th>Precio base</th>
                     </tr>
                   </thead>
                   <tbody id="reportes-turnos-tbody"></tbody>
@@ -541,7 +563,6 @@
                       <tr>
                         <th>Prestacion</th>
                         <th>Cantidad</th>
-                        <th>Ingresos estimados</th>
                       </tr>
                     </thead>
                     <tbody id="estadisticas-prestaciones-tbody"></tbody>

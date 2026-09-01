@@ -1,11 +1,11 @@
 const reportesService = require('../services/reportesService');
 
-async function reporteAtencionFacturacion(req, res) {
+async function obtenerResumenClinicoFinanciero(req, res) {
   try {
     const { fecha_desde: fechaDesde, fecha_hasta: fechaHasta } = req.query;
     const resumenOnly = String(req.query?.resumen || '').toLowerCase() === 'true';
 
-    const reporte = await reportesService.generarReporteAtencionFacturacion({
+    const reporte = await reportesService.generarReporteClinicoFinanciero({
       fechaDesde,
       fechaHasta,
       incluirDetalle: !resumenOnly,
@@ -13,10 +13,13 @@ async function reporteAtencionFacturacion(req, res) {
 
     return res.status(200).json(reporte);
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al generar reporte' });
+    const entradaInvalida = ['RANGO_REQUERIDO', 'RANGO_INVALIDO'].includes(error?.code);
+    return res.status(entradaInvalida ? 400 : 500).json({
+      mensaje: entradaInvalida ? error.message : 'Error interno al generar el reporte',
+    });
   }
 }
 
 module.exports = {
-  reporteAtencionFacturacion,
+  obtenerResumenClinicoFinanciero,
 };

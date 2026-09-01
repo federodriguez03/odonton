@@ -1,6 +1,7 @@
 import {
   getEstadisticas,
   getPacientes,
+  getResumenClinicoFinanciero,
   getTratamientos,
   getTurnos,
 } from '../js/api.js';
@@ -16,9 +17,11 @@ const ui = {
 };
 
 function formatCurrency(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return '$ 0.00';
-  return `$ ${num.toFixed(2)}`;
+  const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(String(value ?? '0').trim());
+  if (!match) return '$ 0,00';
+  const integer = match[1].replace(/^0+(?=\d)/, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const decimals = String(match[2] || '').padEnd(2, '0');
+  return `$ ${integer},${decimals}`;
 }
 
 function startOfMonth(date) {
@@ -46,7 +49,6 @@ function buildMonthBuckets(monthsBack = 6) {
       key,
       label: d.toLocaleDateString('es-AR', { month: 'short' }),
       turnos: 0,
-      ingresos: 0,
     });
   }
   return buckets;
@@ -63,7 +65,6 @@ function aggregateByMonth(rows = []) {
     const bucket = map.get(key);
     if (!bucket) return;
     bucket.turnos += Number(row.total_turnos) || 0;
-    bucket.ingresos += Number(row.ingresos_estimados) || 0;
   });
 
   return buckets;
@@ -77,14 +78,19 @@ let chartAtenciones = null;
 let chartIngresos = null;
 let chartTratamientos = null;
 
-function renderCharts({ turnosPorDia = [], topPrestaciones = [] }) {
+function renderCharts({ turnosPorDia = [], topPrestaciones = [], ingresosPorMetodo = {} }) {
   if (typeof window.Chart !== 'function') return;
 
   const buckets = aggregateByMonth(turnosPorDia);
 
   const labels = buckets.map((b) => b.label);
   const dataTurnos = buckets.map((b) => b.turnos);
-  const dataIngresos = buckets.map((b) => b.ingresos);
+  const metodosLabels = ['Efectivo', 'Tarjeta', 'Transferencia'];
+  const dataIngresos = [
+    ingresosPorMetodo.efectivo,
+    ingresosPorMetodo.tarjeta,
+    ingresosPorMetodo.transferencia,
+  ].map((value) => Number(value) || 0);
 
   destroyChart(chartAtenciones);
   destroyChart(chartIngresos);
@@ -118,7 +124,7 @@ function renderCharts({ turnosPorDia = [], topPrestaciones = [] }) {
     chartIngresos = new window.Chart(ui.chartIngresos, {
       type: 'bar',
       data: {
-        labels,
+        labels: metodosLabels,
         datasets: [
           {
             label: 'Ingresos',
@@ -160,8 +166,9 @@ export async function loadDashboard() {
   const hastaMes = formatDateForApi(endOfMonth(now));
   const today = formatDateForApi(now);
 
-  const [statsResult, pacientesResult, turnosResult, tratamientosResult] = await Promise.allSettled([
+  const [statsResult, financialResult, pacientesResult, turnosResult, tratamientosResult] = await Promise.allSettled([
     getEstadisticas({ fecha_desde: desdeMes, fecha_hasta: hastaMes }),
+    getResumenClinicoFinanciero({ fecha_desde: desdeMes, fecha_hasta: hastaMes, resumen: 'true' }),
     getPacientes({ limit: 1, page: 1 }),
     getTurnos({ limit: 1, page: 1, fecha_desde: today, fecha_hasta: today }),
     getTratamientos({ desde: desdeMes, hasta: hastaMes }),
@@ -169,12 +176,18 @@ export async function loadDashboard() {
 
   if (statsResult.status === 'fulfilled') {
     const stats = statsResult.value;
-    ui.ingresos.textContent = formatCurrency(stats.resumen?.ingresos_estimados);
     ui.tratamientos.textContent = stats.resumen?.total_realizados ?? '-';
     renderCharts({
       turnosPorDia: stats.turnos_por_dia || [],
       topPrestaciones: stats.top_prestaciones || [],
+      ingresosPorMetodo: financialResult.status === 'fulfilled'
+        ? financialResult.value.financiero?.ingresos_por_metodo
+        : {},
     });
+  }
+
+  if (financialResult.status === 'fulfilled') {
+    ui.ingresos.textContent = formatCurrency(financialResult.value.financiero?.ingresos_reales);
   }
 
   if (pacientesResult.status === 'fulfilled') {
@@ -194,7 +207,7 @@ export async function loadDashboard() {
     }
   }
 
-  const failures = [statsResult, pacientesResult, turnosResult, tratamientosResult]
+  const failures = [statsResult, financialResult, pacientesResult, turnosResult, tratamientosResult]
     .filter((result) => result.status === 'rejected');
   if (failures.length) {
     console.warn(`[DASHBOARD] No se pudieron cargar ${failures.length} indicadores.`);
