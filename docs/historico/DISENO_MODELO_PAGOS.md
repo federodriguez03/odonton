@@ -1,7 +1,7 @@
 # Diseño definitivo del modelo de Pagos / Cobros internos
 
 Fecha de diseño: 2026-08-25  
-Referencia: `DIAGNOSTICO_PAGOS_FACTURACION.md`  
+Referencia vigente: `CIERRE_PAGOS_COBROS.md`
 Alcance de esta fase: análisis y diseño. No se modificó código ni PostgreSQL.
 
 ## ALCANCE

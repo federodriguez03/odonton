@@ -58,8 +58,8 @@ La búsqueda en `backend/src` y `frontend/src` no encontró consumidores ejecuta
 Referencias históricas o documentales conservadas:
 
 - `database/2026-05-05_recordatorios_whatsapp.sql`
-- `database/DIAGNOSTICO_BD.md`
-- `REVISION_LEGACY.md`
+- `database/schema_actual.sql`
+- `database/2026-08-12_remove_legacy_autogestion_tokens.sql`
 
 ### Conclusión
 
@@ -100,8 +100,8 @@ La búsqueda en `backend/src` y `frontend/src` no encontró consumidores ejecuta
 
 Referencias históricas o documentales conservadas:
 
-- `database/DIAGNOSTICO_BD.md`
-- `REVISION_LEGACY.md`
+- `database/schema_actual.sql`
+- `database/2026-08-12_remove_legacy_autogestion_tokens.sql`
 
 ### Conclusión
 

@@ -178,6 +178,7 @@ async function asegurarColumnasRecordatorioTurnos() {
 async function existeSolapamiento(fechaInicio, fechaFin, turnoId = null, profesionalId = null) {
   await asegurarColumnasProfesionalTurnos();
 
+  // Solo los estados con horario definitivo bloquean espacio en la agenda profesional.
   const whereProfesional = profesionalId ? 'AND profesional_id = $3' : '';
   const whereTurno = turnoId ? `AND id <> $${profesionalId ? 4 : 3}` : '';
   const query = `

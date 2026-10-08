@@ -13,6 +13,10 @@ build/
 **/.env
 .env.local
 **/.env.local
+.env.*
+**/.env.*
+!.env.example
+!**/.env.example
 *.local
 
 # Logs and temporary files
@@ -22,6 +26,8 @@ tmp/
 temp/
 cache/
 *.tmp
+*.backup
+*.dump
 
 # WhatsApp Web local sessions/cache
 .wwebjs_auth/

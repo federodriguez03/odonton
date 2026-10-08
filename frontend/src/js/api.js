@@ -44,6 +44,7 @@ async function request(path, options = {}) {
 
 async function requestForm(path, formData, options = {}) {
   const token = getToken();
+  // No se fija Content-Type: el navegador debe generar el boundary del FormData.
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     body: formData,

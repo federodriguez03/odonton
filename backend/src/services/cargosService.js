@@ -259,6 +259,7 @@ async function crearCargo({
       );
     }
 
+    // Conserva concepto e importe como valores históricos aunque cambie la prestación.
     const snapshot = crearSnapshotCargo({
       concepto: conceptoNormalizado || prestacion?.nombre,
       importeTotal: centavosAImporteDecimal(importeTotalCentavos),

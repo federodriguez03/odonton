@@ -12,9 +12,9 @@ Evidencia consolidada por fase:
 
 - **4A — Diseño:** `DISENO_MODELO_PAGOS.md` y commit `590efe3`.
 - **4B — Dominio y contratos:** `CONTRATOS_PAGOS.md` y commit `e8f5e52`.
-- **4C — Migración, backend y pruebas reales:** `REVISION_MIGRACION_CARGOS_PAGOS.md`, `REVISION_BACKEND_CARGOS_PAGOS.md`, `REVISION_PRUEBAS_REALES_CARGOS_PAGOS.md` y commits `d4d8edd`, `9c1c47e`, `1dc06d5`, `6aef5cd`.
-- **4D — Frontend:** `REVISION_FRONTEND_CARGOS_PAGOS.md` y commit `a9972ef`.
-- **4E — Constancia y reportes:** `REVISION_CONSTANCIA_PAGO.md`, `REVISION_REPORTES_FINANCIEROS.md` y commits `4d5076b`, `681770c`.
+- **4C — Migración, backend y pruebas reales:** `REVISION_MIGRACION_CARGOS_PAGOS.md`, este cierre y commits `d4d8edd`, `9c1c47e`, `1dc06d5`, `6aef5cd`.
+- **4D — Frontend:** implementación consolidada en este cierre y commit `a9972ef`.
+- **4E — Constancia y reportes:** implementación consolidada en este cierre y commits `4d5076b`, `681770c`.
 
 El repositorio estaba limpio al iniciar 4F. La rama local estaba 32 commits por delante de `origin/main`.
 
@@ -73,7 +73,7 @@ Las pruebas de Pagos/Reportes son aisladas y no utilizaron PostgreSQL ni WhatsAp
 
 ## PRUEBAS REALES
 
-`REVISION_PRUEBAS_REALES_CARGOS_PAGOS.md` documenta la ejecución aprobada contra PostgreSQL de:
+La ejecución aprobada contra PostgreSQL incluyó:
 
 - cargo pendiente;
 - pago parcial;
