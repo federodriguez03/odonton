@@ -3,6 +3,7 @@
  */
 require('dotenv').config();
 
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const { verificarConexion } = require('./config/db');
@@ -31,6 +32,10 @@ const configuracionRoutes = require('./routes/configuracionRoutes');
 const whatsappRoutes = require('./routes/whatsapp.routes');
 const { initializeWhatsAppClient } = require('./services/whatsappClient.service');
 
+// =========================
+// RUTAS API
+// =========================
+
 app.use('/api/turnos', turnosRoutes);
 app.use('/api/pacientes', pacientesRoutes);
 app.use('/api/prestaciones', prestacionesRoutes);
@@ -47,17 +52,49 @@ app.use('/api/pagos', pagosRoutes);
 app.use('/api/configuracion', configuracionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 
+// =========================
+// HEALTH CHECK
+// =========================
+
 app.get('/health', (req, res) => {
-  res.status(200).json({ estado: 'OK', timestamp: new Date().toISOString() });
+  res.status(200).json({
+    estado: 'OK',
+    timestamp: new Date().toISOString(),
+  });
 });
+
+// =========================
+// FRONTEND DE PRODUCCION
+// =========================
+
+const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
+
+app.use(express.static(frontendDistPath));
+
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || req.path.startsWith('/api/')) {
+    return next();
+  }
+
+  res.sendFile(path.join(frontendDistPath, 'index.html'));
+});
+
+// =========================
+// MANEJO GLOBAL DE ERRORES
+// =========================
 
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err);
+
   res.status(err.status || 500).json({
     mensaje: err.message || 'Error interno del servidor',
     ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
   });
 });
+
+// =========================
+// INICIALIZACION
+// =========================
 
 async function inicializar() {
   try {
@@ -72,9 +109,13 @@ async function inicializar() {
     if (process.env.WHATSAPP_AUTO_START === 'true') {
       initializeWhatsAppClient();
     } else {
-      console.log('[WHATSAPP WEB] Inicio automatico desactivado. Inicia WhatsApp desde Configuracion.');
+      console.log(
+        '[WHATSAPP WEB] Inicio automatico desactivado. Inicia WhatsApp desde Configuracion.'
+      );
     }
+
     startReminderScheduler();
+
     console.log('[INICIO] Aplicacion lista para recibir solicitudes\n');
   } catch (err) {
     console.error('[FATAL] Error durante inicializacion:', err);
@@ -82,4 +123,7 @@ async function inicializar() {
   }
 }
 
-module.exports = { app, inicializar };
+module.exports = {
+  app,
+  inicializar,
+};
