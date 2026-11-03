@@ -30,6 +30,8 @@ cache/
 *.dump
 
 # WhatsApp Web local sessions/cache
+.cache/puppeteer/
+**/.cache/puppeteer/
 .wwebjs_auth/
 **/.wwebjs_auth/
 .wwebjs_cache/

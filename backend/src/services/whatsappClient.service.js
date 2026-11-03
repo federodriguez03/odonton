@@ -2,6 +2,12 @@ const qrcode = require('qrcode-terminal');
 const fs = require('fs/promises');
 const path = require('path');
 const { execFile } = require('child_process');
+
+// El build y el runtime deben resolver el mismo Chrome, incluso si Render
+// inicia el proceso desde la raiz del repositorio.
+process.env.PUPPETEER_CACHE_DIR = process.env.PUPPETEER_CACHE_DIR
+  || path.resolve(__dirname, '..', '..', '.cache', 'puppeteer');
+
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { normalizePhoneToChatId } = require('../utils/whatsappPhone');
 
