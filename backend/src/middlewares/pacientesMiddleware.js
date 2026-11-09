@@ -1,17 +1,13 @@
 /**
  * Middleware de validación para crear/actualizar paciente
  */
+const { normalizarYValidarPaciente } = require('../domain/pacienteValidation');
+
 function validarEntradaPaciente(req, res, next) {
 	try {
-		const body = req.body || {};
 		const isPost = req.method === 'POST';
-
-		if (isPost) {
-			const { nombre, apellido, dni } = body;
-			if (!nombre || !apellido || !dni) {
-				return res.status(400).json({ mensaje: 'Faltan campos obligatorios: nombre, apellido, dni' });
-			}
-		} else {
+		const body = req.body || {};
+		if (!isPost) {
 			// PUT: debe haber al menos un campo actualizable
 			const allowed = [
 				'nombre',
@@ -33,24 +29,10 @@ function validarEntradaPaciente(req, res, next) {
 			}
 		}
 
-		// Validaciones simples de formato
-		if (body.dni) {
-			const dniStr = String(body.dni);
-			const dniRegex = /^[0-9]{7,10}$/; // ajustar según reglas locales
-			if (!dniRegex.test(dniStr)) {
-				return res.status(400).json({ mensaje: 'Formato de DNI inválido' });
-			}
-		}
-
-		if (body.email) {
-			const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-			if (!emailRegex.test(body.email)) {
-				return res.status(400).json({ mensaje: 'Formato de email inválido' });
-			}
-		}
-
+		req.body = normalizarYValidarPaciente(req.body, { parcial: !isPost });
 		return next();
 	} catch (err) {
+		if (err.errores) return res.status(400).json({ mensaje: err.message, errores: err.errores });
 		return next(err);
 	}
 }
@@ -62,14 +44,14 @@ function validarConsultaPacientes(req, res, next) {
 		if (page !== undefined) {
 			const n = Number.parseInt(page, 10);
 			if (Number.isNaN(n) || n < 1) {
-				return res.status(400).json({ mensaje: 'Parametro page invalido. Debe ser un numero >= 1' });
+				return res.status(400).json({ mensaje: 'Parámetro page inválido. Debe ser un número >= 1' });
 			}
 		}
 
 		if (limit !== undefined) {
 			const n = Number.parseInt(limit, 10);
 			if (Number.isNaN(n) || n < 1 || n > 100) {
-				return res.status(400).json({ mensaje: 'Parametro limit invalido. Debe estar entre 1 y 100' });
+				return res.status(400).json({ mensaje: 'Parámetro limit inválido. Debe estar entre 1 y 100' });
 			}
 		}
 
@@ -77,23 +59,23 @@ function validarConsultaPacientes(req, res, next) {
 			const [field, rawDir] = String(sort).split(':');
 			const allowedFields = ['apellido', 'nombre', 'dni', 'created_at', 'updated_at'];
 			if (!allowedFields.includes(field)) {
-				return res.status(400).json({ mensaje: 'Parametro sort invalido. Columna no permitida' });
+				return res.status(400).json({ mensaje: 'Parámetro sort inválido. Columna no permitida' });
 			}
 
 			if (rawDir !== undefined) {
 				const dir = String(rawDir).toLowerCase();
 				if (!['asc', 'desc'].includes(dir)) {
-					return res.status(400).json({ mensaje: 'Parametro sort invalido. Direccion permitida: asc o desc' });
+					return res.status(400).json({ mensaje: 'Parámetro sort inválido. Dirección permitida: asc o desc' });
 				}
 			}
 		}
 
 		if (q !== undefined) {
 			if (typeof q !== 'string') {
-				return res.status(400).json({ mensaje: 'Parametro q invalido' });
+				return res.status(400).json({ mensaje: 'Parámetro q inválido' });
 			}
 			if (q.length > 120) {
-				return res.status(400).json({ mensaje: 'Parametro q demasiado largo' });
+				return res.status(400).json({ mensaje: 'Parámetro q demasiado largo' });
 			}
 		}
 
@@ -101,7 +83,7 @@ function validarConsultaPacientes(req, res, next) {
 			const dniStr = String(dni).trim();
 			const dniRegex = /^[0-9]{7,10}$/;
 			if (!dniRegex.test(dniStr)) {
-				return res.status(400).json({ mensaje: 'Parametro dni invalido. Debe contener entre 7 y 10 digitos' });
+				return res.status(400).json({ mensaje: 'Parámetro dni inválido. Debe contener entre 7 y 10 dígitos' });
 			}
 		}
 

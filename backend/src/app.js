@@ -71,6 +71,9 @@ const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
 
 app.use(express.static(frontendDistPath));
 
+// Los archivos clínicos sólo se entregan por el endpoint autenticado de documentos.
+app.use('/uploads', (req, res) => res.status(404).json({ mensaje: 'Ruta no disponible' }));
+
 app.use((req, res, next) => {
   if (req.method !== 'GET' || req.path.startsWith('/api/')) {
     return next();

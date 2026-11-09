@@ -12,7 +12,7 @@ function resolveDocumentoPath(rutaArchivo) {
 async function subirDocumento(req, res) {
   // Multer ya guardó el archivo; cualquier rechazo posterior debe evitar un upload huérfano.
   try {
-    const { paciente_id, descripcion } = req.body || {};
+    const { paciente_id, historia_clinica_id, descripcion } = req.body || {};
     const file = req.file;
 
     if (!paciente_id) {
@@ -30,6 +30,7 @@ async function subirDocumento(req, res) {
 
     const documento = await documentosService.crearDocumento({
       paciente_id,
+      historia_clinica_id,
       nombre_archivo: file.originalname,
       ruta_archivo: rutaRelativa,
       tipo_archivo: file.mimetype,
@@ -105,10 +106,20 @@ async function eliminarDocumento(req, res) {
   }
 }
 
+async function asociarDocumento(req, res) {
+  try {
+    const documento = await documentosService.asociarDocumentoAConsulta(req.params.id, req.body?.historia_clinica_id || null);
+    return res.json({ mensaje: 'Asociación del documento actualizada', documento });
+  } catch (error) {
+    return res.status(error.message.includes('no encontrado') ? 404 : 400).json({ mensaje: error.message });
+  }
+}
+
 module.exports = {
   subirDocumento,
   listarDocumentos,
   descargarDocumento,
   eliminarDocumento,
+  asociarDocumento,
   UPLOADS_BASE_DIR,
 };

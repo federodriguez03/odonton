@@ -12,6 +12,9 @@ async function registrarPaciente(req, res) {
 			email,
 			fecha_nacimiento,
 			observaciones,
+			alergias,
+			condiciones,
+			estado_tratamiento,
 		} = req.body;
 
 		if (!nombre || !apellido || !dni) {
@@ -28,6 +31,9 @@ async function registrarPaciente(req, res) {
 			email,
 			fecha_nacimiento,
 			observaciones,
+			alergias,
+			condiciones,
+			estado_tratamiento,
 		});
 
 		req.auditAction = 'registrar_paciente';

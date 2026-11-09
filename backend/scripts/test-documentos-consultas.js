@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict');
+const dbPath=require.resolve('../src/config/db');
+let historiaPaciente=2;
+const pool={async query(sql,params=[]){const q=String(sql).replace(/\s+/g,' ').trim().toLowerCase();
+  if(q.startsWith('create table')||q.startsWith('create index'))return{rows:[],rowCount:0};
+  if(q.includes('from documentos_paciente')&&q.includes('where id = $1'))return{rows:[{id:5,paciente_id:1,nombre_archivo:'demo.pdf'}],rowCount:1};
+  if(q.startsWith('select paciente_id from historias_clinicas'))return{rows:[{paciente_id:historiaPaciente}],rowCount:1};
+  if(q.startsWith('update documentos_paciente set historia_clinica_id'))return{rows:[{id:5,paciente_id:1,historia_clinica_id:params[1]}],rowCount:1};
+  return{rows:[],rowCount:0};
+}};
+require.cache[dbPath]={id:dbPath,filename:dbPath,loaded:true,exports:{pool}};
+const service=require('../src/services/documentosService');
+(async()=>{
+  await assert.rejects(service.asociarDocumentoAConsulta(5,8),/otro paciente/);
+  historiaPaciente=1;
+  const asociado=await service.asociarDocumentoAConsulta(5,8);
+  assert.equal(asociado.historia_clinica_id,8);
+  const general=await service.asociarDocumentoAConsulta(5,null);
+  assert.equal(general.historia_clinica_id,null);
+  console.log('OK - documentos sólo se asocian con atenciones del mismo paciente');
+  console.log('OK - un documento puede volver a quedar como documento general');
+})().catch((error)=>{console.error(error);process.exitCode=1;});

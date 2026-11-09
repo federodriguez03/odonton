@@ -31,7 +31,7 @@ function validarPacienteId(pacienteId) {
   return pid;
 }
 
-async function crearDocumento({ paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion }) {
+async function crearDocumento({ paciente_id, historia_clinica_id = null, nombre_archivo, ruta_archivo, tipo_archivo, descripcion }) {
   await asegurarTabla();
   const pid = validarPacienteId(paciente_id);
 
@@ -40,13 +40,18 @@ async function crearDocumento({ paciente_id, nombre_archivo, ruta_archivo, tipo_
     throw new Error('Paciente no encontrado');
   }
 
+  if (historia_clinica_id) {
+    const historia = await pool.query('SELECT paciente_id FROM historias_clinicas WHERE id=$1', [historia_clinica_id]);
+    if (!historia.rowCount || historia.rows[0].paciente_id !== pid) throw new Error('La consulta no existe o pertenece a otro paciente');
+  }
+
   const result = await pool.query(
     `
-      INSERT INTO documentos_paciente (paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
+      INSERT INTO documentos_paciente (paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
     `,
-    [pid, nombre_archivo, ruta_archivo, tipo_archivo, descripcion || null]
+    [pid, historia_clinica_id || null, nombre_archivo, ruta_archivo, tipo_archivo, descripcion || null]
   );
 
   return result.rows[0];
@@ -58,15 +63,35 @@ async function listarDocumentosPorPaciente(pacienteId) {
 
   const { rows } = await pool.query(
     `
-      SELECT id, paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
-      FROM documentos_paciente
-      WHERE paciente_id = $1
-      ORDER BY fecha_subida DESC, id DESC
+      SELECT d.id, d.paciente_id, d.historia_clinica_id, d.nombre_archivo, d.ruta_archivo,
+             d.tipo_archivo, d.descripcion, d.fecha_subida,
+             h.motivo_consulta AS consulta_motivo,
+             COALESCE(h.fecha_atencion,h.created_at) AS consulta_fecha
+      FROM documentos_paciente d
+      LEFT JOIN historias_clinicas h ON h.id=d.historia_clinica_id
+      WHERE d.paciente_id = $1
+      ORDER BY d.fecha_subida DESC, d.id DESC
     `,
     [pid]
   );
 
   return rows;
+}
+
+async function asociarDocumentoAConsulta(id, historiaClinicaId) {
+  const documento = await obtenerDocumentoPorId(id);
+  if (!documento) throw new Error('Documento no encontrado');
+  const historiaId = historiaClinicaId ? Number.parseInt(historiaClinicaId, 10) : null;
+  if (historiaClinicaId && (!Number.isInteger(historiaId) || historiaId <= 0)) throw new Error('historia_clinica_id inválido');
+  if (historiaId) {
+    const historia = await pool.query('SELECT paciente_id FROM historias_clinicas WHERE id=$1', [historiaId]);
+    if (!historia.rowCount || historia.rows[0].paciente_id !== documento.paciente_id) throw new Error('La atención no existe o pertenece a otro paciente');
+  }
+  const { rows } = await pool.query(
+    'UPDATE documentos_paciente SET historia_clinica_id=$2 WHERE id=$1 RETURNING *',
+    [documento.id, historiaId],
+  );
+  return rows[0];
 }
 
 async function obtenerDocumentoPorId(id) {
@@ -78,7 +103,7 @@ async function obtenerDocumentoPorId(id) {
 
   const { rows } = await pool.query(
     `
-      SELECT id, paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
+      SELECT id, paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
       FROM documentos_paciente
       WHERE id = $1
     `,
@@ -99,7 +124,7 @@ async function eliminarDocumentoPorId(id) {
     `
       DELETE FROM documentos_paciente
       WHERE id = $1
-      RETURNING id, paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
+      RETURNING id, paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
     `,
     [docId]
   );
@@ -112,4 +137,5 @@ module.exports = {
   listarDocumentosPorPaciente,
   obtenerDocumentoPorId,
   eliminarDocumentoPorId,
+  asociarDocumentoAConsulta,
 };

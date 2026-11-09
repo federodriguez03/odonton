@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict');
+const dbPath=require.resolve('../src/config/db');
+let estado='existente';
+const pool={async query(sql){const q=String(sql).replace(/\s+/g,' ').trim().toLowerCase();
+  if(q.startsWith('select id,nombre'))return{rows:[{id:1,nombre:'Ana'}],rowCount:1};
+  if(q.includes('from odontograma where'))return{rows:[{id:1,paciente_id:1,diente:11,cara:'vestibular',estado,fecha:new Date()}],rowCount:1};
+  if(q.includes('from odontograma_meta'))return{rows:[{sarro:false,periodontal:false,observaciones:null}],rowCount:1};
+  if(q.includes('from odontograma_referencias'))return{rows:[{codigo:'existente',nombre:'Prestación existente',color:'#FF4D4D'}],rowCount:1};
+  throw new Error(`SQL no esperado: ${q}`);
+}};
+require.cache[dbPath]={id:dbPath,filename:dbPath,loaded:true,exports:{pool}};
+const service=require('../src/services/odontogramaService');
+(async()=>{const snapshot=await service.crearSnapshot(1);estado='requerido';const actual=await service.obtenerOdontogramaPorPaciente(1);assert.equal(snapshot.registros[0].estado,'existente');assert.equal(actual.registros[0].estado,'requerido');console.log('OK - editar el odontograma actual no modifica el snapshot histórico');})().catch(e=>{console.error(e);process.exitCode=1;});

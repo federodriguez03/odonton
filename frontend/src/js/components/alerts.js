@@ -4,14 +4,18 @@
   const previousTimer = alertTimers.get(container);
   if (previousTimer) window.clearTimeout(previousTimer);
 
-  container.innerHTML = `
-    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-      ${message}
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-  `;
+  const alertElement = document.createElement('div');
+  alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+  alertElement.setAttribute('role', type === 'danger' ? 'alert' : 'status');
+  alertElement.append(document.createTextNode(String(message || '')));
 
-  const alertElement = container.querySelector('.alert');
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'btn-close';
+  closeButton.dataset.bsDismiss = 'alert';
+  closeButton.setAttribute('aria-label', 'Cerrar');
+  alertElement.appendChild(closeButton);
+  container.replaceChildren(alertElement);
   const timer = window.setTimeout(() => {
     if (alertElement?.isConnected) {
       const bootstrapAlert = window.bootstrap?.Alert?.getOrCreateInstance(alertElement);

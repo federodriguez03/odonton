@@ -85,7 +85,7 @@
           </li>
           <li class="nav-item" role="presentation">
             <button class="nav-link" id="historia-tab" data-section="historia" type="button">
-              <i class="bi bi-file-medical-fill"></i> Historia clinica
+              <i class="bi bi-file-medical-fill"></i> Historia clínica
             </button>
           </li>
           <li class="nav-item" role="presentation">
@@ -210,6 +210,7 @@
       </section>
 
       <section id="section-pacientes" class="d-none">
+        <div id="pacientes-list-view">
         <div class="row g-4">
           <div class="col-12">
             <div class="card shadow-sm border-0">
@@ -267,6 +268,12 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+        </div>
+        <div id="paciente-ficha-view" class="d-none">
+          <div id="ficha-view-content">
+            <div class="card border-0 shadow-sm"><div class="card-body text-secondary">Cargando ficha clínica...</div></div>
           </div>
         </div>
       </section>
@@ -581,12 +588,12 @@
             <div class="empty-state">
               <div class="empty-icon"><i class="bi bi-file-medical"></i></div>
               <div>
-                <h2 class="h5 mb-1">Historia clinica</h2>
+                <h2 class="h5 mb-1">Historia clínica</h2>
                 <p class="text-secondary mb-3">Este modulo estara disponible proximamente.</p>
                 <div class="d-flex flex-wrap gap-2">
                   <span class="badge bg-light text-dark">Resumen de antecedentes</span>
                   <span class="badge bg-light text-dark">Evolucion por paciente</span>
-                  <span class="badge bg-light text-dark">Documentacion clinica</span>
+                  <span class="badge bg-light text-dark">Documentación clínica</span>
                 </div>
               </div>
             </div>
@@ -806,50 +813,91 @@
     </div>
 
     <div class="modal fade" id="paciente-modal" tabindex="-1" aria-labelledby="paciente-modal-label" aria-hidden="true">
-      <div class="modal-dialog">
+      <div class="modal-dialog modal-lg paciente-modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
             <h2 class="modal-title fs-5" id="paciente-modal-label">Nuevo paciente</h2>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <form id="create-paciente-form">
-            <div class="modal-body">
+          <form id="create-paciente-form" novalidate>
+            <div class="modal-body py-3">
               <input type="hidden" id="paciente-id" name="id" />
-              <div class="mb-2">
-                <label class="form-label" for="nombre">Nombre</label>
-                <input id="nombre" name="nombre" class="form-control" required />
-              </div>
-              <div class="mb-2">
-                <label class="form-label" for="apellido">Apellido</label>
-                <input id="apellido" name="apellido" class="form-control" required />
-              </div>
-              <div class="mb-2">
-                <label class="form-label" for="dni">DNI</label>
-                <input id="dni" name="dni" class="form-control" required />
-              </div>
-              <div class="mb-2">
-                <label class="form-label" for="telefono">Telefono</label>
-                <input id="telefono" name="telefono" class="form-control" />
-              </div>
-              <div class="mb-2">
-                <label class="form-label" for="email">Email</label>
-                <input id="email" name="email" type="email" class="form-control" />
-              </div>
-              <div class="mb-2">
-                <label class="form-label" for="nacionalidad">Nacionalidad</label>
-                <input id="nacionalidad" name="nacionalidad" class="form-control" />
-              </div>
-              <div class="mb-2">
-                <label class="form-label" for="domicilio">Domicilio</label>
-                <input id="domicilio" name="domicilio" class="form-control" />
-              </div>
-              <div class="mb-2">
-                <label class="form-label" for="fecha_nacimiento">Fecha de nacimiento</label>
-                <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" class="form-control" />
-              </div>
-              <div class="mb-2">
-                <label class="form-label" for="observaciones">Observaciones</label>
-                <textarea id="observaciones" name="observaciones" rows="2" class="form-control"></textarea>
+              <div id="paciente-form-status" class="paciente-form-status" aria-live="polite"></div>
+              <p class="small text-secondary mb-2"><span class="text-danger" aria-hidden="true">*</span> Campos obligatorios</p>
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="nombre">Nombre <span class="text-danger" aria-hidden="true">*</span></label>
+                  <input id="nombre" name="nombre" class="form-control" maxlength="100" autocomplete="given-name" required aria-required="true" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="apellido">Apellido <span class="text-danger" aria-hidden="true">*</span></label>
+                  <input id="apellido" name="apellido" class="form-control" maxlength="100" autocomplete="family-name" required aria-required="true" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="dni">DNI <span class="text-danger" aria-hidden="true">*</span></label>
+                  <input id="dni" name="dni" class="form-control" inputmode="numeric" maxlength="10" required aria-required="true" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="nacionalidad-tipo">Nacionalidad <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <select id="nacionalidad-tipo" class="form-select">
+                    <option value="Argentina">Argentina</option>
+                    <option value="Extranjero">Extranjero</option>
+                  </select>
+                </div>
+                <div class="col-md-6 d-none" id="nacionalidad-pais-group">
+                  <label class="form-label mb-1" for="nacionalidad">País <span class="text-danger" aria-hidden="true">*</span></label>
+                  <select id="nacionalidad" name="nacionalidad" class="form-select">
+                    <option value="">Seleccione un país</option>
+                    <option>Bolivia</option><option>Brasil</option><option>Chile</option><option>Colombia</option>
+                    <option>Paraguay</option><option>Perú</option><option>Uruguay</option><option>Venezuela</option>
+                    <option>Ecuador</option><option>México</option><option>Estados Unidos</option><option>Canadá</option>
+                    <option>España</option><option>Italia</option><option>Francia</option><option>Alemania</option>
+                    <option>Portugal</option><option>Reino Unido</option><option>China</option><option>Japón</option>
+                    <option>Corea del Sur</option><option>India</option><option>Israel</option><option>Rusia</option>
+                    <option>Ucrania</option><option>Cuba</option><option>República Dominicana</option><option>Haití</option>
+                    <option>Otro país</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="telefono">Teléfono <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <input id="telefono" name="telefono" class="form-control" maxlength="30" autocomplete="tel" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="email">Correo electrónico <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <input id="email" name="email" type="email" class="form-control" maxlength="150" autocomplete="email" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="fecha_nacimiento">Fecha de nacimiento <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <input id="fecha_nacimiento" name="fecha_nacimiento" type="date" class="form-control" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="domicilio">Domicilio <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <input id="domicilio" name="domicilio" class="form-control" maxlength="255" autocomplete="street-address" />
+                </div>
+                <div class="col-12">
+                  <label class="form-label mb-1" for="observaciones">Observaciones <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <textarea id="observaciones" name="observaciones" rows="2" class="form-control"></textarea>
+                </div>
+                <div class="col-12"><hr class="my-1"><h3 class="h6 mb-0">Antecedentes clínicos</h3></div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="alergias">Alergias <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <textarea id="alergias" name="alergias" rows="2" class="form-control" placeholder="Medicamentos, materiales u otras alergias"></textarea>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="condiciones">Condiciones médicas <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <textarea id="condiciones" name="condiciones" rows="2" class="form-control" placeholder="Antecedentes o condiciones relevantes"></textarea>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1" for="estado_tratamiento">Estado del tratamiento <span class="text-secondary fw-normal">(opcional)</span></label>
+                  <select id="estado_tratamiento" name="estado_tratamiento" class="form-select">
+                    <option value="">Sin especificar</option>
+                    <option value="En evaluación">En evaluación</option>
+                    <option value="Tratamiento activo">Tratamiento activo</option>
+                    <option value="En control">En control</option>
+                    <option value="Tratamiento finalizado">Tratamiento finalizado</option>
+                    <option value="Alta preventiva">Alta preventiva</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div class="modal-footer">
@@ -865,7 +913,7 @@
       <div class="modal-dialog modal-lg">
         <div class="modal-content">
           <div class="modal-header">
-            <h2 class="modal-title fs-5" id="ficha-modal-label">Ficha clinica</h2>
+            <h2 class="modal-title fs-5" id="ficha-modal-label">Ficha clínica</h2>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body" id="ficha-modal-content">
@@ -886,13 +934,23 @@
             <p class="text-secondary mb-2" id="odontograma-paciente-info">Cargando...</p>
             <div class="odontograma-legend mb-3">
               <span class="badge text-bg-light border">Sano</span>
-              <span class="badge bg-danger">Prestacion existente</span>
-              <span class="badge bg-primary">Prestacion requerida</span>
+              <span class="badge bg-danger">Prestación existente</span>
+              <span class="badge bg-primary">Prestación requerida</span>
               <span class="badge bg-warning text-dark">Corona</span>
               <span class="badge text-bg-secondary">Prótesis fija</span>
               <span class="badge text-bg-info">Prótesis removible</span>
               <span class="badge bg-dark">Diente ausente (X)</span>
             </div>
+            <details class="mb-3">
+              <summary class="fw-semibold">Administrar referencias</summary>
+              <div id="odontograma-referencias-list" class="d-flex flex-wrap gap-2 my-2"></div>
+              <form id="odontograma-referencia-form" class="row g-2 align-items-end">
+                <div class="col-md-3"><label class="form-label">Código</label><input name="codigo" class="form-control" pattern="[a-z0-9_]+" required></div>
+                <div class="col-md-4"><label class="form-label">Nombre</label><input name="nombre" maxlength="100" class="form-control" required></div>
+                <div class="col-md-2"><label class="form-label">Color</label><input name="color" type="color" value="#64748b" class="form-control form-control-color" required></div>
+                <div class="col-md-3"><button class="btn btn-outline-primary" type="submit">Agregar referencia</button></div>
+              </form>
+            </details>
             <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
               <label class="form-label mb-0 me-2" for="odonto-denticion">Dentición:</label>
               <select id="odonto-denticion" class="form-select form-select-sm" style="width: auto;">
@@ -926,18 +984,19 @@
               </div>
               <div class="col-lg-3">
                 <form id="odontograma-form" class="border rounded-3 p-3 h-100">
-                  <h3 class="h6">Edicion de pieza</h3>
+                  <h3 class="h6">Edición de pieza</h3>
                   <p class="small mb-2">Seleccionada: <strong id="odontograma-pieza-selected">-</strong></p>
                   <div class="mb-2">
-                    <label class="form-label" for="odonto-estado-clinico">Estado clinico a aplicar</label>
+                    <label class="form-label" for="odonto-estado-clinico">Estado clínico a aplicar</label>
                     <select id="odonto-estado-clinico" class="form-select" required>
                       <option value="sano">Sano</option>
-                      <option value="existente">Prestacion existente</option>
-                      <option value="requerido">Prestacion requerida</option>
+                      <option value="existente">Prestación existente</option>
+                      <option value="requerido">Prestación requerida</option>
                       <option value="corona">Corona</option>
                       <option value="protesis_fija">Prótesis fija</option>
                       <option value="protesis_removible">Prótesis removible</option>
-                      <option value="ausente">Diente ausente / a extraer</option>
+                      <option value="ausente">Diente ausente (heredado)</option>
+                      <option value="extraccion_indicada">Extracción indicada</option>
                     </select>
                   </div>
                   <div class="mb-3">

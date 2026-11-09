@@ -111,8 +111,29 @@ body {
   --bs-btn-hover-border-color: var(--brand-900);
 }
 
+#alert-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2000;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
 #alert-container .alert {
   margin-bottom: 0;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.2);
+  pointer-events: auto;
+}
+
+.paciente-form-status:empty {
+  display: none;
+}
+
+.paciente-form-status .alert {
+  margin-bottom: 0.5rem;
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
 }
 
 .odontograma-svg {
@@ -151,6 +172,217 @@ body {
 .odonto-face.state-protesis_fija { fill: #cbd5ff; }
 .odonto-face.state-protesis_removible { fill: #9dd6c8; }
 .odonto-face.state-ausente { fill: #e2e8f0; }
+.odonto-face.state-extraccion_indicada { fill: #7c3aed; }
+
+.paciente-modal-dialog {
+  max-width: 820px;
+}
+
+#create-paciente-form .form-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+@media (min-width: 768px) {
+  #paciente-modal .modal-body {
+    max-height: calc(100vh - 190px);
+    overflow-y: auto;
+  }
+}
+
+.ficha-page {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.ficha-header {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+}
+
+.ficha-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  background: var(--brand-100, #e8f3f2);
+  color: var(--brand-900);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.ficha-tabs {
+  gap: 0.35rem;
+  padding: 0.5rem;
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.75rem;
+  scrollbar-width: thin;
+}
+
+.ficha-tabs .nav-link {
+  white-space: nowrap;
+  color: var(--brand-900);
+}
+
+.ficha-summary-card,
+.ficha-clinical-block {
+  height: 100%;
+  padding: 1rem;
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.75rem;
+  box-shadow: 0 0.2rem 0.8rem rgba(15, 23, 42, 0.06);
+}
+
+.ficha-summary-card span,
+.ficha-clinical-block span {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ficha-summary-card strong,
+.ficha-summary-card small {
+  display: block;
+}
+
+.ficha-clinical-block p {
+  margin-bottom: 0;
+  white-space: pre-wrap;
+}
+
+.ficha-datos dt {
+  color: var(--bs-secondary-color);
+  font-weight: 500;
+}
+
+.ficha-timeline {
+  position: relative;
+  padding-left: 1.6rem;
+}
+
+.ficha-timeline::before {
+  content: '';
+  position: absolute;
+  top: 0.5rem;
+  bottom: 0.5rem;
+  left: 0.42rem;
+  width: 2px;
+  background: var(--border-soft);
+}
+
+.ficha-timeline-item {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.ficha-timeline-marker {
+  position: absolute;
+  top: 1.2rem;
+  left: -1.52rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: var(--brand-700);
+  box-shadow: 0 0 0 2px var(--brand-700);
+}
+
+.ficha-consulta-detalle {
+  padding: 0.9rem;
+  background: var(--bs-light-bg-subtle);
+  border-radius: 0.5rem;
+}
+
+.ficha-empty-state {
+  padding: 3rem 1rem;
+  color: var(--bs-secondary-color);
+  text-align: center;
+  background: #fff;
+  border: 1px dashed var(--border-soft);
+  border-radius: 0.75rem;
+}
+
+.ficha-empty-state i,
+.ficha-section-icon {
+  font-size: 2rem;
+  color: var(--brand-700);
+}
+
+.odonto-historico {
+  padding: 0.75rem;
+  background: #fff;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.75rem;
+  overflow-x: auto;
+}
+
+.odonto-historico-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.odonto-historico-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+}
+
+.odonto-historico-ref i {
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid #64748b;
+  border-radius: 0.2rem;
+}
+
+.odonto-historico-arcada {
+  display: grid;
+  grid-template-columns: repeat(16, minmax(38px, 1fr));
+  min-width: 700px;
+  gap: 0.2rem;
+  margin-bottom: 0.7rem;
+}
+
+.odonto-historico-pieza {
+  text-align: center;
+}
+
+.odonto-historico-pieza svg {
+  display: block;
+  width: 100%;
+  max-width: 52px;
+  margin: 0 auto 0.15rem;
+}
+
+.odonto-historico-pieza span {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+@media (max-width: 767.98px) {
+  .ficha-header {
+    position: static;
+  }
+
+  .ficha-avatar {
+    display: none;
+  }
+
+  .ficha-tabs {
+    border-radius: 0;
+    margin-inline: -0.5rem;
+  }
+}
 
 .odonto-tooth-outline {
   fill: none;

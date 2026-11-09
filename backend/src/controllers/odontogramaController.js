@@ -15,6 +15,10 @@ async function getOdontogramaPaciente(req, res) {
 async function postOdontograma(req, res) {
 	try {
 		const body = req.body || {};
+		if (Array.isArray(body.registros)) {
+			const odontograma = await odontogramaService.guardarOdontogramaCompleto(body);
+			return res.status(200).json({ mensaje: 'Odontograma guardado', odontograma });
+		}
 		const hasCara = body.diente !== undefined && body.cara !== undefined && body.estado !== undefined;
 		const hasMeta = body.sarro !== undefined || body.periodontal !== undefined || body.observaciones !== undefined;
 
@@ -24,21 +28,21 @@ async function postOdontograma(req, res) {
 				body.paciente_id,
 				body.sarro === undefined ? undefined : Boolean(body.sarro),
 				body.periodontal === undefined ? undefined : Boolean(body.periodontal),
-				body.observaciones === undefined ? undefined : String(body.observaciones)
+				body.observaciones
 			);
 			return res.status(201).json({ mensaje: 'Metadatos de odontograma guardados' });
 		}
 
-		const registro = await odontogramaService.guardarEstadoCara(body);
-
-		if (hasMeta) {
-			await odontogramaService.guardarMeta(
-				registro.paciente_id,
-				body.sarro === undefined ? undefined : Boolean(body.sarro),
-				body.periodontal === undefined ? undefined : Boolean(body.periodontal),
-				body.observaciones === undefined ? undefined : String(body.observaciones)
-			);
-		}
+		const resultado = await odontogramaService.guardarOdontogramaCompleto({
+			paciente_id: body.paciente_id,
+			registros: [body],
+			meta: {
+				...(body.sarro !== undefined ? { sarro: Boolean(body.sarro) } : {}),
+				...(body.periodontal !== undefined ? { periodontal: Boolean(body.periodontal) } : {}),
+				...(body.observaciones !== undefined ? { observaciones: body.observaciones } : {}),
+			},
+		});
+		const registro = resultado.registros.find((item) => item.diente === Number(body.diente) && item.cara === body.cara);
 
 		return res.status(201).json({ mensaje: 'Estado odontograma guardado', registro });
 	} catch (error) {

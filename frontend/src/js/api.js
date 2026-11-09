@@ -36,6 +36,7 @@ async function request(path, options = {}) {
     const error = new Error(data?.mensaje || `Error ${response.status}`);
     error.code = data?.codigo;
     error.status = response.status;
+    error.errores = data?.errores;
     throw error;
   }
 
@@ -118,6 +119,29 @@ export function postOdontograma(payload) {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export function createConsultaClinica(pacienteId, payload) {
+  return request(`/api/pacientes/${pacienteId}/consultas`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function updateConsultaClinica(pacienteId, consultaId, payload) {
+  return request(`/api/pacientes/${pacienteId}/consultas/${consultaId}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
+export function getOdontogramaReferencias(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  return request(`/api/odontograma/referencias/catalogo${query ? `?${query}` : ''}`);
+}
+
+export function createOdontogramaReferencia(payload) {
+  return request('/api/odontograma/referencias/catalogo', { method: 'POST', body: JSON.stringify(payload) });
+}
+export function updateOdontogramaReferencia(id, payload) {
+  return request(`/api/odontograma/referencias/catalogo/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+export function setOdontogramaReferenciaActiva(id, activa) {
+  return request(`/api/odontograma/referencias/catalogo/${id}/activa`, { method: 'PUT', body: JSON.stringify({ activa }) });
 }
 
 export function getTratamientos(params = {}) {
@@ -367,6 +391,10 @@ export async function downloadDocumento(id) {
 
 export function deleteDocumento(id) {
   return request(`/api/documentos/${id}`, { method: 'DELETE' });
+}
+
+export function associateDocumento(id, historiaClinicaId) {
+  return request(`/api/documentos/${id}/asociar`, { method: 'PUT', body: JSON.stringify({ historia_clinica_id: historiaClinicaId || null }) });
 }
 
 export function login(payload) {

@@ -8,6 +8,7 @@ const {
   listarDocumentos,
   descargarDocumento,
   eliminarDocumento,
+  asociarDocumento,
   UPLOADS_BASE_DIR,
 } = require('../controllers/documentosController');
 const { middlewareAutenticacion, middlewareAuditoria } = require('../middlewares/turnosMiddleware');
@@ -50,7 +51,7 @@ function manejarSubida(req, res, next) {
     if (!err) return next();
 
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ mensaje: 'Archivo demasiado grande. Maximo 10MB' });
+      return res.status(400).json({ mensaje: 'Archivo demasiado grande. Máximo 10 MB' });
     }
 
     return res.status(400).json({ mensaje: err.message || 'Error al subir archivo' });
@@ -100,6 +101,14 @@ router.delete(
     next();
   },
   eliminarDocumento
+);
+
+router.put(
+  '/:id/asociar',
+  middlewareAutenticacion,
+  middlewareAuditoria,
+  (req, res, next) => { req.auditAction = 'asociar_documento_consulta'; next(); },
+  asociarDocumento
 );
 
 module.exports = router;

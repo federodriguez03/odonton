@@ -16,6 +16,15 @@ const {
 	validarEntradaPaciente,
 	validarConsultaPacientes,
 } = require('../middlewares/pacientesMiddleware');
+const consultasController = require('../controllers/consultasClinicasController');
+
+router.get('/:id/consultas', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, consultasController.listar);
+router.post('/:id/consultas', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, (req,res,next) => {
+	req.auditAction = 'registrar_atencion_clinica'; next();
+}, consultasController.crear);
+router.put('/:id/consultas/:consultaId', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, (req,res,next) => {
+	req.auditAction = 'actualizar_atencion_clinica'; next();
+}, consultasController.actualizar);
 
 // Crear paciente
 router.post(

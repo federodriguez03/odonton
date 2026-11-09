@@ -1,12 +1,19 @@
 import {
+  associateDocumento,
+  createOdontogramaReferencia,
+  createConsultaClinica,
   createPaciente,
   deleteDocumento,
   downloadDocumento,
   getFichaClinica,
   getDocumentos,
   getOdontogramaPaciente,
+  getOdontogramaReferencias,
   getPacientes,
   postOdontograma,
+  setOdontogramaReferenciaActiva,
+  updateOdontogramaReferencia,
+  updateConsultaClinica,
   updatePaciente,
   uploadDocumento,
 } from '../api.js';
@@ -32,6 +39,7 @@ const estados = {
   protesis_fija: '#cbd5ff',
   protesis_removible: '#9dd6c8',
   ausente: '#4b5563',
+  extraccion_indicada: '#7c3aed',
 };
 
 const FACES = ['vestibular', 'mesial', 'distal', 'oclusal', 'lingual'];
@@ -84,7 +92,10 @@ const ui = {
   pacienteIdInput: document.getElementById('paciente-id'),
   modalTitle: document.getElementById('paciente-modal-label'),
   modalSubmitButton: document.getElementById('paciente-submit-btn'),
-  fichaModalContent: document.getElementById('ficha-modal-content'),
+  pacienteFormStatus: document.getElementById('paciente-form-status'),
+  fichaModalContent: document.getElementById('ficha-view-content'),
+  pacientesListView: document.getElementById('pacientes-list-view'),
+  fichaView: document.getElementById('paciente-ficha-view'),
   odontoModalLabel: document.getElementById('odontograma-paciente-info'),
   odontoSvg: document.getElementById('odontograma-svg'),
   odontoForm: document.getElementById('odontograma-form'),
@@ -101,7 +112,6 @@ const ui = {
 };
 
 const pacienteModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('paciente-modal'));
-const fichaModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('ficha-modal'));
 const odontoModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('odontograma-modal'));
 
 function formatDate(value) {
@@ -111,8 +121,50 @@ function formatDate(value) {
   return date.toLocaleDateString('es-AR');
 }
 
+function formatDateTime(value) {
+  if (!value) return '-';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('es-AR');
+}
+
+function toDateTimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 function formatText(value) {
   return value && String(value).trim() ? value : '-';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char]);
+}
+
+function renderOdontogramaHistorico(snapshot) {
+  if (!snapshot) return '<p class="text-secondary mb-0">Esta atención no tiene una versión de odontograma.</p>';
+  const registros = snapshot.registros || [];
+  const referencias = snapshot.referencias || [];
+  const registrosMap = new Map(registros.map((r) => [`${r.diente}-${r.cara}`, r.estado]));
+  const referenciasMap = new Map(referencias.map((ref) => [ref.codigo, ref]));
+  const colorPara = (codigo) => {
+    const color = referenciasMap.get(codigo)?.color || estados[codigo] || '#ffffff';
+    return /^#[0-9a-f]{6}$/i.test(color) ? color : '#ffffff';
+  };
+  const nombrePara = (codigo) => referenciasMap.get(codigo)?.nombre || codigo;
+  const renderPieza = (diente) => {
+    const resumen = FACES.map((cara) => `${cara}: ${nombrePara(registrosMap.get(`${diente}-${cara}`) || 'sano')}`).join(', ');
+    const carasSvg = FACES.map((cara) => {
+      const estado = registrosMap.get(`${diente}-${cara}`) || 'sano';
+      return `<polygon points="${FACE_POLYGONS[cara]}" fill="${colorPara(estado)}" stroke="#334155" stroke-width="2"><title>${escapeHtml(`Pieza ${diente}, ${cara}: ${nombrePara(estado)}`)}</title></polygon>`;
+    }).join('');
+    return `<div class="odonto-historico-pieza"><svg viewBox="0 0 100 100" role="img" aria-label="${escapeHtml(`Pieza ${diente}. ${resumen}`)}">${carasSvg}</svg><span>${diente}</span></div>`;
+  };
+  const usados = [...new Set(['sano', ...registros.map((r) => r.estado)])];
+  const leyenda = usados.length ? usados.map((codigo) => `<span class="odonto-historico-ref"><i style="background:${colorPara(codigo)}"></i>${escapeHtml(nombrePara(codigo))}</span>`).join('') : '<span class="text-secondary">Sin estados registrados</span>';
+  return `<div class="odonto-historico" aria-label="Odontograma histórico en modo lectura"><div class="odonto-historico-leyenda">${leyenda}</div><div class="odonto-historico-arcada">${permanentes.superior.map(renderPieza).join('')}</div><div class="odonto-historico-arcada">${permanentes.inferior.map(renderPieza).join('')}</div><div class="small text-secondary mt-2">Versión capturada: ${escapeHtml(formatDateTime(snapshot.capturado_at))}. Sólo lectura.</div></div>`;
 }
 
 function serializePacienteForDataset(paciente) {
@@ -128,6 +180,9 @@ function serializePacienteForDataset(paciente) {
       domicilio: paciente.domicilio,
       fecha_nacimiento: paciente.fecha_nacimiento,
       observaciones: paciente.observaciones,
+      alergias: paciente.alergias,
+      condiciones: paciente.condiciones,
+      estado_tratamiento: paciente.estado_tratamiento,
     }),
   );
 }
@@ -140,26 +195,19 @@ function renderRows(pacientes) {
 
   ui.tbody.innerHTML = pacientes
     .map((paciente) => {
-      const pacienteData = serializePacienteForDataset(paciente);
       return `
       <tr>
-        <td>${paciente.nombre}</td>
-        <td>${paciente.apellido}</td>
-        <td>${paciente.dni}</td>
+        <td>${escapeHtml(paciente.nombre)}</td>
+        <td>${escapeHtml(paciente.apellido)}</td>
+        <td>${escapeHtml(paciente.dni)}</td>
         <td>
-          <div>${formatText(paciente.telefono)}</div>
-          <small class="text-secondary">${formatText(paciente.email)}</small>
+          <div>${escapeHtml(formatText(paciente.telefono))}</div>
+          <small class="text-secondary">${escapeHtml(formatText(paciente.email))}</small>
         </td>
         <td class="text-end">
           <div class="btn-group">
-            <button class="btn btn-sm btn-outline-primary" type="button" data-action="ficha" data-id="${paciente.id}" aria-label="Ver ficha clinica">
+            <button class="btn btn-sm btn-outline-primary" type="button" data-action="ficha" data-id="${paciente.id}" aria-label="Ver ficha clínica">
               <i class="bi bi-journal-medical me-1"></i>Ficha
-            </button>
-            <button class="btn btn-sm btn-outline-info" type="button" data-action="odontograma" data-id="${paciente.id}" aria-label="Gestionar odontograma">
-              <i class="bi bi-grid-3x3-gap me-1"></i>Odonto
-            </button>
-            <button class="btn btn-sm btn-outline-secondary" type="button" data-action="edit" data-id="${paciente.id}" data-paciente="${pacienteData}" aria-label="Editar paciente">
-              <i class="bi bi-pencil-square me-1"></i>Editar
             </button>
           </div>
         </td>
@@ -181,9 +229,41 @@ function getPacienteFromRowButton(button) {
 
 function renderPagination() {
   const totalPages = Math.max(1, Math.ceil(state.total / state.limit));
-  ui.paginationMeta.textContent = `Pagina ${state.page} de ${totalPages} | Total: ${state.total}`;
+  ui.paginationMeta.textContent = `Página ${state.page} de ${totalPages} | Total: ${state.total}`;
   ui.prevButton.disabled = state.page <= 1;
   ui.nextButton.disabled = state.page >= totalPages;
+}
+
+function limpiarValidacionesPaciente() {
+  ui.createForm.classList.remove('was-validated');
+  ui.createForm.querySelectorAll('.is-invalid').forEach((element) => {
+    element.classList.remove('is-invalid');
+    element.removeAttribute('aria-invalid');
+  });
+  ui.createForm.querySelectorAll('.invalid-feedback.dynamic').forEach((element) => element.remove());
+  ui.pacienteFormStatus?.replaceChildren();
+  ui.createForm.elements.estado_tratamiento?.querySelectorAll('option[data-historico="true"]').forEach((option) => option.remove());
+}
+
+function configurarNacionalidad(tipo, pais = '') {
+  const tipoSelect = document.getElementById('nacionalidad-tipo');
+  const paisGroup = document.getElementById('nacionalidad-pais-group');
+  const paisSelect = ui.createForm.elements.nacionalidad;
+  paisSelect.querySelectorAll('option[data-historico="true"]').forEach((option) => option.remove());
+  const extranjero = tipo === 'Extranjero';
+  tipoSelect.value = extranjero ? 'Extranjero' : 'Argentina';
+  paisGroup.classList.toggle('d-none', !extranjero);
+  paisSelect.required = extranjero;
+  paisSelect.disabled = !extranjero;
+
+  if (extranjero && pais && !Array.from(paisSelect.options).some((option) => option.value === pais)) {
+    const option = document.createElement('option');
+    option.value = pais;
+    option.textContent = `${pais} (valor anterior)`;
+    option.dataset.historico = 'true';
+    paisSelect.appendChild(option);
+  }
+  paisSelect.value = extranjero ? pais : '';
 }
 
 function openCreateModal() {
@@ -192,6 +272,8 @@ function openCreateModal() {
   ui.modalSubmitButton.textContent = 'Guardar paciente';
   ui.pacienteIdInput.value = '';
   ui.createForm.reset();
+  limpiarValidacionesPaciente();
+  configurarNacionalidad('Argentina');
   pacienteModal?.show();
 }
 
@@ -199,26 +281,210 @@ function openEditModal(paciente) {
   state.mode = 'edit';
   ui.modalTitle.textContent = 'Editar paciente';
   ui.modalSubmitButton.textContent = 'Guardar cambios';
+  limpiarValidacionesPaciente();
   ui.pacienteIdInput.value = paciente.id;
   ui.createForm.elements.nombre.value = paciente.nombre;
   ui.createForm.elements.apellido.value = paciente.apellido;
   ui.createForm.elements.dni.value = paciente.dni === '-' ? '' : paciente.dni;
   ui.createForm.elements.telefono.value = paciente.telefono || '';
   ui.createForm.elements.email.value = paciente.email || '';
-  ui.createForm.elements.nacionalidad.value = paciente.nacionalidad || '';
+  const esArgentina = paciente.nacionalidad === 'Argentina';
+  configurarNacionalidad(esArgentina ? 'Argentina' : 'Extranjero', paciente.nacionalidad || '');
   ui.createForm.elements.domicilio.value = paciente.domicilio || '';
   ui.createForm.elements.fecha_nacimiento.value = paciente.fecha_nacimiento ? String(paciente.fecha_nacimiento).slice(0, 10) : '';
   ui.createForm.elements.observaciones.value = paciente.observaciones || '';
+  ui.createForm.elements.alergias.value = paciente.alergias || '';
+  ui.createForm.elements.condiciones.value = paciente.condiciones || '';
+  const estadoTratamiento = ui.createForm.elements.estado_tratamiento;
+  if (paciente.estado_tratamiento && !Array.from(estadoTratamiento.options).some((option) => option.value === paciente.estado_tratamiento)) {
+    const option = document.createElement('option'); option.value = paciente.estado_tratamiento; option.textContent = `${paciente.estado_tratamiento} (valor anterior)`; option.dataset.historico = 'true'; estadoTratamiento.appendChild(option);
+  }
+  estadoTratamiento.value = paciente.estado_tratamiento || '';
   pacienteModal?.show();
 }
 
+function renderFichaOrganizada(data) {
+  const paciente = data.paciente || {};
+  const consultas = data.historiasClinicas || [];
+  const profesionales = data.profesionales || [];
+  const turnosParaConsulta = data.turnosParaConsulta || [];
+  const turnos = data.historialTurnos?.turnos || [];
+  const totalTurnos = data.historialTurnos?.total || 0;
+  const page = data.historialTurnos?.page || state.ficha.page;
+  const limit = data.historialTurnos?.limit || state.ficha.limit;
+  const totalPages = Math.max(1, Math.ceil(totalTurnos / limit));
+  const pacienteData = serializePacienteForDataset(paciente);
+  state.ficha.page = page;
+  state.ficha.total = totalTurnos;
+  state.ficha.consultas = consultas;
+
+  const consultasHtml = consultas.length ? consultas.map((consulta) => `
+    <article class="ficha-timeline-item">
+      <div class="ficha-timeline-marker" aria-hidden="true"></div>
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between gap-2">
+            <div><h4 class="h6 mb-1">${escapeHtml(consulta.motivo_consulta || consulta.descripcion || 'Registro clínico anterior')}</h4><div class="small text-secondary">${escapeHtml(formatDateTime(consulta.fecha_atencion || consulta.created_at))} · ${escapeHtml(consulta.profesional_nombre || 'Profesional no registrado')}</div></div>
+            <div class="d-flex gap-2 align-items-start"><span class="badge ${consulta.odontograma_disponible ? 'text-bg-success' : 'text-bg-light'}">${consulta.odontograma_disponible ? 'Con odontograma' : 'Sin odontograma'}</span><button class="btn btn-sm btn-outline-primary" type="button" data-edit-consulta="${consulta.id}"><i class="bi bi-pencil me-1"></i>Editar</button></div>
+          </div>
+          ${consulta.turno_id ? `<div class="small text-secondary mt-2"><i class="bi bi-calendar-check me-1"></i>Turno asociado: ${escapeHtml(formatDateTime(consulta.turno_fecha))} · ${escapeHtml(consulta.turno_prestacion || '')}</div>` : ''}
+          ${consulta.diagnostico ? `<p class="mb-2 mt-3"><strong>Diagnóstico:</strong> ${escapeHtml(consulta.diagnostico)}</p>` : ''}
+          <details class="mt-2">
+            <summary class="btn btn-sm btn-outline-secondary">Ver detalle de la atención</summary>
+            <div class="ficha-consulta-detalle mt-3">
+              ${consulta.tratamientos_realizados ? `<p><strong>Tratamientos o prestaciones</strong><br>${escapeHtml(consulta.tratamientos_realizados)}</p>` : ''}
+              ${consulta.plan_indicaciones ? `<p><strong>Plan e indicaciones</strong><br>${escapeHtml(consulta.plan_indicaciones)}</p>` : ''}
+              ${consulta.observaciones ? `<p><strong>Observaciones</strong><br>${escapeHtml(consulta.observaciones)}</p>` : ''}
+              ${(consulta.documentos || []).length ? `<p><strong>Documentos:</strong> ${(consulta.documentos || []).map((doc) => escapeHtml(doc.nombre_archivo)).join(', ')}</p>` : '<p class="text-secondary">Sin documentos asociados.</p>'}
+              <details><summary class="fw-semibold">Odontograma de esta atención</summary><div class="mt-3">${renderOdontogramaHistorico(consulta.odontograma_snapshot)}</div></details>
+            </div>
+          </details>
+        </div>
+      </div>
+    </article>`).join('') : '<div class="ficha-empty-state"><i class="bi bi-journal-medical"></i><p class="mb-0">Todavía no hay atenciones clínicas registradas.</p></div>';
+
+  const turnosHtml = turnos.length ? turnos.map((turno) => `<tr><td>${escapeHtml(formatDateTime(turno.fecha_hora_inicio))}</td><td>${escapeHtml(turno.prestacion?.nombre || '-')}</td><td><span class="badge text-bg-light">${escapeHtml(turno.estado || '-')}</span></td><td>${escapeHtml(turno.observaciones || '-')}</td></tr>`).join('') : '<tr><td colspan="4" class="text-center text-secondary py-4">Sin turnos registrados</td></tr>';
+
+  ui.fichaModalContent.innerHTML = `
+    <div class="ficha-page">
+      <header class="ficha-header card border-0 shadow-sm mb-3">
+        <div class="card-body">
+          <div class="d-flex flex-wrap align-items-start gap-3">
+            <button class="btn btn-outline-secondary btn-sm" type="button" id="ficha-volver"><i class="bi bi-arrow-left me-1"></i>Volver</button>
+            <div class="ficha-avatar" aria-hidden="true">${escapeHtml((paciente.nombre?.[0] || '') + (paciente.apellido?.[0] || ''))}</div>
+            <div class="flex-grow-1">
+              <div class="d-flex flex-wrap align-items-center gap-2"><h2 class="h4 mb-0">${escapeHtml(paciente.apellido || '')}, ${escapeHtml(paciente.nombre || '')}</h2>${paciente.alergias ? '<span class="badge text-bg-danger">Alergias registradas</span>' : ''}</div>
+              <div class="text-secondary mt-1">DNI ${escapeHtml(paciente.dni || '-')} · ${paciente.edad ?? '-'} años · ${escapeHtml(paciente.telefono || 'Sin teléfono')}</div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              <button class="btn btn-outline-secondary btn-sm" type="button" id="ficha-editar" data-paciente="${pacienteData}"><i class="bi bi-pencil me-1"></i>Editar datos</button>
+              <button class="btn btn-primary btn-sm" type="button" id="ficha-nueva-consulta"><i class="bi bi-plus-lg me-1"></i>Registrar atención</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <nav class="ficha-tabs nav nav-pills flex-nowrap overflow-auto mb-3" aria-label="Secciones de la ficha">
+        <button class="nav-link active" type="button" data-ficha-tab="resumen">Resumen</button>
+        <button class="nav-link" type="button" data-ficha-tab="antecedentes">Antecedentes</button>
+        <button class="nav-link" type="button" data-ficha-tab="consultas">Consultas <span class="badge text-bg-light ms-1">${consultas.length}</span></button>
+        <button class="nav-link" type="button" data-ficha-tab="odontograma">Odontograma</button>
+        <button class="nav-link" type="button" data-ficha-tab="documentos">Documentos</button>
+        <button class="nav-link" type="button" data-ficha-tab="turnos">Turnos <span class="badge text-bg-light ms-1">${totalTurnos}</span></button>
+      </nav>
+
+      <section data-ficha-pane="resumen">
+        <div class="row g-3">
+          <div class="col-md-4"><div class="ficha-summary-card"><span>Contacto</span><strong>${escapeHtml(paciente.telefono || 'Sin teléfono')}</strong><small>${escapeHtml(paciente.email || 'Sin correo electrónico')}</small></div></div>
+          <div class="col-md-4"><div class="ficha-summary-card"><span>Última visita</span><strong>${escapeHtml(data.ultimaVisita?.fecha_hora_inicio ? formatDateTime(data.ultimaVisita.fecha_hora_inicio) : 'Sin registros')}</strong><small>${escapeHtml(data.ultimaVisita?.prestacion || '')}</small></div></div>
+          <div class="col-md-4"><div class="ficha-summary-card"><span>Próximo turno</span><strong>${escapeHtml(data.proximoTurno?.fecha_hora_inicio ? formatDateTime(data.proximoTurno.fecha_hora_inicio) : 'Sin turno programado')}</strong><small>${escapeHtml(data.proximoTurno?.prestacion || '')}</small></div></div>
+          <div class="col-lg-7"><div class="card border-0 shadow-sm h-100"><div class="card-body"><h3 class="h6">Datos personales</h3><dl class="row ficha-datos mb-0"><dt class="col-sm-4">Nacimiento</dt><dd class="col-sm-8">${escapeHtml(formatDate(paciente.fecha_nacimiento))}</dd><dt class="col-sm-4">Nacionalidad</dt><dd class="col-sm-8">${escapeHtml(paciente.nacionalidad || '-')}</dd><dt class="col-sm-4">Domicilio</dt><dd class="col-sm-8">${escapeHtml(paciente.domicilio || '-')}</dd></dl></div></div></div>
+          <div class="col-lg-5"><div class="card border-0 shadow-sm h-100"><div class="card-body"><h3 class="h6">Alertas clínicas</h3><p><strong>Alergias:</strong><br>${escapeHtml(paciente.alergias || 'Sin alergias registradas')}</p><p class="mb-0"><strong>Condiciones:</strong><br>${escapeHtml(paciente.condiciones || 'Sin condiciones registradas')}</p></div></div></div>
+        </div>
+      </section>
+
+      <section class="d-none" data-ficha-pane="antecedentes"><div class="card border-0 shadow-sm"><div class="card-body"><h3 class="h5 mb-3">Antecedentes clínicos</h3><div class="row g-3"><div class="col-md-6"><div class="ficha-clinical-block"><span>Alergias</span><p>${escapeHtml(paciente.alergias || 'Sin datos registrados')}</p></div></div><div class="col-md-6"><div class="ficha-clinical-block"><span>Condiciones médicas</span><p>${escapeHtml(paciente.condiciones || 'Sin datos registrados')}</p></div></div><div class="col-md-6"><div class="ficha-clinical-block"><span>Estado del tratamiento</span><p>${escapeHtml(paciente.estado_tratamiento || 'Sin datos registrados')}</p></div></div><div class="col-md-6"><div class="ficha-clinical-block"><span>Observaciones generales</span><p>${escapeHtml(paciente.observaciones || 'Sin datos registrados')}</p></div></div></div></div></div></section>
+
+      <section class="d-none" data-ficha-pane="consultas">
+        <form id="consulta-form" class="card border-0 shadow-sm mb-3 d-none"><div class="card-body"><input type="hidden" name="consulta_id"><div class="d-flex justify-content-between align-items-center mb-3"><h3 class="h5 mb-0" id="consulta-form-title">Registrar atención</h3><button type="button" class="btn-close" id="consulta-cerrar" aria-label="Cerrar formulario"></button></div><div class="row g-3"><div class="col-md-6"><label class="form-label">Fecha y hora *</label><input name="fecha_atencion" type="datetime-local" class="form-control" required></div><div class="col-md-6"><label class="form-label">Profesional responsable *</label><select name="profesional_id" class="form-select" required><option value="">Seleccione un profesional</option>${profesionales.map((p) => `<option value="${p.id}">${escapeHtml(p.nombre)} · ${escapeHtml(p.email)}</option>`).join('')}</select></div><div class="col-md-6"><label class="form-label">Turno asociado <span class="text-secondary fw-normal">(opcional)</span></label><select name="turno_id" class="form-select"><option value="">Sin turno asociado</option>${turnosParaConsulta.map((t) => `<option value="${t.id}" data-consulta-id="${t.consulta_id || ''}" ${t.consulta_id ? 'disabled' : ''}>${escapeHtml(formatDateTime(t.fecha_hora_inicio))} · ${escapeHtml(t.prestacion_nombre || 'Sin prestación')} · ${escapeHtml(t.estado)}</option>`).join('')}</select><div class="form-text">Un turno sólo puede pertenecer a una atención.</div></div><div class="col-md-6"><label class="form-label">Motivo de consulta *</label><input name="motivo_consulta" class="form-control" required></div><div class="col-md-6"><label class="form-label">Diagnóstico</label><textarea name="diagnostico" class="form-control" rows="2"></textarea></div><div class="col-md-6"><label class="form-label">Tratamientos o prestaciones</label><textarea name="tratamientos_realizados" class="form-control" rows="2"></textarea></div><div class="col-md-6"><label class="form-label">Plan o indicaciones</label><textarea name="plan_indicaciones" class="form-control" rows="2"></textarea></div><div class="col-md-6"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control" rows="2"></textarea></div><div class="col-12 form-check ms-2" id="consulta-snapshot-group"><input name="guardar_odontograma" id="consulta-odontograma" type="checkbox" class="form-check-input" checked><label for="consulta-odontograma" class="form-check-label">Conservar una versión del odontograma actual</label></div><div class="col-12 d-none" id="consulta-snapshot-note"><div class="alert alert-light border mb-0">El odontograma histórico ya guardado no se modifica al editar la atención.</div></div><div class="col-12"><button class="btn btn-primary" id="consulta-submit" type="submit">Guardar atención</button></div></div></div></form>
+        <div class="d-flex justify-content-between align-items-center mb-3"><div><h3 class="h5 mb-0">Historial de consultas</h3><small class="text-secondary">Atenciones clínicas ordenadas desde la más reciente</small></div><button class="btn btn-primary btn-sm" type="button" id="consultas-agregar">Registrar atención</button></div>
+        <div class="ficha-timeline">${consultasHtml}</div>
+      </section>
+
+      <section class="d-none" data-ficha-pane="odontograma"><div class="card border-0 shadow-sm"><div class="card-body text-center py-5"><i class="bi bi-grid-3x3-gap ficha-section-icon"></i><h3 class="h5 mt-3">Odontograma actual</h3><p class="text-secondary mx-auto" style="max-width:560px">Consultá y actualizá el estado dental actual. Las versiones asociadas a atenciones anteriores se mantienen intactas.</p><button class="btn btn-primary" type="button" id="ficha-odontograma">Abrir odontograma</button></div></div></section>
+
+      <section class="d-none" data-ficha-pane="documentos"><div class="card border-0 shadow-sm"><div class="card-body"><div class="d-flex flex-wrap justify-content-between align-items-center mb-3"><div><h3 class="h5 mb-0">Documentos</h3><small class="text-secondary">Archivos generales o asociados a una atención</small></div><button class="btn btn-outline-secondary btn-sm" type="button" id="ficha-documentos-refresh">Actualizar</button></div><form id="ficha-documentos-form" class="row g-2 align-items-end mb-3"><div class="col-md-4"><label class="form-label" for="ficha-documentos-descripcion">Descripción</label><input id="ficha-documentos-descripcion" class="form-control" placeholder="Radiografía, receta, etc."></div><div class="col-md-4"><label class="form-label" for="ficha-documentos-archivo">Archivo</label><input id="ficha-documentos-archivo" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required></div><div class="col-md-3"><label class="form-label" for="ficha-documentos-consulta">Atención asociada</label><select id="ficha-documentos-consulta" class="form-select"><option value="">Documento general</option>${consultas.map((c) => `<option value="${c.id}">${escapeHtml(formatDateTime(c.fecha_atencion || c.created_at))} - ${escapeHtml(c.motivo_consulta || c.descripcion)}</option>`).join('')}</select></div><div class="col-md-1 d-grid"><button class="btn btn-primary" type="submit">Subir</button></div></form><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Nombre</th><th>Tipo</th><th>Descripción</th><th>Fecha</th><th>Atención asociada</th><th class="text-end">Acciones</th></tr></thead><tbody id="ficha-documentos-tbody"></tbody></table></div><small class="text-secondary">PDF, JPG o PNG. Máximo 10 MB.</small></div></div></section>
+
+      <section class="d-none" data-ficha-pane="turnos"><div class="card border-0 shadow-sm"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><div class="me-auto"><h3 class="h5 mb-0">Historial de turnos</h3><small class="text-secondary">Citas administrativas; no equivalen a atenciones clínicas</small></div><select id="ficha-estado-filter" class="form-select form-select-sm" style="max-width:190px"><option value="">Todos los estados</option><option value="programado">Programado</option><option value="realizado">Realizado</option><option value="cancelado">Cancelado</option><option value="reprogramado">Reprogramado</option></select><select id="ficha-sort" class="form-select form-select-sm" style="max-width:150px"><option value="fecha:desc">Más recientes</option><option value="fecha:asc">Más antiguos</option></select></div><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha y hora</th><th>Prestación</th><th>Estado</th><th>Observaciones</th></tr></thead><tbody>${turnosHtml}</tbody></table></div><div class="d-flex justify-content-between align-items-center"><button class="btn btn-sm btn-outline-secondary" id="ficha-prev" ${page <= 1 ? 'disabled' : ''}>Anterior</button><small class="text-secondary">Página ${page} de ${totalPages} · ${totalTurnos} turnos</small><button class="btn btn-sm btn-outline-secondary" id="ficha-next" ${page >= totalPages ? 'disabled' : ''}>Siguiente</button></div></div></div></section>
+    </div>`;
+
+  const activarTab = (tab) => {
+    state.ficha.tab = tab;
+    ui.fichaModalContent.querySelectorAll('[data-ficha-tab]').forEach((button) => button.classList.toggle('active', button.dataset.fichaTab === tab));
+    ui.fichaModalContent.querySelectorAll('[data-ficha-pane]').forEach((pane) => pane.classList.toggle('d-none', pane.dataset.fichaPane !== tab));
+  };
+  ui.fichaModalContent.querySelectorAll('[data-ficha-tab]').forEach((button) => button.addEventListener('click', () => activarTab(button.dataset.fichaTab)));
+  document.getElementById('ficha-volver')?.addEventListener('click', () => { ui.fichaView.classList.add('d-none'); ui.pacientesListView.classList.remove('d-none'); });
+  document.getElementById('ficha-editar')?.addEventListener('click', (event) => openEditModal(getPacienteFromRowButton(event.currentTarget)));
+  const mostrarConsulta = (consulta = null) => {
+    activarTab('consultas');
+    const form = document.getElementById('consulta-form');
+    form.reset();
+    form.elements.consulta_id.value = consulta?.id || '';
+    form.elements.fecha_atencion.value = consulta ? toDateTimeLocal(consulta.fecha_atencion || consulta.created_at) : toDateTimeLocal(new Date());
+    form.elements.profesional_id.value = consulta?.profesional_id || profesionales[0]?.id || '';
+    form.elements.motivo_consulta.value = consulta?.motivo_consulta || consulta?.descripcion || '';
+    form.elements.diagnostico.value = consulta?.diagnostico || '';
+    form.elements.tratamientos_realizados.value = consulta?.tratamientos_realizados || '';
+    form.elements.plan_indicaciones.value = consulta?.plan_indicaciones || '';
+    form.elements.observaciones.value = consulta?.observaciones || '';
+    Array.from(form.elements.turno_id.options).forEach((option) => {
+      const asociado = option.dataset.consultaId;
+      option.disabled = Boolean(asociado && String(asociado) !== String(consulta?.id || ''));
+    });
+    form.elements.turno_id.value = consulta?.turno_id || '';
+    document.getElementById('consulta-form-title').textContent = consulta ? 'Editar atención' : 'Registrar atención';
+    document.getElementById('consulta-submit').textContent = consulta ? 'Guardar cambios' : 'Guardar atención';
+    document.getElementById('consulta-snapshot-group').classList.toggle('d-none', Boolean(consulta));
+    document.getElementById('consulta-snapshot-note').classList.toggle('d-none', !consulta);
+    form.classList.remove('d-none');
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  document.getElementById('ficha-nueva-consulta')?.addEventListener('click', () => mostrarConsulta());
+  document.getElementById('consultas-agregar')?.addEventListener('click', () => mostrarConsulta());
+  document.querySelectorAll('[data-edit-consulta]').forEach((button) => button.addEventListener('click', () => mostrarConsulta(consultas.find((consulta) => String(consulta.id) === button.dataset.editConsulta))));
+  document.getElementById('consulta-cerrar')?.addEventListener('click', () => document.getElementById('consulta-form')?.classList.add('d-none'));
+  document.getElementById('ficha-odontograma')?.addEventListener('click', async () => { odontoModal?.show(); await loadOdontograma(state.ficha.pacienteId); });
+
+  const estadoSelect = document.getElementById('ficha-estado-filter');
+  if (estadoSelect) estadoSelect.value = state.ficha.estado || '';
+  const sortSelect = document.getElementById('ficha-sort');
+  if (sortSelect) sortSelect.value = state.ficha.sort || 'fecha:desc';
+  estadoSelect?.addEventListener('change', async () => { state.ficha.estado = estadoSelect.value; state.ficha.page = 1; await loadFichaClinica(); });
+  sortSelect?.addEventListener('change', async () => { state.ficha.sort = sortSelect.value; state.ficha.page = 1; await loadFichaClinica(); });
+  document.getElementById('ficha-prev')?.addEventListener('click', async () => { if (state.ficha.page > 1) { state.ficha.page -= 1; await loadFichaClinica(); } });
+  document.getElementById('ficha-next')?.addEventListener('click', async () => { if (state.ficha.page < totalPages) { state.ficha.page += 1; await loadFichaClinica(); } });
+
+  bindFichaDocumentos();
+  cargarDocumentosFicha();
+  document.getElementById('consulta-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget); const payload = Object.fromEntries(form.entries());
+    const consultaId = payload.consulta_id; delete payload.consulta_id; delete payload.guardar_odontograma;
+    if (!consultaId && document.getElementById('consulta-odontograma')?.checked) payload.odontograma = { registros: [], meta: {} };
+    try {
+      const response = consultaId ? await updateConsultaClinica(state.ficha.pacienteId, consultaId, payload) : await createConsultaClinica(state.ficha.pacienteId, payload);
+      renderAlert(ui.alertContainer, response.mensaje || (consultaId ? 'Atención actualizada.' : 'Atención registrada.'), 'success');
+      state.ficha.tab = 'consultas'; await loadFichaClinica();
+    }
+    catch (error) { renderAlert(ui.alertContainer, error.message, 'danger'); }
+  });
+  activarTab(state.ficha.tab || 'resumen');
+}
+
 function renderFichaContent(data) {
+  renderFichaOrganizada(data);
+  return;
   const paciente = data.paciente || {};
   const turnos = data.historialTurnos?.turnos || [];
   const totalTurnos = data.historialTurnos?.total || 0;
   const page = data.historialTurnos?.page || state.ficha.page;
   const limit = data.historialTurnos?.limit || state.ficha.limit;
   const totalPages = Math.max(1, Math.ceil(totalTurnos / limit));
+  const consultas = data.historiasClinicas || [];
+  const pacienteData = serializePacienteForDataset(paciente);
+  const consultasHtml = consultas.length ? consultas.map((consulta) => `
+    <article class="border rounded p-3 mb-2">
+      <div class="d-flex flex-wrap justify-content-between gap-2"><strong>${escapeHtml(consulta.motivo_consulta || consulta.descripcion || 'Registro clínico anterior')}</strong><span>${escapeHtml(formatDateTime(consulta.fecha_atencion || consulta.created_at))}</span></div>
+      <div class="small text-secondary mb-2">Profesional: ${escapeHtml(consulta.profesional_nombre || 'No registrado')}</div>
+      ${consulta.diagnostico ? `<div><strong>Diagnóstico:</strong> ${escapeHtml(consulta.diagnostico)}</div>` : ''}
+      ${consulta.tratamientos_realizados ? `<div><strong>Tratamientos:</strong> ${escapeHtml(consulta.tratamientos_realizados)}</div>` : ''}
+      ${consulta.plan_indicaciones ? `<div><strong>Plan/indicaciones:</strong> ${escapeHtml(consulta.plan_indicaciones)}</div>` : ''}
+      ${consulta.observaciones ? `<div><strong>Observaciones:</strong> ${escapeHtml(consulta.observaciones)}</div>` : ''}
+      <div class="small mt-2">Odontograma: ${consulta.odontograma_disponible ? 'versión conservada' : 'sin versión disponible'}</div>
+      ${consulta.odontograma_snapshot ? `<details class="small mt-1"><summary>Consultar odontograma de esta atención</summary><ul class="mb-0">${(consulta.odontograma_snapshot.registros || []).map((r) => { const ref=(consulta.odontograma_snapshot.referencias || []).find((item) => item.codigo===r.estado); return `<li>Pieza ${escapeHtml(r.diente)}, cara ${escapeHtml(r.cara)}: ${escapeHtml(ref?.nombre || r.estado)}</li>`; }).join('') || '<li>Sin estados dentales registrados</li>'}</ul></details>` : ''}
+      ${(consulta.documentos || []).length ? `<div class="small">Documentos: ${(consulta.documentos || []).map((doc) => escapeHtml(doc.nombre_archivo)).join(', ')}</div>` : ''}
+    </article>`).join('') : '<p class="text-secondary">Sin atenciones clínicas registradas.</p>';
 
   state.ficha.page = page;
   state.ficha.total = totalTurnos;
@@ -229,10 +495,10 @@ function renderFichaContent(data) {
           (turno) => `
             <tr>
               <td>${formatDate(turno.fecha_hora_inicio)}</td>
-              <td>${turno.prestacion?.nombre || '-'}</td>
-              <td>${turno.estado || '-'}</td>
+              <td>${escapeHtml(turno.prestacion?.nombre || '-')}</td>
+              <td>${escapeHtml(turno.estado || '-')}</td>
               <td>${turno.prestacion?.duracion_minutos ? `${turno.prestacion.duracion_minutos} min` : '-'}</td>
-              <td>${turno.observaciones || '-'}</td>
+              <td>${escapeHtml(turno.observaciones || '-')}</td>
             </tr>
           `,
         )
@@ -242,18 +508,35 @@ function renderFichaContent(data) {
   ui.fichaModalContent.innerHTML = `
     <div class="row g-3 mb-2">
       <div class="col-md-2"><strong>ID:</strong> ${paciente.id ?? '-'}</div>
-      <div class="col-md-6"><strong>Paciente:</strong> ${paciente.apellido || ''}, ${paciente.nombre || ''}</div>
-      <div class="col-md-4"><strong>DNI:</strong> ${paciente.dni || '-'}</div>
-      <div class="col-md-4"><strong>Nacionalidad:</strong> ${paciente.nacionalidad || '-'}</div>
+      <div class="col-md-6"><strong>Paciente:</strong> ${escapeHtml(paciente.apellido || '')}, ${escapeHtml(paciente.nombre || '')}</div>
+      <div class="col-md-4"><strong>DNI:</strong> ${escapeHtml(paciente.dni || '-')}</div>
+      <div class="col-md-4"><strong>Nacionalidad:</strong> ${escapeHtml(paciente.nacionalidad || '-')}</div>
       <div class="col-md-4"><strong>Edad:</strong> ${paciente.edad ?? '-'} ${paciente.edad ? 'años' : ''}</div>
       <div class="col-md-4"><strong>Fecha nacimiento:</strong> ${formatDate(paciente.fecha_nacimiento)}</div>
-      <div class="col-md-6"><strong>Contacto:</strong> ${paciente.telefono || '-'} / ${paciente.email || '-'}</div>
-      <div class="col-md-6"><strong>Domicilio:</strong> ${paciente.domicilio || '-'}</div>
-      <div class="col-md-4"><strong>Alergias:</strong> ${paciente.alergias || '-'}</div>
-      <div class="col-md-4"><strong>Condiciones:</strong> ${paciente.condiciones || '-'}</div>
-      <div class="col-md-4"><strong>Estado trat.:</strong> ${paciente.estado_tratamiento || '-'}</div>
-      <div class="col-12"><strong>Observaciones clínicas:</strong> ${paciente.observaciones || '-'}</div>
+      <div class="col-md-6"><strong>Contacto:</strong> ${escapeHtml(paciente.telefono || '-')} / ${escapeHtml(paciente.email || '-')}</div>
+      <div class="col-md-6"><strong>Domicilio:</strong> ${escapeHtml(paciente.domicilio || '-')}</div>
+      <div class="col-md-4"><strong>Alergias:</strong> ${escapeHtml(paciente.alergias || '-')}</div>
+      <div class="col-md-4"><strong>Condiciones:</strong> ${escapeHtml(paciente.condiciones || '-')}</div>
+      <div class="col-md-4"><strong>Estado trat.:</strong> ${escapeHtml(paciente.estado_tratamiento || '-')}</div>
+      <div class="col-12"><strong>Observaciones clínicas:</strong> ${escapeHtml(paciente.observaciones || '-')}</div>
     </div>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="ficha-editar" data-paciente="${pacienteData}">Editar datos</button>
+      <button type="button" class="btn btn-outline-primary btn-sm" id="ficha-odontograma">Ver o editar odontograma actual</button>
+    </div>
+    <hr><h3 class="h6">Historial de consultas</h3>
+    <form id="consulta-form" class="row g-2 border rounded p-2 mb-3">
+      <div class="col-md-6"><label class="form-label">Fecha y hora</label><input name="fecha_atencion" type="datetime-local" class="form-control" required></div>
+      <div class="col-md-6"><label class="form-label">Motivo de consulta</label><input name="motivo_consulta" class="form-control" required></div>
+      <div class="col-md-6"><label class="form-label">Diagnóstico</label><textarea name="diagnostico" class="form-control"></textarea></div>
+      <div class="col-md-6"><label class="form-label">Tratamientos o prestaciones</label><textarea name="tratamientos_realizados" class="form-control"></textarea></div>
+      <div class="col-md-6"><label class="form-label">Plan o indicaciones</label><textarea name="plan_indicaciones" class="form-control"></textarea></div>
+      <div class="col-md-6"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control"></textarea></div>
+      <div class="col-12 form-check ms-2"><input name="guardar_odontograma" id="consulta-odontograma" type="checkbox" class="form-check-input" checked><label for="consulta-odontograma" class="form-check-label">Conservar una versión del odontograma actual</label></div>
+      <div class="col-12"><button class="btn btn-primary btn-sm" type="submit">Registrar atención</button></div>
+    </form>
+    <div class="mb-4">${consultasHtml}</div>
+    <hr><h3 class="h6">Historial de turnos</h3>
     <div class="row g-3 mb-3">
       <div class="col-md-6">
         <div class="p-2 bg-light rounded border">
@@ -303,12 +586,16 @@ function renderFichaContent(data) {
     </div>
     <form id="ficha-documentos-form" class="row g-2 align-items-end mb-3">
       <div class="col-md-5">
-        <label class="form-label" for="ficha-documentos-descripcion">Descripcion</label>
+        <label class="form-label" for="ficha-documentos-descripcion">Descripción</label>
         <input id="ficha-documentos-descripcion" class="form-control" placeholder="Radiografia, receta, etc." />
       </div>
       <div class="col-md-5">
         <label class="form-label" for="ficha-documentos-archivo">Archivo</label>
         <input id="ficha-documentos-archivo" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required />
+      </div>
+      <div class="col-md-5">
+        <label class="form-label" for="ficha-documentos-consulta">Atención asociada (opcional)</label>
+        <select id="ficha-documentos-consulta" class="form-select"><option value="">Documento general</option>${consultas.map((c) => `<option value="${c.id}">${escapeHtml(formatDateTime(c.fecha_atencion || c.created_at))} - ${escapeHtml(c.motivo_consulta || c.descripcion)}</option>`).join('')}</select>
       </div>
       <div class="col-md-2 d-grid">
         <button class="btn btn-primary" type="submit">Subir</button>
@@ -320,7 +607,7 @@ function renderFichaContent(data) {
           <tr>
             <th>Nombre</th>
             <th>Tipo</th>
-            <th>Descripcion</th>
+            <th>Descripción</th>
             <th>Fecha</th>
             <th class="text-end">Acciones</th>
           </tr>
@@ -328,7 +615,7 @@ function renderFichaContent(data) {
         <tbody id="ficha-documentos-tbody"></tbody>
       </table>
     </div>
-    <small class="text-secondary">Tipos permitidos: PDF, JPG, PNG. Maximo 10MB.</small>
+    <small class="text-secondary">Tipos permitidos: PDF, JPG, PNG. Máximo 10 MB.</small>
   `;
 
   const estadoSelect = document.getElementById('ficha-estado-filter');
@@ -361,6 +648,17 @@ function renderFichaContent(data) {
 
   bindFichaDocumentos();
   cargarDocumentosFicha();
+  document.getElementById('ficha-editar')?.addEventListener('click', (event) => openEditModal(getPacienteFromRowButton(event.currentTarget)));
+  document.getElementById('ficha-odontograma')?.addEventListener('click', async () => { odontoModal?.show(); await loadOdontograma(state.ficha.pacienteId); });
+  document.getElementById('consulta-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const payload = Object.fromEntries(form.entries());
+    delete payload.guardar_odontograma;
+    if (document.getElementById('consulta-odontograma')?.checked) payload.odontograma = { registros: [], meta: {} };
+    try { await createConsultaClinica(state.ficha.pacienteId, payload); renderAlert(ui.alertContainer, 'Atención registrada.', 'success'); await loadFichaClinica(); }
+    catch (error) { renderAlert(ui.alertContainer, error.message, 'danger'); }
+  });
 }
 
 function renderDocumentosFicha(documentos = []) {
@@ -368,17 +666,18 @@ function renderDocumentosFicha(documentos = []) {
   if (!tbody) return;
 
   if (!documentos.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">Sin documentos</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-secondary">Sin documentos</td></tr>';
     return;
   }
 
   tbody.innerHTML = documentos
     .map((doc) => `
         <tr>
-          <td>${doc.nombre_archivo}</td>
-          <td>${doc.tipo_archivo}</td>
-          <td>${doc.descripcion || '-'}</td>
+          <td>${escapeHtml(doc.nombre_archivo)}</td>
+          <td>${escapeHtml(doc.tipo_archivo)}</td>
+          <td>${escapeHtml(doc.descripcion || '-')}</td>
           <td>${formatDate(doc.fecha_subida)}</td>
+          <td><select class="form-select form-select-sm" data-action="associate-doc" data-id="${doc.id}" aria-label="Atención asociada a ${escapeHtml(doc.nombre_archivo)}"><option value="">Documento general</option>${(state.ficha.consultas || []).map((consulta) => `<option value="${consulta.id}" ${String(doc.historia_clinica_id || '') === String(consulta.id) ? 'selected' : ''}>${escapeHtml(formatDateTime(consulta.fecha_atencion || consulta.created_at))} - ${escapeHtml(consulta.motivo_consulta || consulta.descripcion)}</option>`).join('')}</select></td>
           <td class="text-end">
             <div class="btn-group">
               <button class="btn btn-sm btn-outline-primary" type="button" data-action="download-doc" data-id="${doc.id}">Descargar</button>
@@ -426,6 +725,8 @@ function bindFichaDocumentos() {
     const formData = new FormData();
     formData.append('paciente_id', String(state.ficha.pacienteId));
     formData.append('descripcion', descripcionInput?.value?.trim() || '');
+    const consultaId = document.getElementById('ficha-documentos-consulta')?.value;
+    if (consultaId) formData.append('historia_clinica_id', consultaId);
     formData.append('archivo', archivo);
 
     try {
@@ -464,6 +765,12 @@ function bindFichaDocumentos() {
     } catch (error) {
       renderAlert(ui.alertContainer, error.message, 'danger');
     }
+  });
+  tbody?.addEventListener('change', async (event) => {
+    const select = event.target.closest('select[data-action="associate-doc"]');
+    if (!select) return;
+    try { await associateDocumento(select.dataset.id, select.value || null); renderAlert(ui.alertContainer, 'Asociación del documento actualizada.', 'success'); await cargarDocumentosFicha(); }
+    catch (error) { renderAlert(ui.alertContainer, error.message, 'danger'); await cargarDocumentosFicha(); }
   });
 }
 
@@ -684,6 +991,7 @@ async function loadOdontograma(pacienteId) {
   ui.odontoModalLabel.textContent = 'Cargando odontograma...';
 
   const data = await getOdontogramaPaciente(pacienteId);
+  await cargarReferenciasOdontograma();
   const paciente = data.paciente || {};
   ui.odontoModalLabel.textContent = `${paciente.apellido || ''}, ${paciente.nombre || ''} - DNI ${paciente.dni || '-'}`;
 
@@ -709,6 +1017,29 @@ async function loadOdontograma(pacienteId) {
   renderOdontograma();
   updateCountExistentes();
   renderToothDetails();
+}
+
+async function cargarReferenciasOdontograma() {
+  const data = await getOdontogramaReferencias();
+  const referencias = data.referencias || [];
+  referencias.forEach((ref) => { estados[ref.codigo] = ref.color; });
+  if (ui.odontoEstadoClinico) {
+    ui.odontoEstadoClinico.replaceChildren(...referencias.filter((ref) => ref.activa).map((ref) => {
+      const option = document.createElement('option'); option.value = ref.codigo; option.textContent = ref.nombre; return option;
+    }));
+  }
+  const list = document.getElementById('odontograma-referencias-list');
+  if (list) {
+    list.replaceChildren(...referencias.map((ref) => {
+      const item = document.createElement('span'); item.className = 'badge border text-dark d-inline-flex align-items-center gap-1';
+      item.style.borderLeft = `8px solid ${ref.color}`; item.append(document.createTextNode(`${ref.nombre}${ref.activa ? '' : ' (inactiva)'}`));
+      const edit = document.createElement('button'); edit.type='button'; edit.className='btn btn-link btn-sm p-0'; edit.textContent='Editar';
+      edit.addEventListener('click', async () => { const nombre=window.prompt('Nombre de la referencia',ref.nombre); if(!nombre)return; await updateOdontogramaReferencia(ref.id,{nombre,descripcion:ref.descripcion,color:ref.color}); await cargarReferenciasOdontograma(); });
+      const toggle = document.createElement('button'); toggle.type='button'; toggle.className='btn btn-link btn-sm p-0'; toggle.textContent=ref.activa?'Inactivar':'Activar';
+      toggle.addEventListener('click', async () => { await setOdontogramaReferenciaActiva(ref.id,!ref.activa); await cargarReferenciasOdontograma(); });
+      item.append(edit,toggle); return item;
+    }));
+  }
 }
 
 async function guardarToothSeleccionado() {
@@ -746,29 +1077,32 @@ async function guardarToothSeleccionado() {
     return;
   }
 
-  const requests = [];
+  const registros = [];
   dientes.forEach((d) => {
     FACES.forEach((face) => {
       const estado = getRecordState(d, face);
-      requests.push(
-        postOdontograma({
-          paciente_id: pacienteId,
+      registros.push({
           diente: d,
           cara: face,
           estado,
-          ...metaPayload,
-        }),
-      );
+      });
     });
   });
 
-  await Promise.all(requests);
+  await postOdontograma({ paciente_id: pacienteId, registros, meta: {
+    sarro: metaPayload.sarro, periodontal: metaPayload.periodontal, observaciones: metaPayload.observaciones,
+  } });
   state.odontograma.metaDirty = false;
   renderAlert(ui.alertContainer, 'Odontograma guardado correctamente.', 'success');
   updateCountExistentes();
 }
 
 function bindOdontograma() {
+  document.getElementById('odontograma-referencia-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    try { await createOdontogramaReferencia(Object.fromEntries(new FormData(event.currentTarget).entries())); event.currentTarget.reset(); await cargarReferenciasOdontograma(); }
+    catch (error) { renderAlert(ui.alertContainer, error.message, 'danger'); }
+  });
   document.addEventListener('click', (event) => {
     const faceEl = event.target.closest('.odonto-face');
     if (!faceEl) return;
@@ -994,15 +1328,77 @@ function bindOpenCreateModal() {
 }
 
 function bindCreateForm() {
+  const tipoNacionalidad = document.getElementById('nacionalidad-tipo');
+  tipoNacionalidad?.addEventListener('change', () => {
+    configurarNacionalidad(tipoNacionalidad.value, '');
+  });
+
+  ['nombre', 'apellido'].forEach((field) => {
+    const input = ui.createForm.elements[field];
+    input?.addEventListener('beforeinput', (event) => {
+      if (event.inputType === 'insertText' && event.data && /[^\p{L}\p{M} '\u2019-]/u.test(event.data)) event.preventDefault();
+    });
+    input?.addEventListener('input', (event) => {
+      if (event.isComposing) return;
+      const limpio = input.value.replace(/[^\p{L}\p{M} '\u2019-]/gu, '');
+      if (limpio !== input.value) input.value = limpio;
+      input.classList.remove('is-invalid');
+      input.removeAttribute('aria-invalid');
+      input.nextElementSibling?.classList.contains('dynamic') && input.nextElementSibling.remove();
+    });
+  });
+
+  document.getElementById('paciente-modal')?.addEventListener('hidden.bs.modal', () => {
+    limpiarValidacionesPaciente();
+    ui.createForm.reset();
+    configurarNacionalidad('Argentina');
+  });
+
+  const fechaNacimiento = ui.createForm.elements.fecha_nacimiento;
+  if (fechaNacimiento) fechaNacimiento.max = new Date().toISOString().slice(0, 10);
+
+  const limpiarErrorDelCampo = (event) => {
+    const input = event.target;
+    if (!input?.classList?.contains('is-invalid')) return;
+    input.classList.remove('is-invalid');
+    input.removeAttribute('aria-invalid');
+    if (input.nextElementSibling?.classList.contains('dynamic')) input.nextElementSibling.remove();
+    if (!ui.createForm.querySelector('.is-invalid')) ui.pacienteFormStatus?.replaceChildren();
+  };
+  ui.createForm.addEventListener('input', limpiarErrorDelCampo);
+  ui.createForm.addEventListener('change', limpiarErrorDelCampo);
+
   ui.createForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+
+    limpiarValidacionesPaciente();
+    if (!ui.createForm.checkValidity()) {
+      const invalidos = Array.from(ui.createForm.elements).filter((element) => element.willValidate && !element.validity.valid);
+      invalidos.forEach((input) => {
+        let message = 'Revise este campo';
+        if (input.validity.valueMissing) message = 'Este campo es obligatorio';
+        else if (input.validity.typeMismatch) message = 'Ingrese un correo electrónico válido';
+        else if (input.validity.rangeOverflow) message = 'La fecha no puede ser futura';
+        input.classList.add('is-invalid');
+        input.setAttribute('aria-invalid', 'true');
+        const feedback = document.createElement('div');
+        feedback.className = 'invalid-feedback dynamic';
+        feedback.textContent = message;
+        input.insertAdjacentElement('afterend', feedback);
+      });
+      renderAlert(ui.pacienteFormStatus, 'Revisá los campos marcados antes de guardar.', 'danger');
+      invalidos[0]?.focus();
+      return;
+    }
 
     const formData = new FormData(ui.createForm);
     const payload = Object.fromEntries(formData.entries());
     const pacienteId = payload.id;
     delete payload.id;
 
-    ['telefono', 'email', 'nacionalidad', 'domicilio', 'fecha_nacimiento', 'observaciones'].forEach((field) => {
+    payload.nacionalidad = tipoNacionalidad.value === 'Argentina' ? 'Argentina' : payload.nacionalidad;
+
+    ['telefono', 'email', 'nacionalidad', 'domicilio', 'fecha_nacimiento', 'observaciones', 'alergias', 'condiciones', 'estado_tratamiento'].forEach((field) => {
       if (!payload[field] || !String(payload[field]).trim()) payload[field] = null;
     });
 
@@ -1019,7 +1415,17 @@ function bindCreateForm() {
       state.page = 1;
       await loadPacientes();
     } catch (error) {
-      renderAlert(ui.alertContainer, error.message, 'danger');
+      renderAlert(ui.pacienteFormStatus, error.message, 'danger');
+      Object.entries(error.errores || {}).forEach(([field, message]) => {
+        const input = ui.createForm.elements[field];
+        if (!input) return;
+        input.classList.add('is-invalid');
+        input.setAttribute('aria-invalid', 'true');
+        const feedback = document.createElement('div');
+        feedback.className = 'invalid-feedback dynamic';
+        feedback.textContent = message;
+        input.insertAdjacentElement('afterend', feedback);
+      });
     }
   });
 }
@@ -1056,12 +1462,14 @@ function bindTableActions() {
 
     if (action === 'ficha') {
       try {
-        ui.fichaModalContent.innerHTML = '<p class="text-secondary mb-0">Cargando...</p>';
-        fichaModal?.show();
-        state.ficha = { pacienteId: id, page: 1, limit: 5, estado: '', sort: 'fecha:desc', total: 0 };
+        ui.pacientesListView.classList.add('d-none');
+        ui.fichaView.classList.remove('d-none');
+        ui.fichaModalContent.innerHTML = '<div class="card border-0 shadow-sm"><div class="card-body text-secondary">Cargando ficha clínica...</div></div>';
+        state.ficha = { pacienteId: id, page: 1, limit: 5, estado: '', sort: 'fecha:desc', total: 0, tab: 'resumen' };
         await loadFichaClinica();
       } catch (error) {
-        fichaModal?.hide();
+        ui.fichaView.classList.add('d-none');
+        ui.pacientesListView.classList.remove('d-none');
         renderAlert(ui.alertContainer, error.message, 'danger');
       }
       return;

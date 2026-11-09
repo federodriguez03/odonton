@@ -11,6 +11,12 @@ const {
   getOdontogramaPaciente,
   postOdontograma,
 } = require('../controllers/odontogramaController');
+const referencias = require('../controllers/odontogramaReferenciasController');
+
+router.get('/referencias/catalogo', middlewareAutenticacion, autorizarOdontologo, referencias.listar);
+router.post('/referencias/catalogo', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, referencias.crear);
+router.put('/referencias/catalogo/:id', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, referencias.actualizar);
+router.put('/referencias/catalogo/:id/activa', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, referencias.activar);
 
 router.get(
   '/:pacienteId',

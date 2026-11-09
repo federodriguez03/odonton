@@ -320,10 +320,33 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
 
     // Traer historial clínico (historias_clinicas para este paciente)
     const historiasRes = await pool.query(
-        `SELECT id, paciente_id, turno_id, descripcion, created_at
-         FROM historias_clinicas
-         WHERE paciente_id = $1
-         ORDER BY created_at DESC LIMIT 50`,
+        `SELECT h.*, u.nombre AS profesional_nombre,
+                t.fecha_hora_inicio AS turno_fecha,
+                p.nombre AS turno_prestacion,
+                (h.odontograma_snapshot IS NOT NULL) AS odontograma_disponible,
+                COALESCE((SELECT json_agg(json_build_object('id',d.id,'nombre_archivo',d.nombre_archivo,'tipo_archivo',d.tipo_archivo))
+                          FROM documentos_paciente d WHERE d.historia_clinica_id=h.id), '[]') AS documentos
+         FROM historias_clinicas h
+         LEFT JOIN usuarios u ON u.id = h.profesional_id
+         LEFT JOIN turnos t ON t.id = h.turno_id
+         LEFT JOIN prestaciones p ON p.id = t.prestacion_id
+         WHERE h.paciente_id = $1
+         ORDER BY COALESCE(h.fecha_atencion, h.created_at) DESC, h.id DESC LIMIT 50`,
+        [pacienteId]
+    );
+
+    const profesionalesRes = await pool.query(
+        `SELECT id, nombre, email FROM usuarios WHERE COALESCE(activo, TRUE)=TRUE ORDER BY nombre, email`
+    );
+    const turnosConsultaRes = await pool.query(
+        `SELECT t.id, t.fecha_hora_inicio, t.estado, p.nombre AS prestacion_nombre,
+                h.id AS consulta_id
+         FROM turnos t
+         LEFT JOIN prestaciones p ON p.id=t.prestacion_id
+         LEFT JOIN historias_clinicas h ON h.turno_id=t.id
+         WHERE t.paciente_id=$1
+         ORDER BY t.fecha_hora_inicio DESC, t.id DESC
+         LIMIT 100`,
         [pacienteId]
     );
 
@@ -367,7 +390,9 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
                 }
             })),
         },
-        historiasClinicas: historiasRes.rows
+        historiasClinicas: historiasRes.rows,
+        profesionales: profesionalesRes.rows,
+        turnosParaConsulta: turnosConsultaRes.rows
     };
 }
 

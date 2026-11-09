@@ -79,7 +79,7 @@ function createMockPool() {
         }]);
       }
 
-      if (lower.includes('from historias_clinicas') && lower.startsWith('select')) {
+      if (lower.includes('from historias_clinicas h') && lower.startsWith('select')) {
         return result(historias.map((historia) => ({ ...historia })));
       }
 
