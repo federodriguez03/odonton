@@ -101,11 +101,29 @@ async function fichaClinica(req, res) {
 	}
 }
 
+async function registrarAtencion(req, res) {
+	try {
+		const { id } = req.params;
+		const { turno_id, observaciones } = req.body || {};
+		const atencion = await pacientesService.registrarAtencion({
+			pacienteId: id,
+			turnoId: turno_id,
+			observaciones,
+		});
+		return res.status(201).json({ mensaje: 'Atencion registrada correctamente', atencion });
+	} catch (error) {
+		const mensaje = error.message || 'Error al registrar atencion';
+		const status = /Ya existe/.test(mensaje) ? 409 : 400;
+		return res.status(status).json({ mensaje });
+	}
+}
+
 module.exports = {
 	registrarPaciente,
 	actualizarPaciente,
 	listarPacientes,
 	obtenerPaciente,
+	registrarAtencion,
 };
 
 module.exports.fichaClinica = fichaClinica;

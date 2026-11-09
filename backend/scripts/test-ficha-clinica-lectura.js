@@ -22,6 +22,7 @@ function createMockPool() {
     profesional_nombre: 'Profesional relacionado',
     prestacion_id: 2,
     prestacion_nombre: 'Control',
+    odontograma_snapshot: { version: 1, registros: [] },
     created_at: '2026-08-01T12:00:00.000Z',
   }];
   const queries = [];
@@ -156,6 +157,7 @@ async function main() {
     assert.equal(primera.data.historialTurnos.total, 1, 'La ficha debe conservar el historial de turnos');
     assert.equal(primera.data.historiasClinicas[0].profesional_nombre, 'Profesional relacionado');
     assert.equal(primera.data.historiasClinicas[0].prestacion_nombre, 'Control');
+    assert.equal(primera.data.historiasClinicas[0].odontograma_snapshot.version, 1, 'La reapertura debe devolver el snapshot guardado');
     const consultaHistorias = mockPool.queries.find((query) => query.includes('FROM historias_clinicas hc'));
     assert.match(consultaHistorias, /t\.id = hc\.turno_id AND t\.paciente_id = hc\.paciente_id/);
     assert.deepEqual(segunda.data, primera.data, 'Dos lecturas consecutivas deben devolver los mismos datos funcionales');

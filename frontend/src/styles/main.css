@@ -1010,3 +1010,39 @@ body {
     display: block;
   }
 }
+.adjuntos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 260px));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.adjunto-card {
+  width: 100%;
+  max-width: 260px;
+}
+
+.adjunto-miniatura {
+  width: 100%;
+  height: 160px;
+}
+
+@media (max-width: 575.98px) {
+  .adjuntos-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adjunto-card {
+    max-width: none;
+  }
+}
+.odontograma-historico-svg {
+  display: block;
+  width: 100%;
+  min-width: 620px;
+  height: auto;
+}
+
+.odontograma-historico {
+  overflow-x: auto;
+}

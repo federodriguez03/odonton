@@ -1,4 +1,5 @@
 import {
+  createAtencion,
   createPaciente,
   deleteDocumento,
   downloadDocumento,
@@ -490,15 +491,16 @@ function closeFicha() {
 
 function renderFichaContent(data) {
   const paciente = data.paciente || {};
+  const turnosAtencion = data.turnosDisponiblesAtencion || [];
   const historias = [...(data.historiasClinicas || [])].sort((a, b) => {
-    const fechaA = new Date(a.created_at || a.fecha_atencion || a.fecha || 0).getTime();
-    const fechaB = new Date(b.created_at || b.fecha_atencion || b.fecha || 0).getTime();
+    const fechaA = new Date(a.fecha_atencion || a.created_at || a.fecha || 0).getTime();
+    const fechaB = new Date(b.fecha_atencion || b.created_at || b.fecha || 0).getTime();
     return fechaB - fechaA;
   });
   const edad = Number.isInteger(paciente.edad) ? `${paciente.edad} años` : 'Edad no disponible';
   const historiasHtml = historias.length
     ? `<div class="atenciones-timeline">${historias.map((historia) => {
-        const fecha = getHistoriaDateParts(historia.created_at || historia.fecha_atencion || historia.fecha);
+        const fecha = getHistoriaDateParts(historia.fecha_atencion || historia.created_at || historia.fecha);
         const detalle = historia.descripcion || historia.detalle || 'Sin registrar';
         const resumen = historia.resumen || historia.descripcion || 'Sin registrar';
         return `
@@ -520,7 +522,9 @@ function renderFichaContent(data) {
                 <details data-historia-id="${historia.id}">
                   <summary class="text-primary fw-semibold">Ver detalle</summary>
                   <div class="border-top mt-3 pt-3">${escapeHtml(detalle)}</div>
-                  <div class="small text-secondary mt-3">Odontograma histórico: <strong>No disponible</strong></div>
+                  ${historia.odontograma_snapshot
+                    ? `<div class="mt-3"><h4 class="h6">Odontograma guardado</h4><div id="historia-odontograma-${historia.id}" class="odontograma-historico border rounded-3 p-2 bg-light-subtle"></div></div>`
+                    : '<div class="small text-secondary mt-3">Odontograma histórico: <strong>No disponible</strong></div>'}
                   <div class="border-top mt-3 pt-3">
                     <h4 class="h6">Archivos de esta atención</h4>
                     <form class="atencion-documentos-form row g-2 align-items-end mb-3" data-historia-id="${historia.id}">
@@ -528,7 +532,7 @@ function renderFichaContent(data) {
                       <div class="col-md-5"><label class="form-label">Imagen o PDF</label><input name="archivo" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required /></div>
                       <div class="col-md-2 d-grid"><button class="btn btn-primary" type="submit">Adjuntar</button></div>
                     </form>
-                    <div class="atencion-documentos-grid row g-3" id="atencion-documentos-${historia.id}"><div class="col-12 text-secondary small">Cargando archivos...</div></div>
+                    <div class="atencion-documentos-grid adjuntos-grid" id="atencion-documentos-${historia.id}"><div class="text-secondary small">Cargando archivos...</div></div>
                   </div>
                 </details>
               </div>
@@ -580,10 +584,29 @@ function renderFichaContent(data) {
               <div class="col-md-5"><label class="form-label" for="ficha-documentos-archivo">Archivo</label><input id="ficha-documentos-archivo" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required /></div>
               <div class="col-md-2 d-grid"><button class="btn btn-primary" type="submit">Subir</button></div>
             </form>
-            <div id="ficha-documentos-grid" class="row g-3"></div>
+            <div id="ficha-documentos-grid" class="adjuntos-grid"></div>
             <small class="text-secondary d-block mt-2">Tipos permitidos: PDF, JPG, PNG. Máximo 10 MB.</small>
           </div>
           <div class="tab-pane fade" id="ficha-atenciones">
+            <div class="d-flex justify-content-end mb-3">
+              <button id="registrar-atencion-toggle" class="btn btn-primary" type="button" ${turnosAtencion.length ? '' : 'disabled'}>
+                <i class="bi bi-plus-lg me-1"></i>Registrar atención
+              </button>
+            </div>
+            ${turnosAtencion.length ? `
+              <form id="registrar-atencion-form" class="card border mb-4 d-none">
+                <div class="card-body">
+                  <h3 class="h5">Registrar atención realizada</h3>
+                  <div class="row g-3">
+                    <div class="col-12"><label class="form-label" for="atencion-turno">Turno realizado</label><select id="atencion-turno" name="turno_id" class="form-select" required><option value="">Seleccionar turno</option>${turnosAtencion.map((turno) => `<option value="${turno.id}" data-fecha="${escapeHtml(turno.fecha_hora_inicio || '')}" data-profesional="${escapeHtml(turno.profesional_nombre || 'Sin registrar')}" data-prestacion="${escapeHtml(turno.prestacion_nombre || 'Sin registrar')}">${formatDate(turno.fecha_hora_inicio)} · ${escapeHtml(turno.prestacion_nombre || 'Sin registrar')}</option>`).join('')}</select></div>
+                    <div class="col-md-4"><label class="form-label">Fecha</label><input id="atencion-fecha" class="form-control" readonly value="Sin registrar" /></div>
+                    <div class="col-md-4"><label class="form-label">Profesional</label><input id="atencion-profesional" class="form-control" readonly value="Sin registrar" /></div>
+                    <div class="col-md-4"><label class="form-label">Prestación</label><input id="atencion-prestacion" class="form-control" readonly value="Sin registrar" /></div>
+                    <div class="col-12"><label class="form-label" for="atencion-observaciones">Observaciones de la atención</label><textarea id="atencion-observaciones" name="observaciones" class="form-control" rows="4" required></textarea></div>
+                    <div class="col-12 d-flex justify-content-end gap-2"><button id="registrar-atencion-cancelar" class="btn btn-outline-secondary" type="button">Cancelar</button><button class="btn btn-primary" type="submit">Guardar atención</button></div>
+                  </div>
+                </div>
+              </form>` : '<p class="text-secondary text-end small">No hay turnos realizados pendientes de registrar.</p>'}
             ${historiasHtml}
           </div>
           <div class="tab-pane fade" id="ficha-odontograma">
@@ -611,29 +634,112 @@ function renderFichaContent(data) {
   bindFichaDocumentos();
   cargarDocumentosFicha();
   bindAtencionDocumentos(historias);
+  bindRegistroAtencion();
+  historias.forEach((historia) => {
+    if (historia.odontograma_snapshot) renderOdontogramaHistorico(historia.id, historia.odontograma_snapshot);
+  });
+}
+
+function bindRegistroAtencion() {
+  const toggle = document.getElementById('registrar-atencion-toggle');
+  const form = document.getElementById('registrar-atencion-form');
+  const select = document.getElementById('atencion-turno');
+  toggle?.addEventListener('click', () => form?.classList.remove('d-none'));
+  document.getElementById('registrar-atencion-cancelar')?.addEventListener('click', () => form?.classList.add('d-none'));
+  select?.addEventListener('change', () => {
+    const option = select.selectedOptions[0];
+    const fecha = option?.dataset.fecha ? new Date(option.dataset.fecha) : null;
+    document.getElementById('atencion-fecha').value = fecha && !Number.isNaN(fecha.getTime())
+      ? fecha.toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+      : 'Sin registrar';
+    document.getElementById('atencion-profesional').value = option?.dataset.profesional || 'Sin registrar';
+    document.getElementById('atencion-prestacion').value = option?.dataset.prestacion || 'Sin registrar';
+  });
+  form?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submit = form.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    try {
+      await createAtencion(state.ficha.pacienteId, {
+        turno_id: form.elements.turno_id.value,
+        observaciones: form.elements.observaciones.value.trim(),
+      });
+      renderAlert(ui.alertContainer, 'Atención registrada con su odontograma histórico.', 'success');
+      await loadFichaClinica();
+    } catch (error) {
+      renderAlert(ui.alertContainer, error.message, 'danger');
+      submit.disabled = false;
+    }
+  });
+}
+
+function renderOdontogramaHistorico(historiaId, rawSnapshot) {
+  const container = document.getElementById(`historia-odontograma-${historiaId}`);
+  if (!container) return;
+  const snapshot = typeof rawSnapshot === 'string' ? JSON.parse(rawSnapshot) : rawSnapshot;
+  const registros = Array.isArray(snapshot?.registros) ? snapshot.registros : [];
+  const colores = snapshot?.colores || estados;
+  const registroMap = new Map(registros.map((r) => [`${r.diente}-${r.cara}`, r]));
+  const tieneTemporales = registros.some((r) => Number(r.diente) >= 50);
+  const dientes = tieneTemporales
+    ? [...temporales.superior, ...temporales.inferior]
+    : [...permanentes.superior, ...permanentes.inferior];
+  const porFila = dientes.length / 2;
+  const size = 34;
+  const gap = 8;
+  const width = porFila * (size + gap) + 20;
+  const svg = createSvgEl('svg', { viewBox: `0 0 ${width} 115`, class: 'odontograma-historico-svg', role: 'img', 'aria-label': 'Odontograma histórico de solo lectura' });
+  dientes.forEach((diente, index) => {
+    const row = index < porFila ? 0 : 1;
+    const column = index % porFila;
+    const x = 10 + column * (size + gap);
+    const y = row === 0 ? 8 : 67;
+    FACES.forEach((cara) => {
+      const registro = registroMap.get(`${diente}-${cara}`);
+      const estado = registro?.estado || 'sano';
+      svg.appendChild(createSvgEl('polygon', {
+        points: pointsToAbsolute(FACE_POLYGONS[cara], x, y, size),
+        fill: registro?.color || colores[estado] || colores.sano || '#ffffff',
+        stroke: '#6c757d',
+        'stroke-width': 0.5,
+      }));
+    });
+    const label = createSvgEl('text', { x: x + size / 2, y: y + size + 9, 'text-anchor': 'middle', 'font-size': 7 });
+    label.textContent = String(diente);
+    svg.appendChild(label);
+  });
+  container.innerHTML = '';
+  container.appendChild(svg);
+  const meta = snapshot?.meta || {};
+  const referencias = snapshot?.referencias || {};
+  const info = document.createElement('div');
+  info.className = 'small text-secondary mt-2';
+  info.textContent = `Sarro: ${meta.sarro ? 'Sí' : 'No'} · Periodontal: ${meta.periodontal ? 'Sí' : 'No'} · Observaciones: ${meta.observaciones || 'Sin registrar'} · Referencias: ${(referencias.tratamientos || []).length} tratamientos, ${(referencias.protesis_fijas || []).length} prótesis fijas, ${(referencias.protesis_removibles || []).length} prótesis removibles`;
+  container.appendChild(info);
 }
 
 function renderDocumentosAtencion(historiaId, documentos = []) {
   const grid = document.getElementById(`atencion-documentos-${historiaId}`);
   if (!grid) return;
   if (!documentos.length) {
-    grid.innerHTML = '<div class="col-12 text-secondary small">Sin archivos adjuntos.</div>';
+    grid.innerHTML = '<div class="text-secondary small">Sin archivos adjuntos.</div>';
     return;
   }
   grid.innerHTML = documentos.map((doc) => `
-    <div class="col-12 col-md-6">
-      <article class="card h-100 border">
-        <div class="ratio ratio-4x3 bg-light border-bottom overflow-hidden" id="documento-miniatura-${doc.id}"><div class="d-flex h-100 align-items-center justify-content-center text-secondary">Cargando vista previa...</div></div>
-        <div class="card-body d-flex flex-column">
-          <h5 class="h6 text-break">${escapeHtml(doc.nombre_archivo)}</h5>
-          <p class="small text-secondary">${escapeHtml(doc.descripcion || 'Sin descripción')}</p>
+    <article class="card h-100 border adjunto-card">
+        <div class="card-body d-flex flex-column pb-2">
+          <h5 class="h6 text-break mb-1">${escapeHtml(doc.descripcion || doc.nombre_archivo)}</h5>
+          ${doc.descripcion && doc.descripcion !== doc.nombre_archivo ? `<p class="small text-secondary text-break mb-2">${escapeHtml(doc.nombre_archivo)}</p>` : ''}
+        </div>
+        <div class="adjunto-miniatura bg-light border-top border-bottom overflow-hidden" id="documento-miniatura-${doc.id}"><div class="d-flex h-100 align-items-center justify-content-center text-secondary">Cargando vista previa...</div></div>
+        <div class="card-body d-flex flex-column pt-2">
           <div class="d-flex flex-wrap gap-2 mt-auto">
-            <button class="btn btn-sm btn-outline-primary" type="button" data-action="preview-doc" data-id="${doc.id}" data-name="${escapeHtml(doc.nombre_archivo)}" data-type="${escapeHtml(doc.tipo_archivo)}">Ampliar</button>
+            <button class="btn btn-sm btn-outline-primary" type="button" data-action="preview-doc" data-id="${doc.id}" data-name="${escapeHtml(doc.nombre_archivo)}" data-type="${escapeHtml(doc.tipo_archivo)}">${doc.tipo_archivo === 'application/pdf' ? 'Ver PDF' : 'Ampliar'}</button>
             <button class="btn btn-sm btn-outline-secondary" type="button" data-action="download-doc" data-id="${doc.id}">Descargar</button>
+            <button class="btn btn-sm btn-outline-danger" type="button" data-action="delete-doc" data-id="${doc.id}" data-name="${escapeHtml(doc.nombre_archivo)}">Eliminar</button>
           </div>
         </div>
-      </article>
-    </div>`).join('');
+    </article>`).join('');
   documentos.forEach((doc) => hydrateDocumentoMiniatura(doc));
 }
 
@@ -643,7 +749,7 @@ async function cargarDocumentosAtencion(historiaId) {
     renderDocumentosAtencion(historiaId, data.documentos || []);
   } catch (error) {
     const grid = document.getElementById(`atencion-documentos-${historiaId}`);
-    if (grid) grid.innerHTML = `<div class="col-12 text-danger small">${escapeHtml(error.message)}</div>`;
+    if (grid) grid.innerHTML = `<div class="text-danger small">${escapeHtml(error.message)}</div>`;
   }
 }
 
@@ -688,6 +794,13 @@ function bindAtencionDocumentos(historias) {
       try {
         if (button.dataset.action === 'preview-doc') await mostrarDocumento(button);
         if (button.dataset.action === 'download-doc') await downloadDocumento(button.dataset.id);
+        if (button.dataset.action === 'delete-doc') {
+          const nombre = button.dataset.name || 'este archivo';
+          if (!window.confirm(`¿Eliminar "${nombre}"? Esta acción no elimina la atención ni otros archivos.`)) return;
+          await deleteDocumento(button.dataset.id);
+          await cargarDocumentosAtencion(grid.id.replace('atencion-documentos-', ''));
+          renderAlert(ui.alertContainer, 'Archivo eliminado.', 'success');
+        }
       } catch (error) {
         renderAlert(ui.alertContainer, error.message, 'danger');
       }
@@ -700,29 +813,29 @@ function renderDocumentosFicha(documentos = []) {
   if (!grid) return;
 
   if (!documentos.length) {
-    grid.innerHTML = '<div class="col-12"><div class="text-center text-secondary border rounded-3 py-4">Sin archivos</div></div>';
+    grid.innerHTML = '<div class="text-center text-secondary border rounded-3 py-4">Sin archivos</div>';
     return;
   }
 
   grid.innerHTML = documentos
     .map((doc) => `
-        <div class="col-12 col-md-6 col-xl-4">
-          <article class="card h-100 border">
-            <div class="ratio ratio-4x3 bg-light border-bottom d-flex align-items-center justify-content-center overflow-hidden" id="documento-miniatura-${doc.id}">
+          <article class="card h-100 border adjunto-card">
+            <div class="card-body d-flex flex-column pb-2">
+              <h4 class="h6 text-break mb-1">${escapeHtml(doc.descripcion || doc.nombre_archivo)}</h4>
+              ${doc.descripcion && doc.descripcion !== doc.nombre_archivo ? `<p class="small text-secondary text-break mb-0">${escapeHtml(doc.nombre_archivo)}</p>` : ''}
+            </div>
+            <div class="adjunto-miniatura bg-light border-top border-bottom d-flex align-items-center justify-content-center overflow-hidden" id="documento-miniatura-${doc.id}">
               <div class="d-flex h-100 align-items-center justify-content-center text-secondary"><span>Cargando vista previa...</span></div>
             </div>
-            <div class="card-body d-flex flex-column">
-              <h4 class="h6 text-break">${escapeHtml(doc.nombre_archivo)}</h4>
-              <p class="small text-secondary mb-1">${escapeHtml(doc.descripcion || 'Sin descripción')}</p>
+            <div class="card-body d-flex flex-column pt-2">
               <p class="small text-secondary">${formatDate(doc.fecha_subida)}</p>
               <div class="d-flex flex-wrap gap-2 mt-auto">
-                <button class="btn btn-sm btn-outline-primary" type="button" data-action="preview-doc" data-id="${doc.id}" data-name="${escapeHtml(doc.nombre_archivo)}" data-type="${escapeHtml(doc.tipo_archivo)}">Ampliar</button>
+                <button class="btn btn-sm btn-outline-primary" type="button" data-action="preview-doc" data-id="${doc.id}" data-name="${escapeHtml(doc.nombre_archivo)}" data-type="${escapeHtml(doc.tipo_archivo)}">${doc.tipo_archivo === 'application/pdf' ? 'Ver PDF' : 'Ampliar'}</button>
                 <button class="btn btn-sm btn-outline-secondary" type="button" data-action="download-doc" data-id="${doc.id}">Descargar</button>
-                <button class="btn btn-sm btn-outline-danger" type="button" data-action="delete-doc" data-id="${doc.id}">Eliminar</button>
+                <button class="btn btn-sm btn-outline-danger" type="button" data-action="delete-doc" data-id="${doc.id}" data-name="${escapeHtml(doc.nombre_archivo)}">Eliminar</button>
               </div>
             </div>
           </article>
-        </div>
       `)
     .join('');
 
@@ -752,7 +865,7 @@ async function hydrateDocumentoMiniatura(doc) {
   }
   try {
     const url = await getDocumentoObjectUrl(doc);
-    if (container.isConnected) container.innerHTML = `<img src="${url}" class="w-100 h-100 object-fit-cover" alt="Vista previa de ${escapeHtml(doc.nombre_archivo)}" />`;
+    if (container.isConnected) container.innerHTML = `<img src="${url}" class="w-100 h-100 object-fit-contain" alt="Vista previa de ${escapeHtml(doc.nombre_archivo)}" />`;
   } catch (_) {
     if (container.isConnected) container.innerHTML = '<span class="small text-secondary">Vista previa no disponible</span>';
   }
@@ -844,6 +957,8 @@ function bindFichaDocumentos() {
     if (button.dataset.action !== 'delete-doc') return;
 
     try {
+      const nombre = button.dataset.name || 'este archivo';
+      if (!window.confirm(`¿Eliminar "${nombre}"? Esta acción no elimina otros archivos.`)) return;
       await deleteDocumento(id);
       renderAlert(ui.alertContainer, 'Documento eliminado.', 'success');
       await cargarDocumentosFicha();

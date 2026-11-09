@@ -326,6 +326,8 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
            hc.turno_id,
            hc.descripcion,
            hc.created_at,
+           hc.odontograma_snapshot,
+           t.fecha_hora_inicio AS fecha_atencion,
            t.profesional_id,
            u.nombre AS profesional_nombre,
            t.prestacion_id,
@@ -337,6 +339,26 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
          WHERE hc.paciente_id = $1
          ORDER BY hc.created_at DESC LIMIT 50`,
         [pacienteId]
+    );
+
+    const turnosAtencionRes = await pool.query(
+      `SELECT
+         t.id,
+         t.fecha_hora_inicio,
+         t.profesional_id,
+         u.nombre AS profesional_nombre,
+         t.prestacion_id,
+         p.nombre AS prestacion_nombre
+       FROM turnos t
+       LEFT JOIN usuarios u ON u.id = t.profesional_id
+       LEFT JOIN prestaciones p ON p.id = t.prestacion_id
+       WHERE t.paciente_id = $1
+         AND t.estado = 'realizado'
+         AND u.id IS NOT NULL
+         AND p.id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM historias_clinicas hc WHERE hc.turno_id = t.id)
+       ORDER BY t.fecha_hora_inicio DESC`,
+      [pacienteId]
     );
 
     return {
@@ -379,8 +401,91 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
                 }
             })),
         },
-        historiasClinicas: historiasRes.rows
+        historiasClinicas: historiasRes.rows,
+        turnosDisponiblesAtencion: turnosAtencionRes.rows
     };
+}
+
+const SNAPSHOT_COLORES = {
+  sano: '#ffffff',
+  existente: '#ff4d4d',
+  requerido: '#4d79ff',
+  corona: '#ffcc00',
+  protesis_fija: '#cbd5ff',
+  protesis_removible: '#9dd6c8',
+  ausente: '#4b5563',
+};
+
+async function registrarAtencion({ pacienteId, turnoId, observaciones }) {
+  const pid = Number.parseInt(pacienteId, 10);
+  const tid = Number.parseInt(turnoId, 10);
+  const descripcion = String(observaciones || '').trim();
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error('paciente_id invalido');
+  if (!Number.isInteger(tid) || tid <= 0) throw new Error('turno_id invalido');
+  if (!descripcion) throw new Error('Las observaciones de la atencion son obligatorias');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
+    const turnoRes = await client.query(
+      `SELECT t.id, t.paciente_id, t.estado, t.fecha_hora_inicio,
+              t.profesional_id, u.nombre AS profesional_nombre,
+              t.prestacion_id, p.nombre AS prestacion_nombre
+       FROM turnos t
+       LEFT JOIN usuarios u ON u.id = t.profesional_id
+       LEFT JOIN prestaciones p ON p.id = t.prestacion_id
+       WHERE t.id = $1 AND t.paciente_id = $2
+       FOR UPDATE OF t`,
+      [tid, pid]
+    );
+    if (!turnoRes.rowCount) throw new Error('El turno no pertenece al paciente');
+    if (turnoRes.rows[0].estado !== 'realizado') throw new Error('Solo se puede registrar una atencion para un turno realizado');
+    if (!turnoRes.rows[0].profesional_id || !turnoRes.rows[0].prestacion_id) {
+      throw new Error('El turno no tiene profesional y prestacion validos');
+    }
+
+    const [odontogramaRes, metaRes, tratamientosRes, fijasRes, removiblesRes] = await Promise.all([
+      client.query('SELECT id, diente, cara, estado, fecha FROM odontograma WHERE paciente_id = $1 ORDER BY diente, cara', [pid]),
+      client.query('SELECT sarro, periodontal, observaciones, updated_at FROM odontograma_meta WHERE paciente_id = $1', [pid]),
+      client.query('SELECT id, diente, tipo, observaciones, fecha FROM tratamientos WHERE paciente_id = $1 ORDER BY id', [pid]),
+      client.query('SELECT id, tipo, dientes, descripcion, fecha FROM protesis_fijas WHERE paciente_id = $1 ORDER BY id', [pid]),
+      client.query('SELECT id, tipo, arcada, descripcion, fecha FROM protesis_removibles WHERE paciente_id = $1 ORDER BY id', [pid]),
+    ]);
+    const snapshot = {
+      version: 1,
+      capturado_at: new Date().toISOString(),
+      colores: SNAPSHOT_COLORES,
+      registros: odontogramaRes.rows.map((row) => ({
+        odontograma_id: row.id,
+        diente: row.diente,
+        cara: row.cara,
+        estado: row.estado,
+        color: SNAPSHOT_COLORES[row.estado] || SNAPSHOT_COLORES.sano,
+        fecha: row.fecha,
+      })),
+      meta: metaRes.rows[0] || { sarro: false, periodontal: false, observaciones: null },
+      referencias: {
+        tratamientos: tratamientosRes.rows,
+        protesis_fijas: fijasRes.rows,
+        protesis_removibles: removiblesRes.rows,
+      },
+    };
+
+    const { rows } = await client.query(
+      `INSERT INTO historias_clinicas (paciente_id, turno_id, descripcion, odontograma_snapshot)
+       VALUES ($1, $2, $3, $4::jsonb)
+       RETURNING id, paciente_id, turno_id, descripcion, odontograma_snapshot, created_at`,
+      [pid, tid, descripcion, JSON.stringify(snapshot)]
+    );
+    await client.query('COMMIT');
+    return { ...rows[0], fecha_atencion: turnoRes.rows[0].fecha_hora_inicio };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    if (error.code === '23505') throw new Error('Ya existe una atencion registrada para este turno');
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 // Exportar todas las funciones
@@ -390,4 +495,5 @@ module.exports = {
 	listarPacientes,
 	obtenerPaciente,
 	obtenerFichaClinica,
+	registrarAtencion,
 };

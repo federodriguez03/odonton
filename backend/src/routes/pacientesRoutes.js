@@ -74,6 +74,18 @@ router.get(
 	(require('../controllers/pacientesController').fichaClinica)
 );
 
+router.post(
+	'/:id/atenciones',
+	middlewareAutenticacion,
+	autorizarOdontologo,
+	middlewareAuditoria,
+	(req, res, next) => {
+		req.auditAction = 'registrar_atencion_clinica';
+		next();
+	},
+	(require('../controllers/pacientesController').registrarAtencion)
+);
+
 // Obtener detalle de paciente
 router.get(
 	'/:id',

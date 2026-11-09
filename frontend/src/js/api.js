@@ -110,6 +110,13 @@ export function getFichaClinica(id, params = {}) {
   return request(`/api/pacientes/${id}/ficha-clinica${suffix}`);
 }
 
+export function createAtencion(pacienteId, payload) {
+  return request(`/api/pacientes/${pacienteId}/atenciones`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getOdontogramaPaciente(pacienteId) {
   return request(`/api/odontograma/${pacienteId}`);
 }
