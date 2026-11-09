@@ -134,7 +134,7 @@ function serializePacienteForDataset(paciente) {
 
 function renderRows(pacientes) {
   if (!pacientes.length) {
-    ui.tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">No se encontraron pacientes</td></tr>';
+    ui.tbody.innerHTML = '<div class="col-12"><div class="text-center text-secondary border rounded-3 py-5">No se encontraron pacientes</div></div>';
     return;
   }
 
@@ -142,16 +142,19 @@ function renderRows(pacientes) {
     .map((paciente) => {
       const pacienteData = serializePacienteForDataset(paciente);
       return `
-      <tr>
-        <td>${paciente.nombre}</td>
-        <td>${paciente.apellido}</td>
-        <td>${paciente.dni}</td>
-        <td>
-          <div>${formatText(paciente.telefono)}</div>
-          <small class="text-secondary">${formatText(paciente.email)}</small>
-        </td>
-        <td class="text-end">
-          <div class="btn-group">
+      <div class="col-12 col-md-6 col-xl-4">
+        <article class="card h-100 border shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <div class="mb-3">
+              <h3 class="h5 mb-1">${paciente.nombre} ${paciente.apellido}</h3>
+              <div class="text-secondary small">DNI</div>
+              <div class="fw-semibold">${paciente.dni}</div>
+            </div>
+            <div class="mb-3">
+              <div class="text-secondary small">Teléfono</div>
+              <div>${formatText(paciente.telefono)}</div>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mt-auto">
             <button class="btn btn-sm btn-outline-primary" type="button" data-action="ficha" data-id="${paciente.id}" aria-label="Ver ficha clinica">
               <i class="bi bi-journal-medical me-1"></i>Ficha
             </button>
@@ -161,9 +164,10 @@ function renderRows(pacientes) {
             <button class="btn btn-sm btn-outline-secondary" type="button" data-action="edit" data-id="${paciente.id}" data-paciente="${pacienteData}" aria-label="Editar paciente">
               <i class="bi bi-pencil-square me-1"></i>Editar
             </button>
+            </div>
           </div>
-        </td>
-      </tr>
+        </article>
+      </div>
     `;
     })
     .join('');
