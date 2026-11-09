@@ -31,7 +31,6 @@ const SECTION_MAP = {
   turnos: 'section-turnos',
   prestaciones: 'section-prestaciones',
   reportes: 'section-reportes',
-  historia: 'section-historia',
   pagos: 'section-pagos',
   configuracion: 'section-configuracion',
 };

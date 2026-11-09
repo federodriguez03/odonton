@@ -366,6 +366,29 @@ export async function downloadDocumento(id) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
 }
 
+export async function getDocumentoPreview(id) {
+  const token = getToken();
+  const response = await fetch(`${API_BASE_URL}/api/documentos/descargar/${id}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      clearToken();
+      window.dispatchEvent(new Event('auth:logout'));
+    }
+    throw new Error(data?.mensaje || `Error ${response.status}`);
+  }
+
+  return {
+    blob: await response.blob(),
+    nombre: getDownloadFilename(response, `documento-${id}`),
+  };
+}
+
 export function deleteDocumento(id) {
   return request(`/api/documentos/${id}`, { method: 'DELETE' });
 }

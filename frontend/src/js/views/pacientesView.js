@@ -2,6 +2,7 @@ import {
   createPaciente,
   deleteDocumento,
   downloadDocumento,
+  getDocumentoPreview,
   getFichaClinica,
   getDocumentos,
   getOdontogramaPaciente,
@@ -59,6 +60,7 @@ const state = {
     estado: '',
     sort: 'fecha:desc',
     total: 0,
+    documentoUrls: new Map(),
   },
   odontograma: {
     pacienteId: null,
@@ -87,7 +89,11 @@ const ui = {
   nacionalidadTipo: document.getElementById('nacionalidad-tipo'),
   nacionalidadPais: document.getElementById('nacionalidad'),
   nacionalidadPaisGroup: document.getElementById('nacionalidad-pais-group'),
-  fichaModalContent: document.getElementById('ficha-modal-content'),
+  pacientesListView: document.getElementById('pacientes-list-view'),
+  fichaView: document.getElementById('paciente-ficha-view'),
+  fichaContent: document.getElementById('paciente-ficha-content'),
+  documentoPreviewContent: document.getElementById('documento-preview-content'),
+  documentoPreviewLabel: document.getElementById('documento-preview-label'),
   odontoModalLabel: document.getElementById('odontograma-paciente-info'),
   odontoSvg: document.getElementById('odontograma-svg'),
   odontoForm: document.getElementById('odontograma-form'),
@@ -104,7 +110,7 @@ const ui = {
 };
 
 const pacienteModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('paciente-modal'));
-const fichaModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('ficha-modal'));
+const documentoPreviewModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('documento-preview-modal'));
 const odontoModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('odontograma-modal'));
 
 function formatDate(value) {
@@ -116,6 +122,15 @@ function formatDate(value) {
 
 function formatText(value) {
   return value && String(value).trim() ? value : '-';
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 function serializePacienteForDataset(paciente) {
@@ -159,10 +174,7 @@ function renderRows(pacientes) {
             </div>
             <div class="d-flex flex-wrap gap-2 mt-auto">
             <button class="btn btn-sm btn-outline-primary" type="button" data-action="ficha" data-id="${paciente.id}" aria-label="Ver ficha clinica">
-              <i class="bi bi-journal-medical me-1"></i>Ficha
-            </button>
-            <button class="btn btn-sm btn-outline-info" type="button" data-action="odontograma" data-id="${paciente.id}" aria-label="Gestionar odontograma">
-              <i class="bi bi-grid-3x3-gap me-1"></i>Odonto
+              <i class="bi bi-journal-medical me-1"></i>Ver ficha
             </button>
             <button class="btn btn-sm btn-outline-secondary" type="button" data-action="edit" data-id="${paciente.id}" data-paciente="${pacienteData}" aria-label="Editar paciente">
               <i class="bi bi-pencil-square me-1"></i>Editar
@@ -284,7 +296,7 @@ function openEditModal(paciente) {
   pacienteModal?.show();
 }
 
-function renderFichaContent(data) {
+function renderFichaContentLegacy(data) {
   const paciente = data.paciente || {};
   const turnos = data.historialTurnos?.turnos || [];
   const totalTurnos = data.historialTurnos?.total || 0;
@@ -435,31 +447,169 @@ function renderFichaContent(data) {
   cargarDocumentosFicha();
 }
 
+function closeFicha() {
+  state.ficha.documentoUrls?.forEach((url) => URL.revokeObjectURL(url));
+  state.ficha.documentoUrls = new Map();
+  state.ficha.pacienteId = null;
+  ui.fichaView.classList.add('d-none');
+  ui.pacientesListView.classList.remove('d-none');
+}
+
+function renderFichaContent(data) {
+  const paciente = data.paciente || {};
+  const historias = data.historiasClinicas || [];
+  const edad = Number.isInteger(paciente.edad) ? `${paciente.edad} años` : 'Edad no disponible';
+  const historiasHtml = historias.length
+    ? historias.map((historia) => `
+        <article class="card border mb-3">
+          <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+              <strong>Atención clínica</strong>
+              <span class="text-secondary small">${formatDate(historia.created_at)}</span>
+            </div>
+            <p class="mb-2">${escapeHtml(historia.descripcion || 'Sin descripción')}</p>
+            <div class="small text-secondary">Odontograma histórico: <strong>No disponible</strong></div>
+          </div>
+        </article>`).join('')
+    : '<div class="text-center text-secondary border rounded-3 py-5">No hay atenciones clínicas registradas.</div>';
+
+  ui.fichaContent.innerHTML = `
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-3 p-lg-4">
+        <button id="ficha-volver" class="btn btn-outline-secondary btn-sm mb-3" type="button"><i class="bi bi-arrow-left me-1"></i>Volver a pacientes</button>
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+          <div>
+            <h2 class="h3 mb-1">${escapeHtml(paciente.nombre)} ${escapeHtml(paciente.apellido)}</h2>
+            <div class="text-secondary">DNI ${escapeHtml(paciente.dni || '-')} · ${edad}</div>
+          </div>
+          <button id="ficha-editar-paciente" class="btn btn-outline-primary" type="button"><i class="bi bi-pencil-square me-1"></i>Editar datos</button>
+        </div>
+        <ul class="nav nav-tabs mb-4" role="tablist">
+          <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#ficha-datos" type="button">Datos</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#ficha-atenciones" type="button">Historial de atenciones</button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#ficha-odontograma" type="button">Odontograma actual</button></li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="ficha-datos">
+            <div class="row g-3 mb-4">
+              <div class="col-12"><h3 class="h5 mb-0">Información personal</h3></div>
+              <div class="col-sm-6 col-lg-4"><span class="text-secondary small d-block">Nacionalidad</span>${escapeHtml(formatText(paciente.nacionalidad))}</div>
+              <div class="col-sm-6 col-lg-4"><span class="text-secondary small d-block">Fecha de nacimiento</span>${formatDate(paciente.fecha_nacimiento)}</div>
+              <div class="col-sm-6 col-lg-4"><span class="text-secondary small d-block">Teléfono</span>${escapeHtml(formatText(paciente.telefono))}</div>
+              <div class="col-sm-6 col-lg-4"><span class="text-secondary small d-block">Email</span>${escapeHtml(formatText(paciente.email))}</div>
+              <div class="col-12 col-lg-8"><span class="text-secondary small d-block">Domicilio</span>${escapeHtml(formatText(paciente.domicilio))}</div>
+            </div>
+            <div class="row g-3 mb-4">
+              <div class="col-12"><h3 class="h5 mb-0">Información clínica existente</h3></div>
+              <div class="col-md-4"><span class="text-secondary small d-block">Alergias</span>${escapeHtml(formatText(paciente.alergias))}</div>
+              <div class="col-md-4"><span class="text-secondary small d-block">Condiciones</span>${escapeHtml(formatText(paciente.condiciones))}</div>
+              <div class="col-md-4"><span class="text-secondary small d-block">Estado del tratamiento</span>${escapeHtml(formatText(paciente.estado_tratamiento))}</div>
+              <div class="col-12"><span class="text-secondary small d-block">Observaciones</span>${escapeHtml(formatText(paciente.observaciones))}</div>
+            </div>
+            <hr class="my-4" />
+            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+              <h3 class="h5 mb-0">Archivos</h3>
+              <button class="btn btn-outline-secondary btn-sm" type="button" id="ficha-documentos-refresh">Actualizar</button>
+            </div>
+            <form id="ficha-documentos-form" class="row g-2 align-items-end mb-3">
+              <div class="col-md-5"><label class="form-label" for="ficha-documentos-descripcion">Descripción</label><input id="ficha-documentos-descripcion" class="form-control" placeholder="Radiografía, receta, etc." /></div>
+              <div class="col-md-5"><label class="form-label" for="ficha-documentos-archivo">Archivo</label><input id="ficha-documentos-archivo" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required /></div>
+              <div class="col-md-2 d-grid"><button class="btn btn-primary" type="submit">Subir</button></div>
+            </form>
+            <div id="ficha-documentos-grid" class="row g-3"></div>
+            <small class="text-secondary d-block mt-2">Tipos permitidos: PDF, JPG, PNG. Máximo 10 MB.</small>
+          </div>
+          <div class="tab-pane fade" id="ficha-atenciones">
+            <p class="text-secondary">Este historial contiene registros clínicos. Los turnos de agenda no se muestran como atenciones.</p>
+            ${historiasHtml}
+          </div>
+          <div class="tab-pane fade" id="ficha-odontograma">
+            <div class="border rounded-3 p-4">
+              <h3 class="h5">Odontograma actual</h3>
+              <p class="text-secondary">Consultá y guardá el estado odontológico vigente con el editor existente.</p>
+              <button id="ficha-abrir-odontograma" class="btn btn-primary" type="button"><i class="bi bi-grid-3x3-gap me-1"></i>Abrir editor de odontograma</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  document.getElementById('ficha-volver')?.addEventListener('click', closeFicha);
+  document.getElementById('ficha-editar-paciente')?.addEventListener('click', () => openEditModal(paciente));
+  document.getElementById('ficha-abrir-odontograma')?.addEventListener('click', async () => {
+    odontoModal?.show();
+    try {
+      await loadOdontograma(paciente.id);
+    } catch (error) {
+      odontoModal?.hide();
+      renderAlert(ui.alertContainer, error.message, 'danger');
+    }
+  });
+  bindFichaDocumentos();
+  cargarDocumentosFicha();
+}
+
 function renderDocumentosFicha(documentos = []) {
-  const tbody = document.getElementById('ficha-documentos-tbody');
-  if (!tbody) return;
+  const grid = document.getElementById('ficha-documentos-grid');
+  if (!grid) return;
 
   if (!documentos.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary">Sin documentos</td></tr>';
+    grid.innerHTML = '<div class="col-12"><div class="text-center text-secondary border rounded-3 py-4">Sin archivos</div></div>';
     return;
   }
 
-  tbody.innerHTML = documentos
+  grid.innerHTML = documentos
     .map((doc) => `
-        <tr>
-          <td>${doc.nombre_archivo}</td>
-          <td>${doc.tipo_archivo}</td>
-          <td>${doc.descripcion || '-'}</td>
-          <td>${formatDate(doc.fecha_subida)}</td>
-          <td class="text-end">
-            <div class="btn-group">
-              <button class="btn btn-sm btn-outline-primary" type="button" data-action="download-doc" data-id="${doc.id}">Descargar</button>
-              <button class="btn btn-sm btn-outline-danger" type="button" data-action="delete-doc" data-id="${doc.id}">Eliminar</button>
+        <div class="col-12 col-md-6 col-xl-4">
+          <article class="card h-100 border">
+            <div class="ratio ratio-4x3 bg-light border-bottom d-flex align-items-center justify-content-center overflow-hidden" id="documento-miniatura-${doc.id}">
+              <div class="d-flex h-100 align-items-center justify-content-center text-secondary"><span>Cargando vista previa...</span></div>
             </div>
-          </td>
-        </tr>
+            <div class="card-body d-flex flex-column">
+              <h4 class="h6 text-break">${escapeHtml(doc.nombre_archivo)}</h4>
+              <p class="small text-secondary mb-1">${escapeHtml(doc.descripcion || 'Sin descripción')}</p>
+              <p class="small text-secondary">${formatDate(doc.fecha_subida)}</p>
+              <div class="d-flex flex-wrap gap-2 mt-auto">
+                <button class="btn btn-sm btn-outline-primary" type="button" data-action="preview-doc" data-id="${doc.id}" data-name="${escapeHtml(doc.nombre_archivo)}" data-type="${escapeHtml(doc.tipo_archivo)}">Ampliar</button>
+                <button class="btn btn-sm btn-outline-secondary" type="button" data-action="download-doc" data-id="${doc.id}">Descargar</button>
+                <button class="btn btn-sm btn-outline-danger" type="button" data-action="delete-doc" data-id="${doc.id}">Eliminar</button>
+              </div>
+            </div>
+          </article>
+        </div>
       `)
     .join('');
+
+  documentos.forEach((doc) => hydrateDocumentoMiniatura(doc));
+}
+
+async function getDocumentoObjectUrl(doc) {
+  const cached = state.ficha.documentoUrls.get(String(doc.id));
+  if (cached) return cached;
+  const { blob } = await getDocumentoPreview(doc.id);
+  const url = URL.createObjectURL(blob);
+  state.ficha.documentoUrls.set(String(doc.id), url);
+  return url;
+}
+
+async function hydrateDocumentoMiniatura(doc) {
+  const container = document.getElementById(`documento-miniatura-${doc.id}`);
+  if (!container) return;
+  const tipo = String(doc.tipo_archivo || '').toLowerCase();
+  if (tipo === 'application/pdf') {
+    container.innerHTML = '<div class="d-flex h-100 flex-column align-items-center justify-content-center text-danger"><i class="bi bi-file-earmark-pdf fs-1"></i><span class="small">PDF</span></div>';
+    return;
+  }
+  if (!tipo.startsWith('image/')) {
+    container.innerHTML = '<div class="d-flex h-100 align-items-center justify-content-center text-secondary"><i class="bi bi-file-earmark fs-1"></i></div>';
+    return;
+  }
+  try {
+    const url = await getDocumentoObjectUrl(doc);
+    if (container.isConnected) container.innerHTML = `<img src="${url}" class="w-100 h-100 object-fit-cover" alt="Vista previa de ${escapeHtml(doc.nombre_archivo)}" />`;
+  } catch (_) {
+    if (container.isConnected) container.innerHTML = '<span class="small text-secondary">Vista previa no disponible</span>';
+  }
 }
 
 async function cargarDocumentosFicha() {
@@ -467,6 +617,8 @@ async function cargarDocumentosFicha() {
   if (!pacienteId) return;
 
   try {
+    state.ficha.documentoUrls.forEach((url) => URL.revokeObjectURL(url));
+    state.ficha.documentoUrls.clear();
     const data = await getDocumentos(pacienteId);
     renderDocumentosFicha(data.documentos || []);
   } catch (error) {
@@ -479,7 +631,7 @@ function bindFichaDocumentos() {
   const descripcionInput = document.getElementById('ficha-documentos-descripcion');
   const archivoInput = document.getElementById('ficha-documentos-archivo');
   const refreshButton = document.getElementById('ficha-documentos-refresh');
-  const tbody = document.getElementById('ficha-documentos-tbody');
+  const grid = document.getElementById('ficha-documentos-grid');
 
   refreshButton?.addEventListener('click', async () => {
     await cargarDocumentosFicha();
@@ -511,12 +663,28 @@ function bindFichaDocumentos() {
     }
   });
 
-  tbody?.addEventListener('click', async (event) => {
+  grid?.addEventListener('click', async (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) return;
 
     const id = button.dataset.id;
     if (!id) return;
+
+    if (button.dataset.action === 'preview-doc') {
+      try {
+        const doc = { id, nombre_archivo: button.dataset.name, tipo_archivo: button.dataset.type };
+        const url = await getDocumentoObjectUrl(doc);
+        const isPdf = String(doc.tipo_archivo).toLowerCase() === 'application/pdf';
+        ui.documentoPreviewLabel.textContent = doc.nombre_archivo || 'Vista previa';
+        ui.documentoPreviewContent.innerHTML = isPdf
+          ? `<iframe src="${url}" title="Vista previa de ${escapeHtml(doc.nombre_archivo)}" class="w-100 border-0" style="height:75vh"></iframe>`
+          : `<img src="${url}" alt="${escapeHtml(doc.nombre_archivo)}" class="img-fluid d-block mx-auto" style="max-height:75vh" />`;
+        documentoPreviewModal?.show();
+      } catch (error) {
+        renderAlert(ui.alertContainer, error.message, 'danger');
+      }
+      return;
+    }
 
     if (button.dataset.action === 'download-doc') {
       try {
@@ -1107,6 +1275,9 @@ function bindCreateForm() {
       pacienteModal?.hide();
       state.page = 1;
       await loadPacientes();
+      if (state.mode === 'edit' && String(state.ficha.pacienteId) === String(pacienteId)) {
+        await loadFichaClinica();
+      }
     } catch (error) {
       Object.entries(error.fields || {}).forEach(([field, message]) => setPacienteFieldError(field, message));
       renderAlert(ui.alertContainer, error.message, 'danger');
@@ -1146,12 +1317,13 @@ function bindTableActions() {
 
     if (action === 'ficha') {
       try {
-        ui.fichaModalContent.innerHTML = '<p class="text-secondary mb-0">Cargando...</p>';
-        fichaModal?.show();
-        state.ficha = { pacienteId: id, page: 1, limit: 5, estado: '', sort: 'fecha:desc', total: 0 };
+        ui.pacientesListView.classList.add('d-none');
+        ui.fichaView.classList.remove('d-none');
+        ui.fichaContent.innerHTML = '<p class="text-secondary mb-0">Cargando ficha...</p>';
+        state.ficha = { pacienteId: id, page: 1, limit: 50, estado: '', sort: 'fecha:desc', total: 0, documentoUrls: new Map() };
         await loadFichaClinica();
       } catch (error) {
-        fichaModal?.hide();
+        closeFicha();
         renderAlert(ui.alertContainer, error.message, 'danger');
       }
       return;

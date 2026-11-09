@@ -84,11 +84,6 @@
             </button>
           </li>
           <li class="nav-item" role="presentation">
-            <button class="nav-link" id="historia-tab" data-section="historia" type="button">
-              <i class="bi bi-file-medical-fill"></i> Historia clinica
-            </button>
-          </li>
-          <li class="nav-item" role="presentation">
             <button class="nav-link" id="pagos-tab" data-section="pagos" type="button">
               <i class="bi bi-credit-card-2-front-fill"></i> Cargos y pagos
             </button>
@@ -210,6 +205,7 @@
       </section>
 
       <section id="section-pacientes" class="d-none">
+        <div id="pacientes-list-view">
         <div class="row g-4">
           <div class="col-12">
             <div class="card shadow-sm border-0">
@@ -254,6 +250,12 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+        </div>
+        <div id="paciente-ficha-view" class="d-none" aria-live="polite">
+          <div id="paciente-ficha-content">
+            <p class="text-secondary mb-0">Cargando ficha...</p>
           </div>
         </div>
       </section>
@@ -562,25 +564,6 @@
         </div>
       </section>
 
-      <section id="section-historia" class="d-none">
-        <div class="card border-0 shadow-sm">
-          <div class="card-body">
-            <div class="empty-state">
-              <div class="empty-icon"><i class="bi bi-file-medical"></i></div>
-              <div>
-                <h2 class="h5 mb-1">Historia clinica</h2>
-                <p class="text-secondary mb-3">Este modulo estara disponible proximamente.</p>
-                <div class="d-flex flex-wrap gap-2">
-                  <span class="badge bg-light text-dark">Resumen de antecedentes</span>
-                  <span class="badge bg-light text-dark">Evolucion por paciente</span>
-                  <span class="badge bg-light text-dark">Documentacion clinica</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section id="section-pagos" class="d-none">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
           <div>
@@ -865,15 +848,15 @@
       </div>
     </div>
 
-    <div class="modal fade" id="ficha-modal" tabindex="-1" aria-labelledby="ficha-modal-label" aria-hidden="true">
-      <div class="modal-dialog modal-lg">
+    <div class="modal fade" id="documento-preview-modal" tabindex="-1" aria-labelledby="documento-preview-label" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
           <div class="modal-header">
-            <h2 class="modal-title fs-5" id="ficha-modal-label">Ficha clinica</h2>
+            <h2 class="modal-title fs-5" id="documento-preview-label">Vista previa</h2>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
-          <div class="modal-body" id="ficha-modal-content">
-            <p class="text-secondary mb-0">Cargando...</p>
+          <div class="modal-body p-2" id="documento-preview-content">
+            <p class="text-secondary m-3">Cargando...</p>
           </div>
         </div>
       </div>
