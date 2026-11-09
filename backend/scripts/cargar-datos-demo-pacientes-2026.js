@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { pool } = require('../src/config/db');
+const { validarEntornoDemo } = require('../src/domain/demoSafety');
 
 const TAG = '[DATOS FICTICIOS DEMO 2026]';
 const nombres = ['Sofía','Mateo','Valentina','Benjamín','Martina','Joaquín','Catalina','Bautista','Emilia','Thiago','Lucía','Lautaro','Camila','Tomás','Julieta','Santino','Malena','Franco','Renata','Bruno','María José','Juan Cruz','Ana Paula','Pedro'];
@@ -25,6 +26,8 @@ function snapshot(registros, meta, referencias, fecha) {
 }
 
 async function main() {
+  // Comprobar configuración antes de abrir una conexión o escribir datos.
+  validarEntornoDemo(process.env, process.argv.slice(2), pool.options.database || process.env.DB_NAME);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

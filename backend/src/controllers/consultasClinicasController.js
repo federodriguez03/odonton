@@ -14,7 +14,7 @@ async function listar(req, res) {
 }
 async function actualizar(req, res) {
   try {
-    const consulta = await service.actualizarConsulta({ pacienteId: req.params.id, consultaId: req.params.consultaId, datos: req.body || {} });
+    const consulta = await service.actualizarConsulta({ pacienteId: req.params.id, consultaId: req.params.consultaId, actorId: req.user.id, datos: req.body || {} });
     return res.json({ mensaje: 'Atención actualizada correctamente', consulta });
   } catch (error) {
     return res.status(error.message.includes('no encontrada') ? 404 : 400).json({ mensaje: error.message });

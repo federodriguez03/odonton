@@ -88,9 +88,10 @@ async function crearConsulta({ pacienteId, actorId, datos }) {
   }
 }
 
-async function actualizarConsulta({ pacienteId, consultaId, datos }) {
+async function actualizarConsulta({ pacienteId, consultaId, actorId, datos }) {
   const paciente_id = idValido(pacienteId, 'paciente_id');
   const consulta_id = idValido(consultaId, 'consulta_id');
+  const actor_id = idValido(actorId, 'actor_id');
   const profesional_id = idValido(datos.profesional_id, 'profesional_id');
   const turno_id = datos.turno_id ? idValido(datos.turno_id, 'turno_id') : null;
   const motivo = textoOpcional(datos.motivo_consulta);
@@ -100,7 +101,7 @@ async function actualizarConsulta({ pacienteId, consultaId, datos }) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const existente = await client.query('SELECT id FROM historias_clinicas WHERE id=$1 AND paciente_id=$2 FOR UPDATE', [consulta_id, paciente_id]);
+    const existente = await client.query('SELECT * FROM historias_clinicas WHERE id=$1 AND paciente_id=$2 FOR UPDATE', [consulta_id, paciente_id]);
     if (!existente.rowCount) throw new Error('Atención no encontrada para este paciente');
     await validarRelacionesConsulta(client, { pacienteId: paciente_id, profesionalId: profesional_id, turnoId: turno_id, consultaId: consulta_id });
     const { rows } = await client.query(
@@ -109,6 +110,11 @@ async function actualizarConsulta({ pacienteId, consultaId, datos }) {
        WHERE id=$1 AND paciente_id=$2 RETURNING *`,
       [consulta_id, paciente_id, turno_id, motivo, fecha, profesional_id, textoOpcional(datos.diagnostico),
         textoOpcional(datos.tratamientos_realizados), textoOpcional(datos.plan_indicaciones), textoOpcional(datos.observaciones)],
+    );
+    await client.query(
+      `INSERT INTO historias_clinicas_revisiones(historia_clinica_id,actor_id,antes,despues)
+       VALUES($1,$2,$3::jsonb,$4::jsonb)`,
+      [consulta_id, actor_id, JSON.stringify(existente.rows[0]), JSON.stringify(rows[0])],
     );
     await client.query('COMMIT');
     return rows[0];

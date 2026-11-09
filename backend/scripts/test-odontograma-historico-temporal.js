@@ -1,0 +1,18 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const fuente = fs.readFileSync(path.join(__dirname, '../../frontend/src/js/views/pacientesView.js'), 'utf8');
+const constantes = fuente.slice(fuente.indexOf('const permanentes ='), fuente.indexOf('const state ='));
+const funciones = fuente.slice(fuente.indexOf('function escapeHtml('), fuente.indexOf('function serializePacienteForDataset('));
+const contexto = { formatDateTime: () => 'fecha' };
+vm.createContext(contexto);
+vm.runInContext(constantes + '\n' + funciones, contexto);
+const snapshot = { capturado_at: '2026-11-09', registros: [{diente:55,cara:'oclusal',estado:'requerido'}], referencias: [] };
+const html = contexto.renderOdontogramaHistorico(snapshot);
+assert.ok(html.includes('Dentición temporal'));
+assert.ok(html.includes('Pieza 55'));
+assert.ok(html.includes('#4d79ff'));
+const permanente = contexto.renderOdontogramaHistorico({...snapshot, registros:[{diente:11,cara:'oclusal',estado:'sano'}]});
+assert.ok(!permanente.includes('Dentición temporal'));
+console.log('OK - historial renderiza dentición temporal y mixta');

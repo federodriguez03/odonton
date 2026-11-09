@@ -164,7 +164,7 @@ function renderOdontogramaHistorico(snapshot) {
   };
   const usados = [...new Set(['sano', ...registros.map((r) => r.estado)])];
   const leyenda = usados.length ? usados.map((codigo) => `<span class="odonto-historico-ref"><i style="background:${colorPara(codigo)}"></i>${escapeHtml(nombrePara(codigo))}</span>`).join('') : '<span class="text-secondary">Sin estados registrados</span>';
-  return `<div class="odonto-historico" aria-label="Odontograma histórico en modo lectura"><div class="odonto-historico-leyenda">${leyenda}</div><div class="odonto-historico-arcada">${permanentes.superior.map(renderPieza).join('')}</div><div class="odonto-historico-arcada">${permanentes.inferior.map(renderPieza).join('')}</div><div class="small text-secondary mt-2">Versión capturada: ${escapeHtml(formatDateTime(snapshot.capturado_at))}. Sólo lectura.</div></div>`;
+  return `<div class="odonto-historico" aria-label="Odontograma histórico en modo lectura"><div class="odonto-historico-leyenda">${leyenda}</div><div class="odonto-historico-arcada">${permanentes.superior.map(renderPieza).join('')}</div><div class="odonto-historico-arcada">${permanentes.inferior.map(renderPieza).join('')}</div>${registros.some((r) => /^[5-8][1-5]$/.test(String(r.diente))) ? `<h4 class="h6 mt-3">Dentición temporal</h4><div class="odonto-historico-arcada">${temporales.superior.map(renderPieza).join('')}</div><div class="odonto-historico-arcada">${temporales.inferior.map(renderPieza).join('')}</div>` : ''}<div class="small text-secondary mt-2">Versión capturada: ${escapeHtml(formatDateTime(snapshot.capturado_at))}. Sólo lectura.</div></div>`;
 }
 
 function serializePacienteForDataset(paciente) {
