@@ -16,7 +16,7 @@ async function postOdontograma(req, res) {
 	try {
 		const body = req.body || {};
 		if (Array.isArray(body.registros)) {
-			const odontograma = await odontogramaService.guardarOdontogramaCompleto(body);
+			const odontograma = await odontogramaService.guardarOdontogramaCompleto({ ...body, actor: req.clinicalActor });
 			return res.status(200).json({ mensaje: 'Odontograma guardado', odontograma });
 		}
 		const hasCara = body.diente !== undefined && body.cara !== undefined && body.estado !== undefined;
@@ -28,7 +28,8 @@ async function postOdontograma(req, res) {
 				body.paciente_id,
 				body.sarro === undefined ? undefined : Boolean(body.sarro),
 				body.periodontal === undefined ? undefined : Boolean(body.periodontal),
-				body.observaciones
+				body.observaciones,
+				req.clinicalActor
 			);
 			return res.status(201).json({ mensaje: 'Metadatos de odontograma guardados' });
 		}
@@ -41,6 +42,7 @@ async function postOdontograma(req, res) {
 				...(body.periodontal !== undefined ? { periodontal: Boolean(body.periodontal) } : {}),
 				...(body.observaciones !== undefined ? { observaciones: body.observaciones } : {}),
 			},
+			actor: req.clinicalActor,
 		});
 		const registro = resultado.registros.find((item) => item.diente === Number(body.diente) && item.cara === body.cara);
 

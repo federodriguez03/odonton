@@ -3,6 +3,31 @@
  */
 const { normalizarYValidarPaciente } = require('../domain/pacienteValidation');
 
+const CAMPOS_CLINICOS = new Set([
+	'observaciones',
+	'alergias',
+	'condiciones',
+	'estado_tratamiento',
+	'diagnostico',
+	'antecedentes',
+	'motivo_consulta',
+	'tratamientos_realizados',
+	'plan_indicaciones',
+	'odontograma',
+]);
+
+function rechazarCamposClinicosAdministrativos(req, res, next) {
+	const recibidos = Object.keys(req.body || {}).filter((campo) => CAMPOS_CLINICOS.has(campo));
+	if (recibidos.length) {
+		return res.status(400).json({
+			codigo: 'CAMPO_CLINICO_NO_PERMITIDO',
+			mensaje: 'Los campos clínicos no pueden modificarse desde la ruta administrativa',
+			campos: recibidos,
+		});
+	}
+	return next();
+}
+
 function validarEntradaPaciente(req, res, next) {
 	try {
 		const isPost = req.method === 'POST';
@@ -18,10 +43,6 @@ function validarEntradaPaciente(req, res, next) {
 				'telefono',
 				'email',
 				'fecha_nacimiento',
-				'observaciones',
-				'alergias',
-				'condiciones',
-				'estado_tratamiento',
 			];
 			const hasAny = allowed.some((k) => Object.prototype.hasOwnProperty.call(body, k));
 			if (!hasAny) {
@@ -94,6 +115,7 @@ function validarConsultaPacientes(req, res, next) {
 }
 
 module.exports = {
+	rechazarCamposClinicosAdministrativos,
 	validarEntradaPaciente,
 	validarConsultaPacientes,
 };

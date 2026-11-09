@@ -8,21 +8,26 @@ const {
 
 const {
 	middlewareAutenticacion,
-	autorizarOdontologo,
 	middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const {
+	autorizarEscrituraClinica,
+	autorizarLecturaClinica,
+	autorizarPacientesAdministrativos,
+} = require('../middleware/authorizationMiddleware');
 
 const {
 	validarEntradaPaciente,
 	validarConsultaPacientes,
+	rechazarCamposClinicosAdministrativos,
 } = require('../middlewares/pacientesMiddleware');
 const consultasController = require('../controllers/consultasClinicasController');
 
-router.get('/:id/consultas', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, consultasController.listar);
-router.post('/:id/consultas', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, (req,res,next) => {
+router.get('/:id/consultas', middlewareAutenticacion, autorizarLecturaClinica, middlewareAuditoria, consultasController.listar);
+router.post('/:id/consultas', middlewareAutenticacion, autorizarEscrituraClinica, middlewareAuditoria, (req,res,next) => {
 	req.auditAction = 'registrar_atencion_clinica'; next();
 }, consultasController.crear);
-router.put('/:id/consultas/:consultaId', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, (req,res,next) => {
+router.put('/:id/consultas/:consultaId', middlewareAutenticacion, autorizarEscrituraClinica, middlewareAuditoria, (req,res,next) => {
 	req.auditAction = 'actualizar_atencion_clinica'; next();
 }, consultasController.actualizar);
 
@@ -30,12 +35,13 @@ router.put('/:id/consultas/:consultaId', middlewareAutenticacion, autorizarOdont
 router.post(
 	'/',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarPacientesAdministrativos,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'registrar_paciente';
 		next();
 	},
+	rechazarCamposClinicosAdministrativos,
 	validarEntradaPaciente,
 	registrarPaciente
 );
@@ -44,12 +50,13 @@ router.post(
 router.put(
 	'/:id',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarPacientesAdministrativos,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'actualizar_paciente';
 		next();
 	},
+	rechazarCamposClinicosAdministrativos,
 	validarEntradaPaciente,
 	actualizarPaciente
 );
@@ -58,7 +65,7 @@ router.put(
 router.get(
 	'/',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarPacientesAdministrativos,
 	validarConsultaPacientes,
 	middlewareAuditoria,
 	(req, res, next) => {
@@ -74,7 +81,7 @@ router.get(
 router.get(
 	'/:id/ficha-clinica',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarLecturaClinica,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'consultar_ficha_clinica';
@@ -83,11 +90,23 @@ router.get(
 	(require('../controllers/pacientesController').fichaClinica)
 );
 
+router.put(
+	'/:id/ficha-clinica',
+	middlewareAutenticacion,
+	autorizarEscrituraClinica,
+	middlewareAuditoria,
+	(req, res, next) => {
+		req.auditAction = 'actualizar_ficha_clinica';
+		next();
+	},
+	(require('../controllers/pacientesController').actualizarFichaClinica)
+);
+
 // Obtener detalle de paciente
 router.get(
 	'/:id',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarPacientesAdministrativos,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'ver_paciente';

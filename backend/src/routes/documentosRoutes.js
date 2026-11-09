@@ -12,6 +12,7 @@ const {
   UPLOADS_BASE_DIR,
 } = require('../controllers/documentosController');
 const { middlewareAutenticacion, middlewareAuditoria } = require('../middlewares/turnosMiddleware');
+const { autorizarEscrituraClinica, autorizarLecturaClinica } = require('../middleware/authorizationMiddleware');
 
 const router = express.Router();
 
@@ -61,6 +62,7 @@ function manejarSubida(req, res, next) {
 router.post(
   '/subir',
   middlewareAutenticacion,
+  autorizarEscrituraClinica,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'subir_documento_paciente';
@@ -73,6 +75,7 @@ router.post(
 router.get(
   '/',
   middlewareAutenticacion,
+  autorizarLecturaClinica,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'listar_documentos_paciente';
@@ -84,6 +87,7 @@ router.get(
 router.get(
   '/descargar/:id',
   middlewareAutenticacion,
+  autorizarLecturaClinica,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'descargar_documento_paciente';
@@ -95,6 +99,7 @@ router.get(
 router.delete(
   '/:id',
   middlewareAutenticacion,
+  autorizarEscrituraClinica,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'eliminar_documento_paciente';
@@ -106,6 +111,7 @@ router.delete(
 router.put(
   '/:id/asociar',
   middlewareAutenticacion,
+  autorizarEscrituraClinica,
   middlewareAuditoria,
   (req, res, next) => { req.auditAction = 'asociar_documento_consulta'; next(); },
   asociarDocumento

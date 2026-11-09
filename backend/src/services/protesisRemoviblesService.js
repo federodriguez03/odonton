@@ -13,15 +13,15 @@ async function crearTabla() {
   `);
 }
 
-async function crear({ paciente_id, tipo, arcada, descripcion, fecha }) {
+async function crear({ paciente_id, tipo, arcada, descripcion, fecha }, actor) {
   await crearTabla();
   if (!paciente_id) throw new Error('paciente_id requerido');
   if (!tipo) throw new Error('tipo requerido');
   if (!arcada || !['superior', 'inferior'].includes(String(arcada))) throw new Error('arcada invalida');
   const { rows } = await pool.query(
-    `INSERT INTO protesis_removibles (paciente_id, tipo, arcada, descripcion, fecha)
-     VALUES ($1,$2,$3,$4, COALESCE($5, NOW())) RETURNING *`,
-    [paciente_id, tipo, arcada, descripcion || null, fecha || null]
+    `INSERT INTO protesis_removibles (paciente_id,tipo,arcada,descripcion,fecha,registrado_por_usuario_id,profesional_perfil_id)
+     VALUES ($1,$2,$3,$4,COALESCE($5,NOW()),$6,$7) RETURNING *`,
+    [paciente_id, tipo, arcada, descripcion || null, fecha || null, actor.usuario_id, actor.profesional_perfil_id]
   );
   return rows[0];
 }

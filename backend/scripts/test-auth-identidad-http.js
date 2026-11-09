@@ -54,7 +54,7 @@ async function main() {
     assert.equal(loginRecepcion.status, 200);
     assert.deepEqual(loginRecepcion.data.user.roles, ['recepcion']);
     assert.equal(loginRecepcion.data.user.profesional_perfil_id, null);
-    assert.equal((await request(baseUrl, '/api/pacientes?limit=1', { token: loginRecepcion.data.token })).status, 403);
+    assert.equal((await request(baseUrl, '/api/pacientes?limit=1', { token: loginRecepcion.data.token })).status, 200);
 
     const loginOdontologo = await request(baseUrl, '/api/auth/login', {
       method: 'POST',

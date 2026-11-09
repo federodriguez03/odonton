@@ -29,19 +29,22 @@ function normalizarObservacion(value) {
   if (value === null) return null;
   return String(value).trim() || null;
 }
-async function guardarMetaDb(db, id, meta = {}) {
+async function guardarMetaDb(db, id, meta = {}, actor = {}) {
   const hs = Object.hasOwn(meta, 'sarro');
   const hp = Object.hasOwn(meta, 'periodontal');
   const ho = Object.hasOwn(meta, 'observaciones');
   if (!hs && !hp && !ho) return;
-  await db.query(`INSERT INTO odontograma_meta(paciente_id,sarro,periodontal,observaciones,updated_at)
-    VALUES($1,$2,$3,$4,NOW()) ON CONFLICT(paciente_id) DO UPDATE SET
+  await db.query(`INSERT INTO odontograma_meta(paciente_id,sarro,periodontal,observaciones,updated_at,actualizado_por_usuario_id,profesional_perfil_id)
+    VALUES($1,$2,$3,$4,NOW(),$8,$9) ON CONFLICT(paciente_id) DO UPDATE SET
     sarro=CASE WHEN $5 THEN EXCLUDED.sarro ELSE odontograma_meta.sarro END,
     periodontal=CASE WHEN $6 THEN EXCLUDED.periodontal ELSE odontograma_meta.periodontal END,
     observaciones=CASE WHEN $7 THEN EXCLUDED.observaciones ELSE odontograma_meta.observaciones END,
+    actualizado_por_usuario_id=EXCLUDED.actualizado_por_usuario_id,
+    profesional_perfil_id=EXCLUDED.profesional_perfil_id,
     updated_at=NOW()`,
   [id, hs ? Boolean(meta.sarro) : false, hp ? Boolean(meta.periodontal) : false,
-    normalizarObservacion(meta.observaciones), hs, hp, ho]);
+    normalizarObservacion(meta.observaciones), hs, hp, ho,
+    actor.usuario_id || null, actor.profesional_perfil_id || null]);
 }
 async function obtenerOdontogramaPorPaciente(pacienteId, db = pool) {
   const id = validarId(pacienteId, 'pacienteId');
@@ -82,13 +85,16 @@ async function guardarOdontogramaCompleto(payload, external = null) {
         if (anterior === registro.estado) continue;
         const referencia = referencias.get(registro.estado);
         if (!referencia?.activa) throw new Error(`La referencia ${registro.estado} no existe o no está activa`);
-        await db.query(`INSERT INTO odontograma(paciente_id,diente,cara,estado,fecha)
-          VALUES($1,$2,$3,$4,NOW()) ON CONFLICT(paciente_id,diente,cara)
-          DO UPDATE SET estado=EXCLUDED.estado,fecha=NOW()`,
-        [id, registro.diente, registro.cara, registro.estado]);
+        await db.query(`INSERT INTO odontograma(paciente_id,diente,cara,estado,fecha,actualizado_por_usuario_id,profesional_perfil_id)
+          VALUES($1,$2,$3,$4,NOW(),$5,$6) ON CONFLICT(paciente_id,diente,cara)
+          DO UPDATE SET estado=EXCLUDED.estado,fecha=NOW(),
+            actualizado_por_usuario_id=EXCLUDED.actualizado_por_usuario_id,
+            profesional_perfil_id=EXCLUDED.profesional_perfil_id`,
+        [id, registro.diente, registro.cara, registro.estado,
+          payload.actor?.usuario_id || null, payload.actor?.profesional_perfil_id || null]);
       }
     }
-    await guardarMetaDb(db, id, payload.meta || {});
+    await guardarMetaDb(db, id, payload.meta || {}, payload.actor || {});
     const resultado = await obtenerOdontogramaPorPaciente(id, db);
     if (own) await db.query('COMMIT');
     return resultado;
@@ -114,10 +120,10 @@ async function guardarEstadoCara(payload) {
   });
   return resultado.registros.find(r => r.diente === Number(payload.diente) && r.cara === payload.cara);
 }
-async function guardarMeta(id, sarro, periodontal, observaciones) {
+async function guardarMeta(id, sarro, periodontal, observaciones, actor = {}) {
   const valores = { sarro, periodontal, observaciones };
   return guardarOdontogramaCompleto({ paciente_id: id, registros: [],
-    meta: Object.fromEntries(Object.entries(valores).filter(([, value]) => value !== undefined)) });
+    meta: Object.fromEntries(Object.entries(valores).filter(([, value]) => value !== undefined)), actor });
 }
 module.exports = { obtenerOdontogramaPorPaciente, guardarEstadoCara, guardarMeta,
   guardarOdontogramaCompleto, crearSnapshot, normalizarObservacion };

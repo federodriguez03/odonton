@@ -3,9 +3,13 @@ const router = express.Router();
 
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const {
+  autorizarEscrituraClinica,
+  autorizarLecturaClinica,
+  exigirTodosLosRoles,
+} = require('../middleware/authorizationMiddleware');
 
 const {
   getOdontogramaPaciente,
@@ -13,15 +17,15 @@ const {
 } = require('../controllers/odontogramaController');
 const referencias = require('../controllers/odontogramaReferenciasController');
 
-router.get('/referencias/catalogo', middlewareAutenticacion, autorizarOdontologo, referencias.listar);
-router.post('/referencias/catalogo', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, referencias.crear);
-router.put('/referencias/catalogo/:id', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, referencias.actualizar);
-router.put('/referencias/catalogo/:id/activa', middlewareAutenticacion, autorizarOdontologo, middlewareAuditoria, referencias.activar);
+router.get('/referencias/catalogo', middlewareAutenticacion, autorizarLecturaClinica, referencias.listar);
+router.post('/referencias/catalogo', middlewareAutenticacion, exigirTodosLosRoles('administrador', 'odontologo'), middlewareAuditoria, referencias.crear);
+router.put('/referencias/catalogo/:id', middlewareAutenticacion, exigirTodosLosRoles('administrador', 'odontologo'), middlewareAuditoria, referencias.actualizar);
+router.put('/referencias/catalogo/:id/activa', middlewareAutenticacion, exigirTodosLosRoles('administrador', 'odontologo'), middlewareAuditoria, referencias.activar);
 
 router.get(
   '/:pacienteId',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarLecturaClinica,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'consultar_odontograma_v2';
@@ -33,7 +37,7 @@ router.get(
 router.post(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarEscrituraClinica,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'guardar_odontograma_v2';

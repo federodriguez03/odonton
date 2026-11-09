@@ -35,15 +35,15 @@ async function listar({ pacienteId, diente, desde, hasta }) {
   return rows;
 }
 
-async function crear({ paciente_id, diente, tipo, observaciones, fecha }) {
+async function crear({ paciente_id, diente, tipo, observaciones, fecha }, actor) {
   await crearTabla();
   if (!paciente_id) throw new Error('paciente_id requerido');
   if (!tipo) throw new Error('tipo requerido');
   const d = validarDiente(diente);
   const { rows } = await pool.query(
-    `INSERT INTO tratamientos (paciente_id, diente, tipo, observaciones, fecha)
-     VALUES ($1,$2,$3,$4, COALESCE($5, NOW())) RETURNING *`,
-    [paciente_id, d, tipo, observaciones || null, fecha || null]
+    `INSERT INTO tratamientos (paciente_id,diente,tipo,observaciones,fecha,registrado_por_usuario_id,profesional_perfil_id)
+     VALUES ($1,$2,$3,$4,COALESCE($5,NOW()),$6,$7) RETURNING *`,
+    [paciente_id, d, tipo, observaciones || null, fecha || null, actor.usuario_id, actor.profesional_perfil_id]
   );
   return rows[0];
 }

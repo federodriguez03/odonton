@@ -31,7 +31,7 @@ function validarPacienteId(pacienteId) {
   return pid;
 }
 
-async function crearDocumento({ paciente_id, historia_clinica_id = null, nombre_archivo, ruta_archivo, tipo_archivo, descripcion }) {
+async function crearDocumento({ paciente_id, historia_clinica_id = null, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, actor }) {
   await asegurarTabla();
   const pid = validarPacienteId(paciente_id);
 
@@ -47,11 +47,15 @@ async function crearDocumento({ paciente_id, historia_clinica_id = null, nombre_
 
   const result = await pool.query(
     `
-      INSERT INTO documentos_paciente (paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING id, paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
+      INSERT INTO documentos_paciente
+        (paciente_id,historia_clinica_id,nombre_archivo,ruta_archivo,tipo_archivo,descripcion,
+         subido_por_usuario_id,profesional_perfil_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      RETURNING id,paciente_id,historia_clinica_id,nombre_archivo,tipo_archivo,descripcion,
+                fecha_subida,subido_por_usuario_id,profesional_perfil_id
     `,
-    [pid, historia_clinica_id || null, nombre_archivo, ruta_archivo, tipo_archivo, descripcion || null]
+    [pid, historia_clinica_id || null, nombre_archivo, ruta_archivo, tipo_archivo, descripcion || null,
+      actor.usuario_id, actor.profesional_perfil_id]
   );
 
   return result.rows[0];
@@ -63,8 +67,9 @@ async function listarDocumentosPorPaciente(pacienteId) {
 
   const { rows } = await pool.query(
     `
-      SELECT d.id, d.paciente_id, d.historia_clinica_id, d.nombre_archivo, d.ruta_archivo,
+      SELECT d.id, d.paciente_id, d.historia_clinica_id, d.nombre_archivo,
              d.tipo_archivo, d.descripcion, d.fecha_subida,
+             d.subido_por_usuario_id, d.profesional_perfil_id,
              h.motivo_consulta AS consulta_motivo,
              COALESCE(h.fecha_atencion,h.created_at) AS consulta_fecha
       FROM documentos_paciente d
@@ -88,7 +93,9 @@ async function asociarDocumentoAConsulta(id, historiaClinicaId) {
     if (!historia.rowCount || historia.rows[0].paciente_id !== documento.paciente_id) throw new Error('La atención no existe o pertenece a otro paciente');
   }
   const { rows } = await pool.query(
-    'UPDATE documentos_paciente SET historia_clinica_id=$2 WHERE id=$1 RETURNING *',
+    `UPDATE documentos_paciente SET historia_clinica_id=$2 WHERE id=$1
+     RETURNING id,paciente_id,historia_clinica_id,nombre_archivo,tipo_archivo,descripcion,
+               fecha_subida,subido_por_usuario_id,profesional_perfil_id`,
     [documento.id, historiaId],
   );
   return rows[0];

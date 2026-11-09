@@ -6,7 +6,14 @@ const documentosService = require('../services/documentosService');
 const UPLOADS_BASE_DIR = path.join(__dirname, '..', '..', 'uploads', 'documentos');
 
 function resolveDocumentoPath(rutaArchivo) {
-  return path.join(__dirname, '..', '..', rutaArchivo);
+  const resolved = path.resolve(__dirname, '..', '..', rutaArchivo);
+  const base = path.resolve(UPLOADS_BASE_DIR);
+  if (resolved !== base && !resolved.startsWith(`${base}${path.sep}`)) {
+    const error = new Error('Ruta de documento inválida');
+    error.status = 404;
+    throw error;
+  }
+  return resolved;
 }
 
 async function subirDocumento(req, res) {
@@ -35,6 +42,7 @@ async function subirDocumento(req, res) {
       ruta_archivo: rutaRelativa,
       tipo_archivo: file.mimetype,
       descripcion: descripcion || null,
+      actor: req.clinicalActor,
     });
 
     return res.status(201).json({
@@ -84,7 +92,7 @@ async function descargarDocumento(req, res) {
 
     return res.download(archivoPath, documento.nombre_archivo);
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al descargar documento' });
+    return res.status(error.status || 400).json({ mensaje: error.message || 'Error al descargar documento' });
   }
 }
 

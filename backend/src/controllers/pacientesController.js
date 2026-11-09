@@ -11,10 +11,6 @@ async function registrarPaciente(req, res) {
 			telefono,
 			email,
 			fecha_nacimiento,
-			observaciones,
-			alergias,
-			condiciones,
-			estado_tratamiento,
 		} = req.body;
 
 		if (!nombre || !apellido || !dni) {
@@ -30,10 +26,6 @@ async function registrarPaciente(req, res) {
 			telefono,
 			email,
 			fecha_nacimiento,
-			observaciones,
-			alergias,
-			condiciones,
-			estado_tratamiento,
 		});
 
 		req.auditAction = 'registrar_paciente';
@@ -105,6 +97,15 @@ async function fichaClinica(req, res) {
 	}
 }
 
+async function actualizarFichaClinica(req, res) {
+	try {
+		const paciente = await pacientesService.actualizarDatosClinicos(req.params.id, req.body || {});
+		return res.status(200).json({ mensaje: 'Información clínica actualizada', paciente });
+	} catch (error) {
+		return res.status(error.message.includes('no encontrado') ? 404 : 400).json({ mensaje: error.message });
+	}
+}
+
 module.exports = {
 	registrarPaciente,
 	actualizarPaciente,
@@ -113,3 +114,4 @@ module.exports = {
 };
 
 module.exports.fichaClinica = fichaClinica;
+module.exports.actualizarFichaClinica = actualizarFichaClinica;

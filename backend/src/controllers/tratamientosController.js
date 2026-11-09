@@ -12,7 +12,7 @@ exports.listar = async (req, res) => {
 
 exports.crear = async (req, res) => {
   try {
-    const t = await tratamientosService.crear(req.body || {});
+    const t = await tratamientosService.crear(req.body || {}, req.clinicalActor);
     res.status(201).json({ mensaje: 'Tratamiento registrado', tratamiento: t });
   } catch (e) {
     res.status(400).json({ mensaje: e.message });

@@ -36,10 +36,6 @@ async function crearPaciente({
 	telefono = null,
 	email = null,
 	fecha_nacimiento = null,
-	observaciones = null,
-	alergias = null,
-	condiciones = null,
-	estado_tratamiento = null,
 }) {
 	await asegurarColumnasClinicasPacientes();
 	const telefonoNormalizado = normalizarTelefonoPaciente(telefono);
@@ -52,9 +48,10 @@ async function crearPaciente({
 
 	const query = `
 		INSERT INTO pacientes (
-			nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, observaciones, alergias, condiciones, estado_tratamiento, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())
-		RETURNING *;
+			nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+		RETURNING id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email,
+		          fecha_nacimiento, created_at, updated_at;
 	`;
 
 	const values = [
@@ -66,10 +63,6 @@ async function crearPaciente({
 		telefonoNormalizado,
 		email,
 		fecha_nacimiento,
-		observaciones,
-		alergias,
-		condiciones,
-		estado_tratamiento,
 	];
 
 	const { rows } = await pool.query(query, values);
@@ -85,7 +78,7 @@ async function actualizarPaciente(id, fields) {
 		fields.telefono = normalizarTelefonoPaciente(fields.telefono);
 	}
 
-	const existingResult = await pool.query('SELECT * FROM pacientes WHERE id = $1', [id]);
+	const existingResult = await pool.query('SELECT id, dni FROM pacientes WHERE id = $1', [id]);
 	if (existingResult.rowCount === 0) {
 		throw new Error('El paciente no existe');
 	}
@@ -110,10 +103,6 @@ const allowed = [
 		'telefono',
 		'email',
 		'fecha_nacimiento',
-		'observaciones',
-		'alergias',
-		'condiciones',
-		'estado_tratamiento',
 	];
 
 	const sets = [];
@@ -134,7 +123,9 @@ const allowed = [
 	// Añadir updated_at
 	sets.push('updated_at = NOW()');
 
-	const query = `UPDATE pacientes SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *;`;
+	const query = `UPDATE pacientes SET ${sets.join(', ')} WHERE id = $${idx}
+		RETURNING id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email,
+		          fecha_nacimiento, created_at, updated_at;`;
 	values.push(id);
 
 	const { rows } = await pool.query(query, values);
@@ -192,7 +183,7 @@ async function listarPacientes({ page = 1, limit = 20, q = null, dni = null, sor
 	const offset = (page - 1) * limit;
 
 	const dataQuery = `
-		SELECT id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, observaciones, created_at, updated_at
+		SELECT id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, created_at, updated_at
 		FROM pacientes
 		${whereClause}
 		ORDER BY ${orderBy}
@@ -217,8 +208,35 @@ async function listarPacientes({ page = 1, limit = 20, q = null, dni = null, sor
 async function obtenerPaciente(id) {
 	await asegurarColumnasClinicasPacientes();
 
-	const { rows } = await pool.query('SELECT * FROM pacientes WHERE id = $1', [id]);
+	const { rows } = await pool.query(
+		`SELECT id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email,
+		        fecha_nacimiento, created_at, updated_at
+		 FROM pacientes WHERE id = $1`,
+		[id],
+	);
 	if (rows.length === 0) return null;
+	return rows[0];
+}
+
+async function actualizarDatosClinicos(id, fields) {
+	await asegurarColumnasClinicasPacientes();
+	const allowed = ['observaciones', 'alergias', 'condiciones', 'estado_tratamiento'];
+	const sets = [];
+	const values = [];
+	for (const key of allowed) {
+		if (Object.prototype.hasOwnProperty.call(fields, key)) {
+			values.push(fields[key] === null ? null : String(fields[key]).trim() || null);
+			sets.push(`${key}=$${values.length}`);
+		}
+	}
+	if (!sets.length) throw new Error('No hay campos clínicos para actualizar');
+	values.push(id);
+	const { rows } = await pool.query(
+		`UPDATE pacientes SET ${sets.join(',')},updated_at=NOW() WHERE id=$${values.length}
+		 RETURNING id,observaciones,alergias,condiciones,estado_tratamiento,updated_at`,
+		values,
+	);
+	if (!rows.length) throw new Error('Paciente no encontrado');
 	return rows[0];
 }
 
@@ -234,7 +252,15 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
 	if (limit > 50) limit = 50;
 
 	// Obtener paciente
-	const paciente = await obtenerPaciente(pacienteId);
+	await asegurarColumnasClinicasPacientes();
+	const pacienteResult = await pool.query(
+		`SELECT id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email,
+		        fecha_nacimiento, observaciones, alergias, condiciones, estado_tratamiento,
+		        created_at, updated_at
+		 FROM pacientes WHERE id=$1`,
+		[pacienteId],
+	);
+	const paciente = pacienteResult.rows[0] || null;
 	if (!paciente) return null;
 
 	// Calcular edad si existe fecha_nacimiento
@@ -320,13 +346,14 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
 
     // Traer historial clínico (historias_clinicas para este paciente)
     const historiasRes = await pool.query(
-        `SELECT h.*, u.nombre AS profesional_nombre,
+        `SELECT h.*, COALESCE(pp.nombre_mostrado, u.nombre) AS profesional_nombre,
                 t.fecha_hora_inicio AS turno_fecha,
                 p.nombre AS turno_prestacion,
                 (h.odontograma_snapshot IS NOT NULL) AS odontograma_disponible,
                 COALESCE((SELECT json_agg(json_build_object('id',d.id,'nombre_archivo',d.nombre_archivo,'tipo_archivo',d.tipo_archivo))
                           FROM documentos_paciente d WHERE d.historia_clinica_id=h.id), '[]') AS documentos
          FROM historias_clinicas h
+         LEFT JOIN profesionales pp ON pp.id = h.profesional_perfil_id
          LEFT JOIN usuarios u ON u.id = h.profesional_id
          LEFT JOIN turnos t ON t.id = h.turno_id
          LEFT JOIN prestaciones p ON p.id = t.prestacion_id
@@ -336,7 +363,11 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
     );
 
     const profesionalesRes = await pool.query(
-        `SELECT id, nombre, email FROM usuarios WHERE COALESCE(activo, TRUE)=TRUE ORDER BY nombre, email`
+        `SELECT p.id, p.nombre_mostrado AS nombre
+         FROM profesionales p
+         JOIN usuarios u ON u.id=p.usuario_id
+         WHERE p.activo=TRUE AND u.activo=TRUE
+         ORDER BY p.nombre_mostrado`
     );
     const turnosConsultaRes = await pool.query(
         `SELECT t.id, t.fecha_hora_inicio, t.estado, p.nombre AS prestacion_nombre,
@@ -402,5 +433,6 @@ module.exports = {
 	actualizarPaciente,
 	listarPacientes,
 	obtenerPaciente,
+	actualizarDatosClinicos,
 	obtenerFichaClinica,
 };
