@@ -17,6 +17,7 @@ async function main() {
       if (text.includes('FROM tratamientos')) return { rows: [{ id: 70, diente: 11, tipo: 'Obturacion' }], rowCount: 1 };
       if (text.includes('FROM protesis_fijas')) return { rows: [], rowCount: 0 };
       if (text.includes('FROM protesis_removibles')) return { rows: [], rowCount: 0 };
+      if (text.includes('FROM odontograma_referencias')) return { rows: [{ codigo: 'existente', nombre: 'Restauración previa', color: '#112233', alcance: 'cara', activo: true }], rowCount: 1 };
       if (text.includes('FROM historias_clinicas') && text.includes('FOR UPDATE')) {
         return params[1] === 1
           ? { rows: [{ id: 99, paciente_id: 1, turno_id: 8, descripcion: 'Anterior', odontograma_snapshot: snapshotGuardado, created_at: '2026-10-10T14:00:00Z' }], rowCount: 1 }
@@ -47,7 +48,8 @@ async function main() {
   const atencion = await service.registrarAtencion({ pacienteId: 1, turnoId: 8, observaciones: 'Atencion realizada' });
   assert.equal(atencion.turno_id, 8);
   assert.equal(snapshotGuardado.registros[0].odontograma_id, 50);
-  assert.equal(snapshotGuardado.registros[0].color, '#ff4d4d');
+  assert.equal(snapshotGuardado.registros[0].color, '#112233');
+  assert.equal(snapshotGuardado.registros[0].nombre, 'Restauración previa');
   assert.equal(snapshotGuardado.meta.observaciones, 'Control');
   assert.equal(snapshotGuardado.referencias.tratamientos[0].id, 70);
   assert.ok(queries.includes('COMMIT'));

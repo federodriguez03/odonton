@@ -7,6 +7,7 @@ import {
   getFichaClinica,
   getDocumentos,
   getOdontogramaPaciente,
+  getOdontogramaReferencias,
   getPacientes,
   postOdontograma,
   updateAtencion,
@@ -69,6 +70,7 @@ const state = {
     selectedTooth: null,
     registros: new Map(),
     metaDirty: false,
+    referencias: new Map(),
   },
 };
 
@@ -109,6 +111,7 @@ const ui = {
   odontoDenticion: document.getElementById('odonto-denticion'),
   odontoExportPdf: document.getElementById('odonto-export-pdf'),
   odontoDetails: document.getElementById('odontograma-tooth-details'),
+  odontoLegend: document.getElementById('odontograma-legend'),
 };
 
 const pacienteModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('paciente-modal'));
@@ -760,6 +763,19 @@ function renderOdontogramaHistorico(historiaId, rawSnapshot) {
     svg.appendChild(label);
   });
   container.innerHTML = '';
+  const referenciasHistoricas = [...new Map(registros.map((registro) => {
+    const catalogada = snapshot?.referencias_catalogo?.[registro.estado];
+    return [registro.estado, {
+      nombre: registro.nombre || catalogada?.nombre || registro.estado,
+      color: registro.color || catalogada?.color || colores[registro.estado] || '#ffffff',
+    }];
+  })).values()];
+  if (referenciasHistoricas.length) {
+    const legend = document.createElement('div');
+    legend.className = 'd-flex flex-wrap gap-2 mb-2';
+    legend.innerHTML = referenciasHistoricas.map((ref) => `<span class="badge border text-dark" style="background:${ref.color}">${escapeHtml(ref.nombre)}</span>`).join('');
+    container.appendChild(legend);
+  }
   container.appendChild(svg);
   const meta = snapshot?.meta || {};
   const referencias = snapshot?.referencias || {};
@@ -1040,6 +1056,17 @@ function getRecordState(toothNumber, face) {
   return state.odontograma.registros.get(key) || 'sano';
 }
 
+function getReferencia(codigo) {
+  return state.odontograma.referencias.get(codigo) || { codigo, nombre: codigo, color: estados[codigo] || '#ffffff', alcance: 'cara', activo: false };
+}
+
+function renderReferenciasOdontograma(referencias) {
+  state.odontograma.referencias = new Map(referencias.map((ref) => [ref.codigo, ref]));
+  const activas = referencias.filter((ref) => ref.activo);
+  ui.odontoEstadoClinico.innerHTML = activas.map((ref) => `<option value="${escapeHtml(ref.codigo)}">${escapeHtml(ref.nombre)}</option>`).join('');
+  ui.odontoLegend.innerHTML = referencias.map((ref) => `<span class="badge border text-dark" style="background:${ref.color}">${escapeHtml(ref.nombre)}${ref.activo ? '' : ' (inactiva)'}</span>`).join(' ');
+}
+
 function paintFace(toothNumber, face, estado) {
   const key = `${toothNumber}-${face}`;
   state.odontograma.registros.set(key, estado);
@@ -1049,12 +1076,12 @@ function paintFace(toothNumber, face, estado) {
   if (el) {
     el.classList.remove(...Object.keys(estados).map((s) => `state-${s}`));
     el.classList.add(`state-${estado}`);
-    el.setAttribute('fill', estados[estado] || estados.sano);
+  el.style.fill = getReferencia(estado).color;
   }
 }
 
 function toothHasOnlyAusente(toothNumber) {
-  return FACES.every((face) => getRecordState(toothNumber, face) === 'ausente');
+  return FACES.every((face) => ['ausente', 'pieza_ausente'].includes(getRecordState(toothNumber, face)));
 }
 
 function buildTooltipText(toothNumber) {
@@ -1107,7 +1134,8 @@ function createToothSVG(toothNumber, x = 0, y = 0, size = 38) {
     const polygon = createSvgEl('polygon', {
       points: pointsToAbsolute(FACE_POLYGONS[face], x, y, size),
       class: `odonto-face state-${estado}`,
-      fill: estados[estado] || estados.sano,
+      fill: getReferencia(estado).color,
+      style: `fill:${getReferencia(estado).color}`,
       'data-tooth': toothNumber,
       'data-face': face,
     });
@@ -1207,10 +1235,7 @@ function handleToothFaceClick(toothNumber, face) {
   ui.odontoSelectedPiece.textContent = String(toothNumber);
   ui.odontoSaveBtn.disabled = false;
 
-  const affectAll =
-    estadoSeleccionado === 'ausente' ||
-    estadoSeleccionado === 'protesis_fija' ||
-    estadoSeleccionado === 'protesis_removible';
+  const affectAll = getReferencia(estadoSeleccionado).alcance === 'pieza';
 
   if (affectAll) {
     FACES.forEach((f) => paintFace(toothNumber, f, estadoSeleccionado));
@@ -1235,7 +1260,11 @@ async function loadOdontograma(pacienteId) {
   state.odontograma.metaDirty = false;
   ui.odontoModalLabel.textContent = 'Cargando odontograma...';
 
-  const data = await getOdontogramaPaciente(pacienteId);
+  const [data, referenciasData] = await Promise.all([
+    getOdontogramaPaciente(pacienteId),
+    getOdontogramaReferencias(pacienteId),
+  ]);
+  renderReferenciasOdontograma(referenciasData.referencias || []);
   const paciente = data.paciente || {};
   ui.odontoModalLabel.textContent = `${paciente.apellido || ''}, ${paciente.nombre || ''} - DNI ${paciente.dni || '-'}`;
 
@@ -1363,16 +1392,7 @@ function bindOdontograma() {
     const sarro = ui.odontoSarro.checked ? 'Sí' : 'No';
     const perio = ui.odontoPeriodontal.checked ? 'Sí' : 'No';
     const obs = ui.odontoObservaciones.value?.trim() || 'Sin observaciones';
-    const legend = `
-      <ul class="legend">
-        <li><span class="swatch sano"></span> Sano (blanco)</li>
-        <li><span class="swatch existente"></span> Prestación existente (rojo)</li>
-        <li><span class="swatch requerido"></span> Prestación requerida (azul)</li>
-        <li><span class="swatch corona"></span> Corona (amarillo)</li>
-        <li><span class="swatch fija"></span> Prótesis fija</li>
-        <li><span class="swatch removible"></span> Prótesis removible</li>
-        <li><span class="swatch ausente"></span> Ausente / a extraer</li>
-      </ul>`;
+    const legend = `<ul class="legend">${[...state.odontograma.referencias.values()].map((ref) => `<li><span class="swatch" style="background:${ref.color}"></span>${escapeHtml(ref.nombre)}${ref.activo ? '' : ' (inactiva)'}</li>`).join('')}</ul>`;
     const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Odontograma</title>
 <style>

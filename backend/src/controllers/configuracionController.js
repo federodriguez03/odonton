@@ -1,4 +1,5 @@
 const configuracionService = require('../services/configuracionService');
+const referenciasService = require('../services/odontogramaReferenciasService');
 
 async function obtenerConfiguracion(req, res) {
   try {
@@ -21,7 +22,36 @@ async function guardarConfiguracion(req, res) {
   }
 }
 
+async function listarReferenciasOdontograma(req, res) {
+  try {
+    return res.status(200).json({ referencias: await referenciasService.listar({ incluirInactivas: true }) });
+  } catch (error) {
+    return res.status(400).json({ mensaje: error.message });
+  }
+}
+
+async function crearReferenciaOdontograma(req, res) {
+  try {
+    const referencia = await referenciasService.crear(req.body || {});
+    return res.status(201).json({ mensaje: 'Referencia creada', referencia });
+  } catch (error) {
+    return res.status(400).json({ mensaje: error.message });
+  }
+}
+
+async function actualizarReferenciaOdontograma(req, res) {
+  try {
+    const referencia = await referenciasService.actualizar(req.params.id, req.body || {});
+    return res.status(200).json({ mensaje: 'Referencia actualizada', referencia });
+  } catch (error) {
+    return res.status(400).json({ mensaje: error.message });
+  }
+}
+
 module.exports = {
   obtenerConfiguracion,
   guardarConfiguracion,
+  listarReferenciasOdontograma,
+  crearReferenciaOdontograma,
+  actualizarReferenciaOdontograma,
 };

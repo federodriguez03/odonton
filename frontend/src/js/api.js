@@ -135,6 +135,11 @@ export function postOdontograma(payload) {
   });
 }
 
+export function getOdontogramaReferencias(pacienteId = null) {
+  const query = pacienteId ? `?paciente_id=${pacienteId}` : '';
+  return request(`/api/odontograma/referencias${query}`);
+}
+
 export function getTratamientos(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
@@ -428,6 +433,18 @@ export function updateConfiguracion(payload) {
     method: 'PUT',
     body: JSON.stringify(payload),
   });
+}
+
+export function getConfiguracionOdontogramaReferencias() {
+  return request('/api/configuracion/odontograma-referencias');
+}
+
+export function createConfiguracionOdontogramaReferencia(payload) {
+  return request('/api/configuracion/odontograma-referencias', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function updateConfiguracionOdontogramaReferencia(id, payload) {
+  return request(`/api/configuracion/odontograma-referencias/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 }
 
 export function getWhatsappStatus() {

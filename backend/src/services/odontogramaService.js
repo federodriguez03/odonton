@@ -1,16 +1,8 @@
 const { pool } = require('../config/db');
+const referenciasService = require('./odontogramaReferenciasService');
 
 let initDone = false;
 
-const ESTADOS_PERMITIDOS = new Set([
-	'sano',
-	'existente',
-	'requerido',
-	'corona',
-	'protesis_fija',
-	'protesis_removible',
-	'ausente',
-]);
 const CARAS_PERMITIDAS = new Set(['vestibular', 'mesial', 'distal', 'oclusal', 'lingual']);
 
 function esDienteFDIValido(diente) {
@@ -58,7 +50,7 @@ function normalizarEstado(estado) {
 	return value;
 }
 
-function validarPayload({ paciente_id, diente, cara, estado }) {
+async function validarPayload({ paciente_id, diente, cara, estado }) {
 	const pid = Number.parseInt(paciente_id, 10);
 	const dienteNum = Number.parseInt(diente, 10);
 	const estadoNorm = normalizarEstado(estado);
@@ -75,9 +67,8 @@ function validarPayload({ paciente_id, diente, cara, estado }) {
     throw new Error('cara invalida');
   }
 
-	if (!ESTADOS_PERMITIDOS.has(estadoNorm)) {
-		throw new Error('estado invalido');
-	}
+
+	await referenciasService.validarParaGuardar({ codigo: estadoNorm, pacienteId: pid, diente: dienteNum, cara: String(cara) });
 
 	return {
 		paciente_id: pid,
@@ -101,10 +92,10 @@ async function guardarMeta(pacienteId, sarro, periodontal, observaciones) {
      ON CONFLICT (paciente_id)
      DO UPDATE SET sarro = COALESCE(EXCLUDED.sarro, odontograma_meta.sarro),
                    periodontal = COALESCE(EXCLUDED.periodontal, odontograma_meta.periodontal),
-                   observaciones = COALESCE(EXCLUDED.observaciones, odontograma_meta.observaciones),
+                   observaciones = CASE WHEN $5 THEN EXCLUDED.observaciones ELSE odontograma_meta.observaciones END,
                    updated_at = NOW()
     `,
-    [pacienteId, sarro, periodontal, observaciones]
+    [pacienteId, sarro, periodontal, observaciones === undefined ? null : observaciones, observaciones !== undefined]
   );
 }
 
@@ -142,7 +133,7 @@ async function obtenerOdontogramaPorPaciente(pacienteId) {
 
 async function guardarEstadoCara(payload) {
   await asegurarTablas();
-  const data = validarPayload(payload);
+  const data = await validarPayload(payload);
 
   const pacienteRes = await pool.query('SELECT id FROM pacientes WHERE id = $1', [data.paciente_id]);
   if (pacienteRes.rowCount === 0) {

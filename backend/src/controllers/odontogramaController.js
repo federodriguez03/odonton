@@ -1,4 +1,5 @@
 const odontogramaService = require('../services/odontogramaService');
+const referenciasService = require('../services/odontogramaReferenciasService');
 
 async function getOdontogramaPaciente(req, res) {
   try {
@@ -24,7 +25,7 @@ async function postOdontograma(req, res) {
 				body.paciente_id,
 				body.sarro === undefined ? undefined : Boolean(body.sarro),
 				body.periodontal === undefined ? undefined : Boolean(body.periodontal),
-				body.observaciones === undefined ? undefined : String(body.observaciones)
+				body.observaciones === undefined ? undefined : (body.observaciones === null ? null : String(body.observaciones))
 			);
 			return res.status(201).json({ mensaje: 'Metadatos de odontograma guardados' });
 		}
@@ -36,7 +37,7 @@ async function postOdontograma(req, res) {
 				registro.paciente_id,
 				body.sarro === undefined ? undefined : Boolean(body.sarro),
 				body.periodontal === undefined ? undefined : Boolean(body.periodontal),
-				body.observaciones === undefined ? undefined : String(body.observaciones)
+				body.observaciones === undefined ? undefined : (body.observaciones === null ? null : String(body.observaciones))
 			);
 		}
 
@@ -51,4 +52,11 @@ async function postOdontograma(req, res) {
 module.exports = {
   getOdontogramaPaciente,
   postOdontograma,
+  getReferencias: async (req, res) => {
+    try {
+      return res.status(200).json({ referencias: await referenciasService.listar({ pacienteId: req.query.paciente_id || null }) });
+    } catch (error) {
+      return res.status(400).json({ mensaje: error.message });
+    }
+  },
 };

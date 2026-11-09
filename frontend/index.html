@@ -707,6 +707,24 @@
           <div class="col-12">
             <div class="card border-0 shadow-sm">
               <div class="card-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                  <div><h2 class="h5 mb-1">Referencias del odontograma</h2><p class="text-secondary small mb-0">Los códigos internos permanecen estables aunque cambie el nombre.</p></div>
+                  <button id="config-referencia-nueva" class="btn btn-primary btn-sm" type="button">Agregar referencia</button>
+                </div>
+                <form id="config-referencia-form" class="row g-2 align-items-end mb-3 d-none">
+                  <input type="hidden" name="id" />
+                  <div class="col-md-5"><label class="form-label">Nombre</label><input name="nombre" class="form-control" required /></div>
+                  <div class="col-md-3"><label class="form-label">Color</label><input name="color" type="color" class="form-control form-control-color w-100" value="#4d79ff" required /></div>
+                  <div class="col-md-4 d-flex gap-2"><button class="btn btn-primary flex-grow-1" type="submit">Guardar</button><button id="config-referencia-cancelar" class="btn btn-outline-secondary" type="button">Cancelar</button></div>
+                </form>
+                <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Referencia</th><th>Código</th><th>Color</th><th>Alcance</th><th>Estado</th><th></th></tr></thead><tbody id="config-referencias-tbody"></tbody></table></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-12">
+            <div class="card border-0 shadow-sm">
+              <div class="card-body">
                 <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
                   <div>
                     <h2 class="h5 mb-1">WhatsApp Web</h2>
@@ -871,15 +889,7 @@
           </div>
           <div class="modal-body">
             <p class="text-secondary mb-2" id="odontograma-paciente-info">Cargando...</p>
-            <div class="odontograma-legend mb-3">
-              <span class="badge text-bg-light border">Sano</span>
-              <span class="badge bg-danger">Prestacion existente</span>
-              <span class="badge bg-primary">Prestacion requerida</span>
-              <span class="badge bg-warning text-dark">Corona</span>
-              <span class="badge text-bg-secondary">Prótesis fija</span>
-              <span class="badge text-bg-info">Prótesis removible</span>
-              <span class="badge bg-dark">Diente ausente (X)</span>
-            </div>
+            <div class="odontograma-legend mb-3" id="odontograma-legend"></div>
             <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
               <label class="form-label mb-0 me-2" for="odonto-denticion">Dentición:</label>
               <select id="odonto-denticion" class="form-select form-select-sm" style="width: auto;">
@@ -917,15 +927,7 @@
                   <p class="small mb-2">Seleccionada: <strong id="odontograma-pieza-selected">-</strong></p>
                   <div class="mb-2">
                     <label class="form-label" for="odonto-estado-clinico">Estado clinico a aplicar</label>
-                    <select id="odonto-estado-clinico" class="form-select" required>
-                      <option value="sano">Sano</option>
-                      <option value="existente">Prestacion existente</option>
-                      <option value="requerido">Prestacion requerida</option>
-                      <option value="corona">Corona</option>
-                      <option value="protesis_fija">Prótesis fija</option>
-                      <option value="protesis_removible">Prótesis removible</option>
-                      <option value="ausente">Diente ausente / a extraer</option>
-                    </select>
+                    <select id="odonto-estado-clinico" class="form-select" required></select>
                   </div>
                   <div class="mb-3">
                     <label class="form-label" for="odonto-observaciones">Observaciones</label>

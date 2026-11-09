@@ -444,23 +444,27 @@ async function registrarAtencion({ pacienteId, turnoId, observaciones }) {
       throw new Error('El turno no tiene profesional y prestacion validos');
     }
 
-    const [odontogramaRes, metaRes, tratamientosRes, fijasRes, removiblesRes] = await Promise.all([
+    const [odontogramaRes, metaRes, tratamientosRes, fijasRes, removiblesRes, referenciasRes] = await Promise.all([
       client.query('SELECT id, diente, cara, estado, fecha FROM odontograma WHERE paciente_id = $1 ORDER BY diente, cara', [pid]),
       client.query('SELECT sarro, periodontal, observaciones, updated_at FROM odontograma_meta WHERE paciente_id = $1', [pid]),
       client.query('SELECT id, diente, tipo, observaciones, fecha FROM tratamientos WHERE paciente_id = $1 ORDER BY id', [pid]),
       client.query('SELECT id, tipo, dientes, descripcion, fecha FROM protesis_fijas WHERE paciente_id = $1 ORDER BY id', [pid]),
       client.query('SELECT id, tipo, arcada, descripcion, fecha FROM protesis_removibles WHERE paciente_id = $1 ORDER BY id', [pid]),
+      client.query('SELECT codigo, nombre, color, alcance, activo FROM odontograma_referencias ORDER BY codigo'),
     ]);
+    const referenciasCatalogo = Object.fromEntries(referenciasRes.rows.map((ref) => [ref.codigo, ref]));
     const snapshot = {
       version: 1,
       capturado_at: new Date().toISOString(),
       colores: SNAPSHOT_COLORES,
+      referencias_catalogo: referenciasCatalogo,
       registros: odontogramaRes.rows.map((row) => ({
         odontograma_id: row.id,
         diente: row.diente,
         cara: row.cara,
         estado: row.estado,
-        color: SNAPSHOT_COLORES[row.estado] || SNAPSHOT_COLORES.sano,
+        nombre: referenciasCatalogo[row.estado]?.nombre || row.estado,
+        color: referenciasCatalogo[row.estado]?.color || SNAPSHOT_COLORES[row.estado] || SNAPSHOT_COLORES.sano,
         fecha: row.fecha,
       })),
       meta: metaRes.rows[0] || { sarro: false, periodontal: false, observaciones: null },

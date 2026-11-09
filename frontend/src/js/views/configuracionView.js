@@ -1,5 +1,7 @@
 import QRCode from 'qrcode';
 import {
+  createConfiguracionOdontogramaReferencia,
+  getConfiguracionOdontogramaReferencias,
   getConfiguracion,
   getWhatsappQr,
   getWhatsappStatus,
@@ -7,12 +9,14 @@ import {
   logoutWhatsapp,
   resetWhatsapp,
   updateConfiguracion,
+  updateConfiguracionOdontogramaReferencia,
 } from '../api.js';
 import { renderAlert } from '../components/alerts.js';
 
 const state = {
   horarios: [],
   mensajes: [],
+  referencias: [],
 };
 
 const ui = {
@@ -33,7 +37,67 @@ const ui = {
   whatsappResetBtn: document.getElementById('config-whatsapp-reset-btn'),
   whatsappLogoutBtn: document.getElementById('config-whatsapp-logout-btn'),
   saveBtn: document.getElementById('config-save-btn'),
+  referenciasTbody: document.getElementById('config-referencias-tbody'),
+  referenciaForm: document.getElementById('config-referencia-form'),
+  referenciaNueva: document.getElementById('config-referencia-nueva'),
+  referenciaCancelar: document.getElementById('config-referencia-cancelar'),
 };
+
+function renderReferencias() {
+  if (!ui.referenciasTbody) return;
+  ui.referenciasTbody.innerHTML = state.referencias.map((ref) => `
+    <tr>
+      <td>${ref.nombre}</td><td><code>${ref.codigo}</code></td>
+      <td><span class="d-inline-block border rounded" style="width:32px;height:20px;background:${ref.color}"></span> <small>${ref.color}</small></td>
+      <td>${ref.alcance === 'pieza' ? 'Pieza' : 'Cara'}</td>
+      <td><span class="badge ${ref.activo ? 'bg-success' : 'bg-secondary'}">${ref.activo ? 'Activa' : 'Inactiva'}</span></td>
+      <td class="text-end"><button class="btn btn-sm btn-outline-primary" data-action="editar-referencia" data-id="${ref.id}" type="button">Editar</button> <button class="btn btn-sm btn-outline-secondary" data-action="toggle-referencia" data-id="${ref.id}" type="button">${ref.activo ? 'Inactivar' : 'Activar'}</button></td>
+    </tr>`).join('');
+}
+
+async function loadReferencias() {
+  const data = await getConfiguracionOdontogramaReferencias();
+  state.referencias = data.referencias || [];
+  renderReferencias();
+}
+
+function bindReferencias() {
+  ui.referenciaNueva?.addEventListener('click', () => {
+    ui.referenciaForm.reset();
+    ui.referenciaForm.elements.id.value = '';
+    ui.referenciaForm.classList.remove('d-none');
+  });
+  ui.referenciaCancelar?.addEventListener('click', () => ui.referenciaForm.classList.add('d-none'));
+  ui.referenciasTbody?.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const referencia = state.referencias.find((item) => String(item.id) === button.dataset.id);
+    if (!referencia) return;
+    if (button.dataset.action === 'editar-referencia') {
+      ui.referenciaForm.elements.id.value = referencia.id;
+      ui.referenciaForm.elements.nombre.value = referencia.nombre;
+      ui.referenciaForm.elements.color.value = referencia.color;
+      ui.referenciaForm.classList.remove('d-none');
+      return;
+    }
+    try {
+      await updateConfiguracionOdontogramaReferencia(referencia.id, { nombre: referencia.nombre, color: referencia.color, activo: !referencia.activo });
+      await loadReferencias();
+    } catch (error) { renderAlert(ui.alertContainer, error.message, 'danger'); }
+  });
+  ui.referenciaForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const id = ui.referenciaForm.elements.id.value;
+    const actual = state.referencias.find((item) => String(item.id) === id);
+    const payload = { nombre: ui.referenciaForm.elements.nombre.value.trim(), color: ui.referenciaForm.elements.color.value, activo: actual?.activo ?? true };
+    try {
+      if (id) await updateConfiguracionOdontogramaReferencia(id, payload);
+      else await createConfiguracionOdontogramaReferencia(payload);
+      ui.referenciaForm.classList.add('d-none');
+      await loadReferencias();
+    } catch (error) { renderAlert(ui.alertContainer, error.message, 'danger'); }
+  });
+}
 
 const MESSAGE_LABELS = {
   principal_whatsapp: {
@@ -477,10 +541,12 @@ function bindSave() {
 }
 
 export async function initConfiguracionView() {
+  bindReferencias();
   bindHorarios();
   bindMensajes();
   bindWhatsappPanel();
   bindSave();
   await loadConfiguracion();
+  await loadReferencias();
   await refreshWhatsappPanel();
 }
