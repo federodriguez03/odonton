@@ -34,7 +34,8 @@ async function registrarPaciente(req, res) {
 
 		return res.status(201).json({ mensaje: 'Paciente registrado correctamente', paciente });
 	} catch (error) {
-		return res.status(400).json({ mensaje: error.message || 'Error al registrar paciente' });
+		const errores = /DNI/i.test(error.message || '') ? { dni: error.message } : undefined;
+		return res.status(400).json({ mensaje: error.message || 'Error al registrar paciente', ...(errores ? { errores } : {}) });
 	}
 }
 
@@ -53,7 +54,8 @@ async function actualizarPaciente(req, res) {
 
 		return res.status(200).json({ mensaje: 'Paciente actualizado correctamente', paciente });
 	} catch (error) {
-		return res.status(400).json({ mensaje: error.message || 'Error al actualizar paciente' });
+		const errores = /DNI/i.test(error.message || '') ? { dni: error.message } : undefined;
+		return res.status(400).json({ mensaje: error.message || 'Error al actualizar paciente', ...(errores ? { errores } : {}) });
 	}
 }
 

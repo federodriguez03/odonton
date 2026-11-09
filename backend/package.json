@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "node test-db.js",
-    "test:db": "node test-db.js"
+    "test:db": "node test-db.js",
+    "test:pacientes-validacion": "node scripts/test-pacientes-validacion.js"
   },
   "keywords": [],
   "author": "",

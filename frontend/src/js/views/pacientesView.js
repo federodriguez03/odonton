@@ -84,6 +84,9 @@ const ui = {
   pacienteIdInput: document.getElementById('paciente-id'),
   modalTitle: document.getElementById('paciente-modal-label'),
   modalSubmitButton: document.getElementById('paciente-submit-btn'),
+  nacionalidadTipo: document.getElementById('nacionalidad-tipo'),
+  nacionalidadPais: document.getElementById('nacionalidad'),
+  nacionalidadPaisGroup: document.getElementById('nacionalidad-pais-group'),
   fichaModalContent: document.getElementById('ficha-modal-content'),
   odontoModalLabel: document.getElementById('odontograma-paciente-info'),
   odontoSvg: document.getElementById('odontograma-svg'),
@@ -190,12 +193,76 @@ function renderPagination() {
   ui.nextButton.disabled = state.page >= totalPages;
 }
 
+function clearPacienteErrors() {
+  ui.createForm.querySelectorAll('.is-invalid').forEach((field) => field.classList.remove('is-invalid'));
+  ui.createForm.querySelectorAll('.invalid-feedback.dynamic').forEach((feedback) => feedback.remove());
+}
+
+function setPacienteFieldError(fieldName, message) {
+  const field = ui.createForm.elements[fieldName] || (fieldName === 'nacionalidad' ? ui.nacionalidadPais : null);
+  if (!field) return;
+  field.classList.add('is-invalid');
+  const feedback = document.createElement('div');
+  feedback.className = 'invalid-feedback dynamic';
+  feedback.textContent = message;
+  field.insertAdjacentElement('afterend', feedback);
+}
+
+function syncNacionalidadFields() {
+  const isOther = ui.nacionalidadTipo.value === 'Otra';
+  ui.nacionalidadPaisGroup.classList.toggle('d-none', !isOther);
+  ui.nacionalidadPais.required = isOther;
+}
+
+function setNacionalidadValue(value) {
+  const nationality = String(value || '').trim();
+  if (!nationality) {
+    ui.nacionalidadTipo.value = '';
+    ui.nacionalidadPais.value = '';
+  } else if (nationality.toLocaleLowerCase('es') === 'argentina') {
+    ui.nacionalidadTipo.value = 'Argentina';
+    ui.nacionalidadPais.value = '';
+  } else {
+    ui.nacionalidadTipo.value = 'Otra';
+    if (![...ui.nacionalidadPais.options].some((option) => option.value === nationality)) ui.nacionalidadPais.add(new Option(nationality, nationality));
+    ui.nacionalidadPais.value = nationality;
+  }
+  syncNacionalidadFields();
+}
+
+function validatePacientePayload(payload) {
+  const errors = {};
+  const nameRegex = /^[\p{L}\p{M}]+(?:[ '\u2019-][\p{L}\p{M}]+)*$/u;
+  for (const field of ['nombre', 'apellido']) {
+    payload[field] = String(payload[field] || '').normalize('NFC').trim().replace(/\s+/g, ' ');
+    if (!payload[field]) errors[field] = `El ${field} es obligatorio`;
+    else if (!nameRegex.test(payload[field])) errors[field] = 'Usá sólo letras, espacios, guiones y apóstrofes';
+  }
+  payload.dni = String(payload.dni || '').trim();
+  if (!payload.dni) errors.dni = 'El DNI es obligatorio';
+  else if (!/^[0-9]{7,10}$/.test(payload.dni)) errors.dni = 'El DNI debe contener entre 7 y 10 dígitos';
+  const phone = String(payload.telefono || '').trim();
+  if (phone && !/^[+()\d\s.-]+$/.test(phone)) errors.telefono = 'Ingresá un teléfono válido';
+  const email = String(payload.email || '').trim();
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.email = 'Ingresá un email válido';
+  if (payload.fecha_nacimiento) {
+    const selected = new Date(`${payload.fecha_nacimiento}T00:00:00`);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (Number.isNaN(selected.getTime())) errors.fecha_nacimiento = 'Ingresá una fecha válida';
+    else if (selected > today) errors.fecha_nacimiento = 'La fecha de nacimiento no puede ser futura';
+  }
+  if (ui.nacionalidadTipo.value === 'Otra' && !String(payload.nacionalidad || '').trim()) errors.nacionalidad = 'Seleccioná un país';
+  return errors;
+}
+
 function openCreateModal() {
   state.mode = 'create';
   ui.modalTitle.textContent = 'Nuevo paciente';
   ui.modalSubmitButton.textContent = 'Guardar paciente';
   ui.pacienteIdInput.value = '';
   ui.createForm.reset();
+  clearPacienteErrors();
+  syncNacionalidadFields();
   pacienteModal?.show();
 }
 
@@ -209,7 +276,8 @@ function openEditModal(paciente) {
   ui.createForm.elements.dni.value = paciente.dni === '-' ? '' : paciente.dni;
   ui.createForm.elements.telefono.value = paciente.telefono || '';
   ui.createForm.elements.email.value = paciente.email || '';
-  ui.createForm.elements.nacionalidad.value = paciente.nacionalidad || '';
+  clearPacienteErrors();
+  setNacionalidadValue(paciente.nacionalidad);
   ui.createForm.elements.domicilio.value = paciente.domicilio || '';
   ui.createForm.elements.fecha_nacimiento.value = paciente.fecha_nacimiento ? String(paciente.fecha_nacimiento).slice(0, 10) : '';
   ui.createForm.elements.observaciones.value = paciente.observaciones || '';
@@ -998,13 +1066,30 @@ function bindOpenCreateModal() {
 }
 
 function bindCreateForm() {
+  ui.nacionalidadTipo.addEventListener('change', syncNacionalidadFields);
+  ui.createForm.elements.dni.addEventListener('input', (event) => {
+    event.target.value = event.target.value.replace(/\D/g, '');
+  });
+  const today = new Date();
+  ui.createForm.elements.fecha_nacimiento.max = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  document.getElementById('paciente-modal')?.addEventListener('hidden.bs.modal', clearPacienteErrors);
   ui.createForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    clearPacienteErrors();
 
     const formData = new FormData(ui.createForm);
     const payload = Object.fromEntries(formData.entries());
     const pacienteId = payload.id;
     delete payload.id;
+    payload.nacionalidad = ui.nacionalidadTipo.value === 'Argentina'
+      ? 'Argentina'
+      : (ui.nacionalidadTipo.value === 'Otra' ? ui.nacionalidadPais.value : null);
+
+    const clientErrors = validatePacientePayload(payload);
+    if (Object.keys(clientErrors).length) {
+      Object.entries(clientErrors).forEach(([field, message]) => setPacienteFieldError(field, message));
+      return;
+    }
 
     ['telefono', 'email', 'nacionalidad', 'domicilio', 'fecha_nacimiento', 'observaciones'].forEach((field) => {
       if (!payload[field] || !String(payload[field]).trim()) payload[field] = null;
@@ -1023,6 +1108,7 @@ function bindCreateForm() {
       state.page = 1;
       await loadPacientes();
     } catch (error) {
+      Object.entries(error.fields || {}).forEach(([field, message]) => setPacienteFieldError(field, message));
       renderAlert(ui.alertContainer, error.message, 'danger');
     }
   });

@@ -36,6 +36,7 @@ async function request(path, options = {}) {
     const error = new Error(data?.mensaje || `Error ${response.status}`);
     error.code = data?.codigo;
     error.status = response.status;
+    error.fields = data?.errores || null;
     throw error;
   }
 
