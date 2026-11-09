@@ -14,12 +14,12 @@ const {
 } = require('../controllers/whatsapp.controller');
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
 } = require('../middlewares/turnosMiddleware');
+const { exigirPermiso } = require('../middleware/authorizationMiddleware');
 
 const router = express.Router();
 
-router.use(middlewareAutenticacion, autorizarOdontologo);
+router.use(middlewareAutenticacion, exigirPermiso('whatsapp_admin'));
 
 router.get('/status', getWhatsAppStatus);
 router.get('/qr', getWhatsAppQr);

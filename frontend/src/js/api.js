@@ -408,6 +408,18 @@ export function getMe() {
   return request('/api/auth/me');
 }
 
+export function getAdminIdentities() {
+  return request('/api/admin/identidades');
+}
+
+export function createAdminIdentity(payload) {
+  return request('/api/admin/identidades', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function updateAdminIdentity(id, payload) {
+  return request(`/api/admin/identidades/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+}
+
 export function getConfiguracion() {
   return request('/api/configuracion');
 }

@@ -1,9 +1,20 @@
+const { hasRole, permissionsFor } = require('../domain/authorizationPolicy');
+
 function denegar(res, codigo, mensaje, status = 403) {
   return res.status(status).json({ codigo, mensaje });
 }
 
 function tieneRol(identity, rol) {
-  return Array.isArray(identity?.roles) && identity.roles.includes(rol);
+  return hasRole(identity, rol);
+}
+
+function exigirPermiso(permiso) {
+  return function autorizar(req, res, next) {
+    if (!permissionsFor(req.user)[permiso]) {
+      return denegar(res, 'PERMISO_INSUFICIENTE', 'No tiene permisos para realizar esta operación');
+    }
+    return next();
+  };
 }
 
 function exigirAlgunRol(...roles) {
@@ -73,6 +84,7 @@ module.exports = {
   autorizarLecturaClinica,
   autorizarPacientesAdministrativos,
   exigirAlgunRol,
+  exigirPermiso,
   exigirTodosLosRoles,
   tieneRol,
 };

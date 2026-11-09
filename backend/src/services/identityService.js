@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const { permissionsFor } = require('../domain/authorizationPolicy');
 
 class IdentityError extends Error {
   constructor(code, message, status) {
@@ -62,7 +63,7 @@ async function obtenerIdentidadPorId(usuarioId, queryable = pool) {
 
   const row = result.rows[0];
   if (!row) return null;
-  return {
+  const identity = {
     id: row.id,
     usuario_id: row.id,
     nombre: row.nombre,
@@ -81,6 +82,8 @@ async function obtenerIdentidadPorId(usuarioId, queryable = pool) {
         }
       : null,
   };
+  identity.permisos = permissionsFor(identity);
+  return identity;
 }
 
 function exigirCuentaActiva(identidad) {

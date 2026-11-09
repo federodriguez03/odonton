@@ -4,7 +4,7 @@ import { initPrestacionesView } from './views/prestacionesView.js';
 import { initPagosView } from './views/pagosView.js';
 import { initReportesView } from './views/reportesView.js';
 import { initConfiguracionView } from './views/configuracionView.js';
-import { loadDashboard } from '../pages/dashboard.js';
+import { initAdminUsersView } from './views/adminUsersView.js';
 import { clearToken, getMe, getToken, login, setToken } from './api.js';
 import { renderAlert } from './components/alerts.js';
 
@@ -27,6 +27,7 @@ const REMEMBER_EMAIL_KEY = 'odonton_email';
 const ACTIVE_SECTION_KEY = 'odonton_active_section';
 const SECTION_MAP = {
   dashboard: 'section-dashboard',
+  usuarios: 'section-usuarios',
   pacientes: 'section-pacientes',
   turnos: 'section-turnos',
   prestaciones: 'section-prestaciones',
@@ -36,6 +37,18 @@ const SECTION_MAP = {
   configuracion: 'section-configuracion',
 };
 let appInitialized = false;
+
+const SECTION_PERMISSION = {
+  dashboard: () => false,
+  usuarios: (p) => p.identidades_admin,
+  pacientes: (p) => p.pacientes_administrativos,
+  turnos: (p) => Boolean(p.agenda),
+  prestaciones: (p) => p.prestaciones_admin,
+  historia: () => false,
+  pagos: (p) => p.finanzas_consulta,
+  reportes: (p) => p.reportes,
+  configuracion: (p) => p.configuracion_admin,
+};
 
 function getStoredSection() {
   try {
@@ -64,7 +77,11 @@ function clearStoredSection() {
 function activateSection(requestedSection, { persist = true } = {}) {
   const tabs = Array.from(document.querySelectorAll('#main-tabs .nav-link'));
   const requestedTab = tabs.find((tab) => tab.dataset.section === requestedSection);
-  const section = requestedTab && SECTION_MAP[requestedSection] ? requestedSection : 'dashboard';
+  const available = tabs.filter((tab) => !tab.closest('li')?.classList.contains('d-none'));
+  const section = requestedTab && !requestedTab.closest('li')?.classList.contains('d-none') && SECTION_MAP[requestedSection]
+    ? requestedSection
+    : (available.find((tab) => tab.dataset.section === 'turnos')?.dataset.section || available[0]?.dataset.section);
+  if (!section) return null;
 
   tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.section === section));
   Object.entries(SECTION_MAP).forEach(([key, id]) => {
@@ -74,6 +91,15 @@ function activateSection(requestedSection, { persist = true } = {}) {
 
   if (persist) storeSection(section);
   return section;
+}
+
+function configureNavigation(user) {
+  const permissions = user?.permisos || {};
+  document.querySelectorAll('#main-tabs .nav-link').forEach((tab) => {
+    const allowed = SECTION_PERMISSION[tab.dataset.section]?.(permissions) === true;
+    tab.closest('li')?.classList.toggle('d-none', !allowed);
+  });
+  return activateSection(getStoredSection(), { persist: false });
 }
 
 function bindTabs() {
@@ -123,23 +149,20 @@ async function initAppOnce(user) {
   setTurnosIdentity(user);
   if (appInitialized) return;
   bindTabs();
-  activateSection(getStoredSection(), { persist: false });
-  await initPacientesView();
-  await initTurnosView(user);
-  await initPrestacionesView();
-  await initPagosView();
-  await initReportesView();
-  await initConfiguracionView();
+  configureNavigation(user);
+  const permissions = user?.permisos || {};
+  if (permissions.pacientes_administrativos) await initPacientesView(user);
+  if (permissions.agenda) await initTurnosView(user);
+  if (permissions.prestaciones_admin) await initPrestacionesView();
+  if (permissions.finanzas_consulta) await initPagosView(user);
+  if (permissions.reportes) await initReportesView();
+  if (permissions.configuracion_admin) await initConfiguracionView();
+  if (permissions.identidades_admin) await initAdminUsersView();
   appInitialized = true;
 }
 
 async function initAuthenticatedApp(user) {
   await initAppOnce(user);
-  try {
-    await loadDashboard();
-  } catch (_) {
-    console.warn('[DASHBOARD] No se pudo completar la carga de indicadores.');
-  }
 }
 
 async function handleLoginSubmit(event) {
@@ -212,12 +235,10 @@ function bindAuthEvents() {
   ui.logoutBtn?.addEventListener('click', () => {
     clearToken();
     clearStoredSection();
-    activateSection('dashboard', { persist: false });
-    showLoginScreen('Sesión cerrada.');
+    window.location.reload();
   });
   window.addEventListener('auth:logout', () => {
     clearStoredSection();
-    activateSection('dashboard', { persist: false });
     showLoginScreen('Sesión expirada. Volvé a iniciar sesión.');
   });
 }

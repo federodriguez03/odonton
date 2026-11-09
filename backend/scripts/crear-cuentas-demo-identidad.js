@@ -39,16 +39,16 @@ async function asegurarUsuarioDemo(client, demo) {
   const hash = await bcrypt.hash(process.env[demo.passwordEnv], 12);
   if (existente.rowCount) {
     return (await client.query(`
-      UPDATE usuarios SET nombre=$2,password_hash=$3,activo=TRUE,puede_cobrar=FALSE,
+      UPDATE usuarios SET nombre=$2,password_hash=$3,activo=TRUE,puede_cobrar=$4,
         debe_cambiar_password=FALSE,updated_at=NOW()
       WHERE id=$1 RETURNING id,nombre,email,activo,es_demo
-    `, [existente.rows[0].id, demo.nombre, hash])).rows[0];
+    `, [existente.rows[0].id, demo.nombre, hash, demo.rol === 'recepcion'])).rows[0];
   }
   return (await client.query(`
     INSERT INTO usuarios(nombre,email,password_hash,activo,puede_cobrar,debe_cambiar_password,es_demo,updated_at)
-    VALUES($1,$2,$3,TRUE,FALSE,FALSE,TRUE,NOW())
+    VALUES($1,$2,$3,TRUE,$4,FALSE,TRUE,NOW())
     RETURNING id,nombre,email,activo,es_demo
-  `, [demo.nombre, demo.email, hash])).rows[0];
+  `, [demo.nombre, demo.email, hash, demo.rol === 'recepcion'])).rows[0];
 }
 
 async function asignarRolExclusivoDemo(client, usuarioId, codigo) {

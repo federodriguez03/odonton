@@ -155,7 +155,7 @@ async function main() {
   assert.equal(odontologo.es_ficticio, true);
   assert.deepEqual(recepcion.roles, ['recepcion']);
   assert.equal(recepcion.profesional_id, null);
-  assert.equal(recepcion.puede_cobrar, false);
+  assert.equal(recepcion.puede_cobrar, true);
 
   await esperarFalloUltimoAdmin(`DELETE FROM usuarios_roles WHERE usuario_id=1 AND rol_id=(SELECT id FROM roles WHERE codigo='administrador')`);
   await esperarFalloUltimoAdmin('UPDATE usuarios SET activo=FALSE,updated_at=NOW() WHERE id=1');

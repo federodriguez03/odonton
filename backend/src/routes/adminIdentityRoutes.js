@@ -1,0 +1,10 @@
+const express = require('express');
+const controller = require('../controllers/adminIdentityController');
+const { authenticateIdentity } = require('../middleware/identityMiddleware');
+const { exigirPermiso } = require('../middleware/authorizationMiddleware');
+const router = express.Router();
+router.use(authenticateIdentity, exigirPermiso('identidades_admin'));
+router.get('/', controller.list);
+router.post('/', controller.create);
+router.put('/:id', controller.update);
+module.exports = router;

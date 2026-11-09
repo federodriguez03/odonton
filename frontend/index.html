@@ -69,6 +69,11 @@
             </button>
           </li>
           <li class="nav-item" role="presentation">
+            <button class="nav-link" id="usuarios-tab" data-section="usuarios" type="button">
+              <i class="bi bi-person-gear"></i> Usuarios y roles
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
             <button class="nav-link" id="pacientes-tab" data-section="pacientes" type="button">
               <i class="bi bi-people-fill"></i> Pacientes
             </button>
@@ -205,6 +210,36 @@
                 <canvas id="chart-ingresos" height="120"></canvas>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="section-usuarios" class="d-none">
+        <div class="card border-0 shadow-sm">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div><h2 class="h5 mb-0">Usuarios, roles y profesionales</h2><small class="text-secondary">Los perfiles profesionales mantienen un identificador independiente del usuario.</small></div>
+              <button id="admin-user-new" class="btn btn-primary" type="button">Nuevo usuario</button>
+            </div>
+            <form id="admin-user-form" class="border rounded p-3 mb-4 d-none">
+              <input id="admin-user-id" type="hidden">
+              <div class="row g-3">
+                <div class="col-md-4"><label class="form-label">Nombre *</label><input id="admin-user-name" class="form-control" required></div>
+                <div class="col-md-4"><label class="form-label">Correo *</label><input id="admin-user-email" type="email" class="form-control" required></div>
+                <div class="col-md-4"><label class="form-label">Contraseña <span class="text-secondary">(obligatoria al crear)</span></label><input id="admin-user-password" type="password" minlength="12" class="form-control" autocomplete="new-password"></div>
+                <div class="col-12 d-flex flex-wrap gap-3">
+                  <label class="form-check"><input class="form-check-input" type="checkbox" name="admin-role" value="administrador"> Administrador</label>
+                  <label class="form-check"><input class="form-check-input" type="checkbox" name="admin-role" value="recepcion"> Recepción</label>
+                  <label class="form-check"><input class="form-check-input" type="checkbox" name="admin-role" value="odontologo"> Odontólogo</label>
+                  <label class="form-check"><input id="admin-user-can-charge" class="form-check-input" type="checkbox"> Puede cobrar</label>
+                  <label class="form-check"><input id="admin-user-active" class="form-check-input" type="checkbox" checked> Cuenta activa</label>
+                </div>
+                <div class="col-md-8"><label class="form-label">Nombre profesional</label><input id="admin-professional-name" class="form-control"></div>
+                <div class="col-md-4"><label class="form-check mt-4"><input id="admin-professional-active" class="form-check-input" type="checkbox" checked> Perfil profesional habilitado</label></div>
+                <div class="col-12 d-flex gap-2"><button class="btn btn-primary" type="submit">Guardar</button><button id="admin-user-cancel" class="btn btn-outline-secondary" type="button">Cancelar</button></div>
+              </div>
+            </form>
+            <div class="table-responsive"><table class="table align-middle"><thead><tr><th>ID</th><th>Usuario</th><th>Roles</th><th>Profesional</th><th>Estado</th><th></th></tr></thead><tbody id="admin-users-tbody"></tbody></table></div>
           </div>
         </div>
       </section>
@@ -433,7 +468,7 @@
           <div class="card-body">
             <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
               <div>
-                <h2 class="h5 mb-1">Resumen clínico y financiero</h2>
+                <h2 class="h5 mb-1">Resumen operativo y de cobros</h2>
                 <small id="reportes-rango" class="text-secondary"></small>
                 <div id="reportes-criterio" class="small text-secondary"></div>
               </div>
@@ -486,7 +521,7 @@
 
             <hr class="my-4" />
 
-            <h3 class="h6">Reporte clínico</h3>
+            <h3 class="h6">Actividad operativa</h3>
             <p class="small text-secondary">Actividad de turnos y prestaciones, separada de los importes cobrados.</p>
             <div id="reportes-clinico-resumen" class="report-cards mb-4"></div>
 
@@ -504,7 +539,7 @@
             </div>
 
             <div id="reportes-turnos-wrap" class="d-none">
-              <h3 class="h6">Detalle clínico de turnos</h3>
+              <h3 class="h6">Detalle operativo de turnos</h3>
               <div class="table-responsive">
                 <table class="table align-middle">
                   <thead>

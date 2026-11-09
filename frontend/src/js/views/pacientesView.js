@@ -10,6 +10,7 @@ import {
   getOdontogramaPaciente,
   getOdontogramaReferencias,
   getPacientes,
+  getPrestaciones,
   postOdontograma,
   setOdontogramaReferenciaActiva,
   updateOdontogramaReferencia,
@@ -53,6 +54,8 @@ const FACE_POLYGONS = {
 };
 
 const state = {
+  identity: null,
+  prestaciones: [],
   page: 1,
   limit: 10,
   q: '',
@@ -195,6 +198,10 @@ function renderRows(pacientes) {
 
   ui.tbody.innerHTML = pacientes
     .map((paciente) => {
+      const pacienteData = serializePacienteForDataset(paciente);
+      const clinicalButton = state.identity?.permisos?.clinica_lectura
+        ? `<button class="btn btn-sm btn-outline-primary" type="button" data-action="ficha" data-id="${paciente.id}"><i class="bi bi-journal-medical me-1"></i>Ficha</button>`
+        : '';
       return `
       <tr>
         <td>${escapeHtml(paciente.nombre)}</td>
@@ -206,9 +213,8 @@ function renderRows(pacientes) {
         </td>
         <td class="text-end">
           <div class="btn-group">
-            <button class="btn btn-sm btn-outline-primary" type="button" data-action="ficha" data-id="${paciente.id}" aria-label="Ver ficha clínica">
-              <i class="bi bi-journal-medical me-1"></i>Ficha
-            </button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-action="edit" data-id="${paciente.id}" data-paciente="${pacienteData}"><i class="bi bi-pencil me-1"></i>Editar</button>
+            ${clinicalButton}
           </div>
         </td>
       </tr>
@@ -306,7 +312,9 @@ function openEditModal(paciente) {
 function renderFichaOrganizada(data) {
   const paciente = data.paciente || {};
   const consultas = data.historiasClinicas || [];
-  const profesionales = data.profesionales || [];
+  const profesionales = (data.profesionales || []).filter(
+    (profesional) => Number(profesional.id) === Number(state.identity?.profesional_perfil_id),
+  );
   const turnosParaConsulta = data.turnosParaConsulta || [];
   const turnos = data.historialTurnos?.turnos || [];
   const totalTurnos = data.historialTurnos?.total || 0;
@@ -398,6 +406,17 @@ function renderFichaOrganizada(data) {
       <section class="d-none" data-ficha-pane="turnos"><div class="card border-0 shadow-sm"><div class="card-body"><div class="d-flex flex-wrap align-items-center gap-2 mb-3"><div class="me-auto"><h3 class="h5 mb-0">Historial de turnos</h3><small class="text-secondary">Citas administrativas; no equivalen a atenciones clínicas</small></div><select id="ficha-estado-filter" class="form-select form-select-sm" style="max-width:190px"><option value="">Todos los estados</option><option value="programado">Programado</option><option value="realizado">Realizado</option><option value="cancelado">Cancelado</option><option value="reprogramado">Reprogramado</option></select><select id="ficha-sort" class="form-select form-select-sm" style="max-width:150px"><option value="fecha:desc">Más recientes</option><option value="fecha:asc">Más antiguos</option></select></div><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Fecha y hora</th><th>Prestación</th><th>Estado</th><th>Observaciones</th></tr></thead><tbody>${turnosHtml}</tbody></table></div><div class="d-flex justify-content-between align-items-center"><button class="btn btn-sm btn-outline-secondary" id="ficha-prev" ${page <= 1 ? 'disabled' : ''}>Anterior</button><small class="text-secondary">Página ${page} de ${totalPages} · ${totalTurnos} turnos</small><button class="btn btn-sm btn-outline-secondary" id="ficha-next" ${page >= totalPages ? 'disabled' : ''}>Siguiente</button></div></div></div></section>
     </div>`;
 
+  const treatmentsTextarea = ui.fichaModalContent.querySelector('textarea[name="tratamientos_realizados"]');
+  if (treatmentsTextarea) {
+    const select = document.createElement('select');
+    select.name = 'prestaciones_seleccionadas';
+    select.className = 'form-select';
+    select.multiple = true;
+    select.size = 4;
+    select.innerHTML = state.prestaciones.map((prestacion) => `<option value="${escapeHtml(prestacion.nombre)}">${escapeHtml(prestacion.nombre)}</option>`).join('');
+    treatmentsTextarea.replaceWith(select);
+  }
+
   const activarTab = (tab) => {
     state.ficha.tab = tab;
     ui.fichaModalContent.querySelectorAll('[data-ficha-tab]').forEach((button) => button.classList.toggle('active', button.dataset.fichaTab === tab));
@@ -415,7 +434,8 @@ function renderFichaOrganizada(data) {
     form.elements.profesional_id.value = consulta?.profesional_id || profesionales[0]?.id || '';
     form.elements.motivo_consulta.value = consulta?.motivo_consulta || consulta?.descripcion || '';
     form.elements.diagnostico.value = consulta?.diagnostico || '';
-    form.elements.tratamientos_realizados.value = consulta?.tratamientos_realizados || '';
+    const selectedTreatments = String(consulta?.tratamientos_realizados || '').split(',').map((item) => item.trim());
+    Array.from(form.elements.prestaciones_seleccionadas?.options || []).forEach((option) => { option.selected = selectedTreatments.includes(option.value); });
     form.elements.plan_indicaciones.value = consulta?.plan_indicaciones || '';
     form.elements.observaciones.value = consulta?.observaciones || '';
     Array.from(form.elements.turno_id.options).forEach((option) => {
@@ -450,6 +470,8 @@ function renderFichaOrganizada(data) {
   document.getElementById('consulta-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget); const payload = Object.fromEntries(form.entries());
+    payload.tratamientos_realizados = form.getAll('prestaciones_seleccionadas').join(', ');
+    delete payload.prestaciones_seleccionadas;
     const consultaId = payload.consulta_id; delete payload.consulta_id; delete payload.guardar_odontograma;
     if (!consultaId && document.getElementById('consulta-odontograma')?.checked) payload.odontograma = { registros: [], meta: {} };
     try {
@@ -1515,7 +1537,12 @@ function bindTableActions() {
 });
 }
 
-export async function initPacientesView() {
+export async function initPacientesView(identity = null) {
+  state.identity = identity;
+  if (identity?.permisos?.clinica_lectura) {
+    const data = await getPrestaciones();
+    state.prestaciones = data.prestaciones || [];
+  }
   bindOpenCreateModal();
   bindSearch();
   bindCreateForm();

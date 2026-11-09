@@ -83,7 +83,6 @@ async function obtenerDetalleTurnos({ desde, hasta }) {
         t.fecha_hora_inicio,
         t.fecha_hora_fin,
         t.estado,
-        t.observaciones,
         t.origen,
         p.id AS paciente_id,
         p.nombre AS paciente_nombre,

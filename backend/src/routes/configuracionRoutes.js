@@ -7,14 +7,14 @@ const {
 } = require('../controllers/configuracionController');
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { exigirPermiso } = require('../middleware/authorizationMiddleware');
 
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('configuracion_admin'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_configuracion_consultorio';
@@ -26,7 +26,7 @@ router.get(
 router.put(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('configuracion_admin'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'editar_configuracion_consultorio';

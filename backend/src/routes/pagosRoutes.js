@@ -8,16 +8,16 @@ const {
 } = require('../controllers/pagosController');
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { exigirPermiso } = require('../middleware/authorizationMiddleware');
 
 const router = express.Router();
 
 router.get(
   '/:id/constancia',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('finanzas_consulta'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_constancia_pago';
@@ -29,7 +29,7 @@ router.get(
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('finanzas_consulta'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'listar_pagos';
@@ -41,7 +41,7 @@ router.get(
 router.post(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('pagos_registrar'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'crear_pago';
@@ -53,7 +53,7 @@ router.post(
 router.post(
   '/:id/anular',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('pagos_anular'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'anular_pago';

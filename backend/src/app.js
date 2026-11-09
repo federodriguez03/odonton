@@ -30,6 +30,7 @@ const cargosRoutes = require('./routes/cargosRoutes');
 const pagosRoutes = require('./routes/pagosRoutes');
 const configuracionRoutes = require('./routes/configuracionRoutes');
 const whatsappRoutes = require('./routes/whatsapp.routes');
+const adminIdentityRoutes = require('./routes/adminIdentityRoutes');
 const { initializeWhatsAppClient } = require('./services/whatsappClient.service');
 
 // =========================
@@ -51,6 +52,7 @@ app.use('/api/cargos', cargosRoutes);
 app.use('/api/pagos', pagosRoutes);
 app.use('/api/configuracion', configuracionRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
+app.use('/api/admin/identidades', adminIdentityRoutes);
 
 // =========================
 // HEALTH CHECK

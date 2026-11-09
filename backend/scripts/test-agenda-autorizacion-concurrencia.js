@@ -71,7 +71,7 @@ async function main() {
     const inactivo = generarToken({ userId: ids.usuarios[1] });
 
     assert.equal((await request(base, '/api/turnos', { token: admin })).status, 403);
-    assert.equal((await request(base, '/api/prestaciones', { token: admin })).status, 403);
+    assert.equal((await request(base, '/api/prestaciones', { token: admin })).status, 200);
     const profesionales = await request(base, '/api/turnos/profesionales', { token: recepcion });
     assert.equal(profesionales.status, 200);
     assert.ok(profesionales.data.profesionales.some((p) => p.id === 2));

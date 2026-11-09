@@ -7,16 +7,16 @@ const {
 } = require('../controllers/cargosController');
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { exigirPermiso } = require('../middleware/authorizationMiddleware');
 
 const router = express.Router();
 
 router.post(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('cargos_crear'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'crear_cargo';
@@ -28,7 +28,7 @@ router.post(
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('finanzas_consulta'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'listar_cargos';
@@ -40,7 +40,7 @@ router.get(
 router.get(
   '/:id',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('finanzas_consulta'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_cargo';

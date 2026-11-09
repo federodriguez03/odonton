@@ -4,14 +4,14 @@ const router = express.Router();
 const { obtenerEstadisticas } = require('../controllers/estadisticasController');
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { exigirPermiso } = require('../middleware/authorizationMiddleware');
 
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('reportes'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_estadisticas';

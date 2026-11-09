@@ -11,15 +11,14 @@ const {
 } = require('../controllers/prestacionesController');
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
-const { autorizarAgenda } = require('../middleware/authorizationMiddleware');
+const { exigirPermiso } = require('../middleware/authorizationMiddleware');
 
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarAgenda,
+  exigirPermiso('prestaciones_consulta'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_listado_prestaciones';
@@ -31,7 +30,7 @@ router.get(
 router.post(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('prestaciones_admin'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'crear_prestacion';
@@ -43,7 +42,7 @@ router.post(
 router.put(
   '/normalizar-datos',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('prestaciones_admin'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'normalizar_prestaciones';
@@ -55,7 +54,7 @@ router.put(
 router.put(
   '/:id',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('prestaciones_admin'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'editar_prestacion';
@@ -67,7 +66,7 @@ router.put(
 router.put(
   '/:id/activar',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('prestaciones_admin'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'activar_prestacion';
@@ -79,7 +78,7 @@ router.put(
 router.put(
   '/:id/desactivar',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  exigirPermiso('prestaciones_admin'),
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'desactivar_prestacion';

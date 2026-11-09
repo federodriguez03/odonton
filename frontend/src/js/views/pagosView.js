@@ -22,6 +22,7 @@ const FRIENDLY_ERRORS = Object.freeze({
 });
 
 const state = {
+  permissions: {},
   cargos: [],
   pacientes: [],
   prestaciones: [],
@@ -195,7 +196,7 @@ function renderCargos() {
   }
 
   ui.cargosTbody.innerHTML = state.cargos.map((cargo) => {
-    const canPay = !isZeroAmount(cargo.saldo);
+    const canPay = state.permissions.pagos_registrar && !isZeroAmount(cargo.saldo);
     return `
       <tr>
         <td class="text-nowrap">${formatDate(cargo.fecha_cargo)}</td>
@@ -378,13 +379,13 @@ function renderDetail() {
           <td>${escapeHtml(observations || 'Sin observaciones')}</td>
           <td class="text-end text-nowrap">
             <button type="button" class="btn btn-sm btn-outline-primary" data-action="receipt" data-id="${escapeHtml(payment.id)}">Constancia</button>
-            ${annulled ? '' : `<button type="button" class="btn btn-sm btn-outline-danger ms-1" data-action="annul" data-id="${escapeHtml(payment.id)}">Anular</button>`}
+            ${annulled || !state.permissions.pagos_anular ? '' : `<button type="button" class="btn btn-sm btn-outline-danger ms-1" data-action="annul" data-id="${escapeHtml(payment.id)}">Anular</button>`}
           </td>
         </tr>
       `;
     }).join('');
   }
-  ui.detallePagar.classList.toggle('d-none', isZeroAmount(cargo.saldo));
+  ui.detallePagar.classList.toggle('d-none', isZeroAmount(cargo.saldo) || !state.permissions.pagos_registrar);
 }
 
 function renderReceipt() {
@@ -685,7 +686,8 @@ function bindReceiptPrint() {
   });
 }
 
-export async function initPagosView() {
+export async function initPagosView(identity = null) {
+  state.permissions = identity?.permisos || {};
   bindFiltersAndPagination();
   bindCargoCreation();
   bindCargoActions();
