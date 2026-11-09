@@ -36,6 +36,7 @@ function createMockPool() {
     if (text.includes('SELECT id FROM usuarios WHERE id = $1')) {
       return result([{ id: Number(params[0]) }]);
     }
+    if (text.includes('SELECT p.id FROM profesionales p')) return result([{ id: Number(params[0]) }]);
     if (text.includes('FROM profesionales_horarios_atencion')) {
       return result([{
         dia_semana: 1,
@@ -123,7 +124,7 @@ function createMockPool() {
     if (text.startsWith('UPDATE turnos') && text.includes("estado = 'confirmado'")) {
       const turno = findTurno(transaction, params[0]);
       if (!turno || turno.estado !== 'solicitado') return result();
-      turno.profesional_id = params[1];
+      turno.profesional_perfil_id = params[1];
       turno.prestacion_id = params[2];
       turno.fecha_hora_inicio = params[3];
       turno.fecha_hora_fin = params[4];
@@ -187,6 +188,7 @@ function turno(id, estado, extra = {}) {
     paciente_id: 9000 + id,
     prestacion_id: 10,
     profesional_id: 20,
+    profesional_perfil_id: 20,
     fecha_hora_inicio: null,
     fecha_hora_fin: null,
     ...extra,
@@ -213,6 +215,7 @@ async function confirmarCaso(tipoSolicitud) {
     prestacionId: 10,
     fechaHoraInicio: new Date('2099-08-17T10:00:00-03:00'),
     duracionMinutos: 30,
+    acceso: { alcance: 'general', usuario_id: 2 },
   });
 
   const state = mockPool.snapshot();
@@ -226,7 +229,7 @@ async function cancelarCaso(tipoSolicitud, estadoTurno) {
     solicitudes: [solicitud(1, 1, tipoSolicitud)],
   });
 
-  await turnosService.cancelarTurno(1);
+  await turnosService.cancelarTurno(1, { acceso: { alcance: 'general', usuario_id: 2 } });
 
   const state = mockPool.snapshot();
   assert.equal(state.turnos[0].estado, 'cancelado');
@@ -239,7 +242,7 @@ async function rechazarCaso(tipoSolicitud, estadoInicial, estadoEsperado) {
     solicitudes: [solicitud(1, 1, tipoSolicitud)],
   });
 
-  await turnosService.rechazarSolicitudTurno(1, { observaciones: 'Prueba controlada' });
+  await turnosService.rechazarSolicitudTurno(1, { observaciones: 'Prueba controlada', acceso: { alcance: 'general', usuario_id: 2 } });
 
   const state = mockPool.snapshot();
   assert.equal(state.turnos[0].estado, estadoEsperado);
@@ -273,7 +276,7 @@ async function run() {
     failOnRequestClose: true,
   });
   await assert.rejects(
-    () => turnosService.cancelarTurno(1),
+    () => turnosService.cancelarTurno(1, { acceso: { alcance: 'general', usuario_id: 2 } }),
     /Fallo simulado al cerrar solicitud/,
   );
   state = mockPool.snapshot();

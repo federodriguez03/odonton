@@ -210,7 +210,7 @@ async function getAppointment(appointmentId) {
         t.id,
         t.paciente_id,
         t.prestacion_id,
-        t.profesional_id,
+        COALESCE(t.profesional_perfil_id,t.profesional_id) AS profesional_id,
         t.fecha_hora_inicio,
         t.fecha_hora_fin,
         t.estado,
@@ -220,11 +220,12 @@ async function getAppointment(appointmentId) {
         p.dni AS paciente_dni,
         p.telefono AS paciente_telefono,
         pr.nombre AS prestacion_nombre,
-        u.nombre AS profesional_nombre
+        COALESCE(pp.nombre_mostrado,u.nombre) AS profesional_nombre
       FROM turnos t
       JOIN pacientes p ON p.id = t.paciente_id
       LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
       LEFT JOIN usuarios u ON u.id = t.profesional_id
+      LEFT JOIN profesionales pp ON pp.id=t.profesional_perfil_id
       WHERE t.id = $1
       LIMIT 1
     `,
@@ -372,18 +373,19 @@ async function findPendingReminderByPhone(phone) {
         t.fecha_hora_inicio,
         t.paciente_id,
         t.prestacion_id,
-        t.profesional_id,
+        COALESCE(t.profesional_perfil_id,t.profesional_id) AS profesional_id,
         p.nombre AS paciente_nombre,
         p.apellido AS paciente_apellido,
         p.dni AS paciente_dni,
         p.telefono AS paciente_telefono,
         pr.nombre AS prestacion_nombre,
-        u.nombre AS profesional_nombre
+        COALESCE(pp.nombre_mostrado,u.nombre) AS profesional_nombre
       FROM whatsapp_reminders wr
       JOIN turnos t ON t.id = wr.appointment_id
       JOIN pacientes p ON p.id = t.paciente_id
       LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
       LEFT JOIN usuarios u ON u.id = t.profesional_id
+      LEFT JOIN profesionales pp ON pp.id=t.profesional_perfil_id
       WHERE (
           regexp_replace(wr.phone, '[^0-9]', '', 'g') = $1
           OR ($2::text IS NOT NULL AND wr.phone = $2)

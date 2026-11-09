@@ -13,7 +13,9 @@
     "demo:identity": "node scripts/crear-cuentas-demo-identidad.js",
     "test:identity": "node scripts/test-identidad-correspondencias-db.js",
     "test:auth-identity": "node scripts/test-auth-identidad-http.js",
-    "test:clinical-authorization": "node scripts/test-autorizacion-clinica-http.js"
+    "test:clinical-authorization": "node scripts/test-autorizacion-clinica-http.js",
+    "preflight:agenda": "node scripts/preflight-agenda-perfiles.js",
+    "test:agenda-authorization": "node scripts/test-agenda-autorizacion-concurrencia.js"
   },
   "keywords": [],
   "author": "",

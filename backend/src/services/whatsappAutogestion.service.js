@@ -6,6 +6,7 @@ const {
   crearSolicitudTurno,
   reprogramarTurno,
   obtenerTurnoDetalle,
+  ACCESO_AGENDA_SISTEMA,
 } = require('./turnosService');
 const { registrarAuditoria } = require('./auditoriaService');
 const { obtenerConfiguracion, AUTOGESTION_KEYWORDS_DEFAULT } = require('./configuracionService');
@@ -26,6 +27,22 @@ const {
 } = require('./turnoSolicitudesService');
 
 let schemaReady = false;
+
+async function resolverPerfilAgendaWhatsapp(value) {
+  const id = Number(value);
+  if (!id) throw new Error('No hay un profesional seleccionado para la agenda');
+  const { rows } = await pool.query(
+    `SELECT DISTINCT p.id FROM profesionales p
+     JOIN usuarios u ON u.id=p.usuario_id
+     JOIN usuarios_roles ur ON ur.usuario_id=u.id
+     JOIN roles r ON r.id=ur.rol_id AND r.codigo='odontologo'
+     WHERE p.activo=TRUE AND u.activo=TRUE
+       AND (p.id=$1 OR p.usuario_id=$1 OR p.usuario_legacy_id=$1)`,
+    [id],
+  );
+  if (rows.length !== 1) throw new Error('El profesional seleccionado no está habilitado');
+  return rows[0].id;
+}
 
 const ACTIVE_STATUS = 'active';
 const COMPLETED_STATUS = 'completed';
@@ -663,11 +680,12 @@ async function handleRequestTimeBlock(session, phone, body) {
 async function buildAvailableDays({ prestacionId, profesionalId = null, maxDays = 10 }) {
   const days = [];
   const today = new Date();
+  const profesionalPerfilId = await resolverPerfilAgendaWhatsapp(profesionalId);
 
   for (let offset = 0; offset < 45 && days.length < maxDays; offset += 1) {
     const date = addDays(today, offset);
     const fecha = formatDateYmd(date);
-    const slots = await consultarDisponibilidad({ profesionalId, fecha, prestacionId });
+    const slots = await consultarDisponibilidad({ profesionalId: profesionalPerfilId, fecha, prestacionId, acceso: ACCESO_AGENDA_SISTEMA });
     const disponibles = slots.filter((slot) => slot.disponible);
     if (disponibles.length) {
       days.push({
@@ -770,7 +788,8 @@ async function sendSlotsForBlock(session, phone, slots, block, { step = 'SELECT_
 async function sendAvailableTimes(session, phone, selectedDay, { step = 'SELECT_TIME' } = {}) {
   const prestacionId = session.prestacion_id || session.data?.prestacion_id;
   const profesionalId = session.profesional_id || session.data?.profesional_id || null;
-  const slots = await consultarDisponibilidad({ profesionalId, fecha: selectedDay.fecha, prestacionId });
+  const profesionalPerfilId = await resolverPerfilAgendaWhatsapp(profesionalId);
+  const slots = await consultarDisponibilidad({ profesionalId: profesionalPerfilId, fecha: selectedDay.fecha, prestacionId, acceso: ACCESO_AGENDA_SISTEMA });
   const disponibles = slots.filter((slot) => slot.disponible);
 
   if (!disponibles.length) {
@@ -1485,7 +1504,8 @@ async function isSelectedSlotStillAvailable(session) {
   const profesionalId = session.profesional_id || data.profesional_id || null;
   if (!selectedDay?.fecha || !selectedSlot?.inicio || !prestacionId) return false;
 
-  const slots = await consultarDisponibilidad({ profesionalId, fecha: selectedDay.fecha, prestacionId });
+  const profesionalPerfilId = await resolverPerfilAgendaWhatsapp(profesionalId);
+  const slots = await consultarDisponibilidad({ profesionalId: profesionalPerfilId, fecha: selectedDay.fecha, prestacionId, acceso: ACCESO_AGENDA_SISTEMA });
   return slots.some((slot) => slot.disponible && slot.inicio === selectedSlot.inicio);
 }
 
@@ -1628,13 +1648,15 @@ async function handleConfirmAppointment(session, phone, body) {
 
   const data = session.data || {};
   const fechaHoraInicio = new Date(data.selectedSlot.fecha_hora_inicio);
+  const profesionalPerfilId = await resolverPerfilAgendaWhatsapp(session.profesional_id || data.profesional_id || null);
   const turno = await crearTurno({
     pacienteId: session.paciente_id,
     prestacionId: session.prestacion_id,
-    profesionalId: session.profesional_id || data.profesional_id || null,
+    profesionalId: profesionalPerfilId,
     fechaHoraInicio,
     origen: 'autogestion_whatsapp',
     observaciones: 'Turno solicitado por WhatsApp',
+    acceso: ACCESO_AGENDA_SISTEMA,
   });
 
   const { rows } = await pool.query(
@@ -1682,7 +1704,7 @@ async function handleConfirmReschedule(session, phone, body) {
   const data = session.data || {};
   const fechaInicio = new Date(data.selectedSlot.fecha_hora_inicio);
   const fechaFin = new Date(data.selectedSlot.fecha_hora_fin);
-  const turno = await reprogramarTurno(session.turno_id, fechaInicio, fechaFin);
+  const turno = await reprogramarTurno(session.turno_id, fechaInicio, fechaFin, { acceso: ACCESO_AGENDA_SISTEMA });
   const { rows } = await pool.query(
     `UPDATE turnos SET estado = 'confirmado', updated_at = NOW() WHERE id = $1 RETURNING *`,
     [turno.id],

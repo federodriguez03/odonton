@@ -454,7 +454,7 @@ async function pacienteTieneTurnoOSolicitudActiva({ pacienteId = null, dni = nul
   return { activa: false };
 }
 
-async function listarSolicitudesTurno({ estado = 'pendiente', tipoSolicitud = null, limit = 100 } = {}) {
+async function listarSolicitudesTurno({ estado = 'pendiente', tipoSolicitud = null, limit = 100, profesionalPerfilId = null } = {}) {
   await asegurarTablaTurnoSolicitudes();
 
   const params = [];
@@ -469,17 +469,22 @@ async function listarSolicitudesTurno({ estado = 'pendiente', tipoSolicitud = nu
     params.push(tipoSolicitud);
     conditions.push(`ts.tipo_solicitud = $${params.length}`);
   }
+  if (profesionalPerfilId) {
+    params.push(profesionalPerfilId);
+    conditions.push(`t.profesional_perfil_id = $${params.length}`);
+  }
 
   params.push(Math.min(Number(limit) || 100, 200));
 
   const { rows } = await pool.query(
     `
       SELECT
-        ts.*,
+        ts.id,ts.tipo_solicitud,ts.estado,ts.paciente_id,ts.turno_id,
+        ts.preferencia_horaria,ts.created_at,ts.updated_at,
         p.nombre AS paciente_nombre,
         p.apellido AS paciente_apellido,
         t.fecha_hora_inicio AS turno_fecha_hora_inicio,
-        t.estado AS turno_estado
+        t.estado AS turno_estado,t.profesional_perfil_id
       FROM turno_solicitudes ts
       LEFT JOIN pacientes p ON p.id = ts.paciente_id
       LEFT JOIN turnos t ON t.id = ts.turno_id

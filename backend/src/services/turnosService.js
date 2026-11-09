@@ -648,7 +648,7 @@ async function confirmarSolicitudTurno(
 /**
  * Rechaza la solicitud y restaura el estado aplicable sin dejar registros pendientes.
  */
-async function rechazarSolicitudTurno(turnoId, { observaciones = null } = {}) {
+async function rechazarSolicitudTurno(turnoId, { observaciones = null, acceso } = {}) {
   await asegurarColumnasProfesionalTurnos();
   const client = await pool.connect();
   try {
@@ -660,6 +660,7 @@ async function rechazarSolicitudTurno(turnoId, { observaciones = null } = {}) {
     );
     if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
     const turno = turnoResult.rows[0];
+    validarAccesoTurno(turno, acceso);
     if (!ESTADOS_RECHAZABLES.includes(turno.estado)) {
       throw new Error('Solo pueden rechazarse solicitudes pendientes');
     }
@@ -678,11 +679,12 @@ async function rechazarSolicitudTurno(turnoId, { observaciones = null } = {}) {
             observaciones = COALESCE($2, observaciones),
             solicitud_rechazada_at = NOW(),
             updated_at = NOW()
+            ,actualizado_por_usuario_id = $5
         WHERE id = $1
           AND estado = $4
         RETURNING *
       `,
-      [turnoId, observaciones, nuevoEstado, turno.estado],
+      [turnoId, observaciones, nuevoEstado, turno.estado, acceso.usuario_id || null],
     );
     if (!rows.length) throw new Error('La solicitud de turno ya no se encuentra pendiente');
 
@@ -708,7 +710,7 @@ async function obtenerTelefonoPaciente(pacienteId) {
   return rows[0].telefono || null;
 }
 
-async function obtenerTurnoDetalle(turnoId) {
+async function obtenerTurnoDetalle(turnoId, acceso = ACCESO_AGENDA_SISTEMA) {
   await asegurarColumnasProfesionalTurnos();
 
   const query = `
@@ -717,12 +719,11 @@ async function obtenerTurnoDetalle(turnoId) {
       t.paciente_id,
       t.prestacion_id,
       t.profesional_id,
+      t.profesional_perfil_id,
       t.fecha_hora_inicio,
       t.fecha_hora_fin,
       t.estado,
       t.origen,
-      t.observaciones,
-      t.solicitud_preferencia,
       t.solicitud_confirmada_at,
       t.solicitud_rechazada_at,
       t.recordatorio_habilitado,
@@ -733,12 +734,13 @@ async function obtenerTurnoDetalle(turnoId) {
       p.dni AS paciente_dni,
       p.telefono AS paciente_telefono,
       pr.nombre AS prestacion_nombre,
-      u.nombre AS profesional_nombre,
-      u.email AS profesional_email
+      COALESCE(pp.nombre_mostrado,u.nombre) AS profesional_nombre,
+      pp.activo AS profesional_activo
     FROM turnos t
     LEFT JOIN pacientes p ON p.id = t.paciente_id
     LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
     LEFT JOIN usuarios u ON u.id = t.profesional_id
+    LEFT JOIN profesionales pp ON pp.id=t.profesional_perfil_id
     WHERE t.id = $1
     LIMIT 1
   `;
@@ -747,14 +749,13 @@ async function obtenerTurnoDetalle(turnoId) {
   if (!rows.length) throw new Error('El turno no existe');
 
   const row = rows[0];
+  validarAccesoTurno(row, acceso);
   return {
     id: row.id,
     fecha_hora_inicio: row.fecha_hora_inicio,
     fecha_hora_fin: row.fecha_hora_fin,
     estado: row.estado,
     origen: row.origen,
-    observaciones: row.observaciones,
-    solicitud_preferencia: row.solicitud_preferencia,
     solicitud_confirmada_at: row.solicitud_confirmada_at,
     solicitud_rechazada_at: row.solicitud_rechazada_at,
     recordatorio_habilitado: row.recordatorio_habilitado,
@@ -772,9 +773,9 @@ async function obtenerTurnoDetalle(turnoId) {
       nombre: row.prestacion_nombre,
     },
     profesional: {
-      id: row.profesional_id,
+      id: row.profesional_perfil_id,
       nombre: row.profesional_nombre,
-      email: row.profesional_email,
+      activo: row.profesional_activo,
     },
   };
 }
@@ -788,6 +789,8 @@ async function listarTurnos({
   fechaDesde = null,
   fechaHasta = null,
   sort = 'fecha_hora_inicio:asc',
+  profesionalPerfilId = null,
+  acceso,
 }) {
   await asegurarColumnasRecordatorioTurnos();
   await asegurarColumnasProfesionalTurnos();
@@ -802,6 +805,18 @@ async function listarTurnos({
   const where = [];
   const values = [];
   let idx = 1;
+  const perfilFiltro = acceso?.alcance === 'propia' ? acceso.profesional_perfil_id : profesionalPerfilId;
+  if (!acceso || !['propia', 'general', 'sistema'].includes(acceso.alcance)) {
+    throw errorAgenda('CONTEXTO_AGENDA_REQUERIDO', 'Falta el contexto de autorización de agenda');
+  }
+  if (perfilFiltro) {
+    if (acceso.alcance === 'propia' && profesionalPerfilId && Number(profesionalPerfilId) !== Number(perfilFiltro)) {
+      throw errorAgenda('TURNO_AJENO', 'No puede filtrar la agenda de otro profesional');
+    }
+    where.push(`t.profesional_perfil_id=$${idx}`);
+    values.push(perfilFiltro);
+    idx++;
+  }
   const normalizarBusqueda = (texto) =>
     String(texto || '')
       .trim()
@@ -919,19 +934,16 @@ async function listarTurnos({
       t.paciente_id,
       t.prestacion_id,
       t.profesional_id,
+      t.profesional_perfil_id,
       t.fecha_hora_inicio,
       t.fecha_hora_fin,
       t.estado,
       t.origen,
-      t.observaciones,
-      t.solicitud_preferencia,
       t.solicitud_confirmada_at,
       t.solicitud_rechazada_at,
       t.recordatorio_habilitado,
       t.recordatorio_enviado_at,
       t.recordatorio_estado,
-      t.recordatorio_error,
-      t.respuesta_paciente,
       t.respuesta_paciente_at,
       t.created_at,
       t.updated_at,
@@ -940,12 +952,13 @@ async function listarTurnos({
       p.dni AS paciente_dni,
       p.telefono AS paciente_telefono,
       pr.nombre AS prestacion_nombre,
-      u.nombre AS profesional_nombre,
-      u.email AS profesional_email
+      COALESCE(pp.nombre_mostrado,u.nombre) AS profesional_nombre,
+      pp.activo AS profesional_activo
     FROM turnos t
     LEFT JOIN pacientes p ON p.id = t.paciente_id
     LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
     LEFT JOIN usuarios u ON u.id = t.profesional_id
+    LEFT JOIN profesionales pp ON pp.id=t.profesional_perfil_id
     ${whereClause}
     ORDER BY ${orderBy}
     LIMIT $${idx} OFFSET $${idx + 1}
@@ -964,15 +977,11 @@ async function listarTurnos({
       fecha_hora_fin: row.fecha_hora_fin,
       estado: row.estado,
       origen: row.origen,
-      observaciones: row.observaciones,
-      solicitud_preferencia: row.solicitud_preferencia,
       solicitud_confirmada_at: row.solicitud_confirmada_at,
       solicitud_rechazada_at: row.solicitud_rechazada_at,
       recordatorio_habilitado: row.recordatorio_habilitado,
       recordatorio_enviado_at: row.recordatorio_enviado_at,
       recordatorio_estado: row.recordatorio_estado,
-      recordatorio_error: row.recordatorio_error,
-      respuesta_paciente: row.respuesta_paciente,
       respuesta_paciente_at: row.respuesta_paciente_at,
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -988,30 +997,42 @@ async function listarTurnos({
         nombre: row.prestacion_nombre,
       },
       profesional: {
-        id: row.profesional_id,
+        id: row.profesional_perfil_id,
         nombre: row.profesional_nombre,
-        email: row.profesional_email,
+        activo: row.profesional_activo,
       },
     })),
   };
 }
 
-async function listarProfesionales() {
+async function listarProfesionales(acceso) {
+  if (!acceso) throw errorAgenda('CONTEXTO_AGENDA_REQUERIDO', 'Falta el contexto de agenda');
   const { rows } = await pool.query(`
-    SELECT id, nombre, email
-    FROM usuarios
-    WHERE COALESCE(activo, true) = true
-    ORDER BY nombre ASC, email ASC
-  `);
+    SELECT DISTINCT p.id,p.nombre_mostrado AS nombre
+    FROM profesionales p
+    JOIN usuarios u ON u.id=p.usuario_id
+    JOIN usuarios_roles ur ON ur.usuario_id=u.id
+    JOIN roles r ON r.id=ur.rol_id AND r.codigo='odontologo'
+    WHERE p.activo=TRUE AND u.activo=TRUE
+      AND ($1::int IS NULL OR p.id=$1)
+    ORDER BY p.nombre_mostrado ASC
+  `, [acceso.alcance === 'propia' ? acceso.profesional_perfil_id : null]);
 
   return rows;
 }
 
-async function consultarDisponibilidad({ profesionalId, fecha, prestacionId, turnoId = null, duracionMinutos = null }) {
+async function consultarDisponibilidad({ profesionalId, fecha, prestacionId, turnoId = null, duracionMinutos = null, acceso }) {
   await asegurarColumnasProfesionalTurnos();
   await asegurarHorariosProfesionales();
 
-  const profesionalFinalId = await normalizarProfesionalId(profesionalId);
+  const profesionalFinalId = await resolverPerfilAgenda(profesionalId, acceso);
+  if (turnoId) {
+    const excluido = await pool.query('SELECT profesional_perfil_id FROM turnos WHERE id=$1', [turnoId]);
+    if (!excluido.rowCount || Number(excluido.rows[0].profesional_perfil_id) !== profesionalFinalId) {
+      throw errorAgenda('TURNO_AJENO', 'El turno excluido no pertenece a la agenda indicada');
+    }
+    validarAccesoTurno(excluido.rows[0], acceso);
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) {
     throw new Error('fecha invalida. Use formato YYYY-MM-DD');
   }
@@ -1043,7 +1064,7 @@ async function consultarDisponibilidad({ profesionalId, fecha, prestacionId, tur
     `
       SELECT fecha_hora_inicio, fecha_hora_fin, estado
       FROM turnos
-      WHERE profesional_id = $1
+      WHERE profesional_perfil_id = $1
         AND estado = ANY($2)
         AND fecha_hora_inicio IS NOT NULL
         AND fecha_hora_fin IS NOT NULL
@@ -1083,6 +1104,7 @@ async function consultarDisponibilidad({ profesionalId, fecha, prestacionId, tur
 }
 
 module.exports = {
+  ACCESO_AGENDA_SISTEMA,
   crearTurno,
   crearSolicitudTurno,
   reprogramarTurno,

@@ -4,7 +4,8 @@
 
 - Rama: `feature/pacientes-ficha-clinica-demo-2026`.
 - Commit completo anterior al trabajo de agenda: `82b68a3` (`feat(auth): proteger pacientes y datos clinicos`).
-- Este documento acompaña un checkpoint WIP: la etapa de agenda no está terminada ni habilitada para despliegue.
+- El checkpoint `cab2683` fue retomado. La implementación posterior está documentada en
+  `AGENDA_PERFILES_CONCURRENCIA_2026-11-09.md`; continúa sin autorización de despliegue.
 
 ## Avance guardado, todavía incompleto
 

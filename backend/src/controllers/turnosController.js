@@ -22,6 +22,14 @@ function parseFechaHora(value) {
   return date;
 }
 
+function responderErrorAgenda(res, error, fallback) {
+  const conflicto = error.code === '23P01';
+  return res.status(error.status || (conflicto ? 409 : 400)).json({
+    ...(error.code ? { codigo: error.code } : {}),
+    mensaje: conflicto ? 'El horario seleccionado ya está ocupado para este profesional' : (error.message || fallback),
+  });
+}
+
 async function registrarTurno(req, res) {
   try {
     const {
@@ -30,7 +38,6 @@ async function registrarTurno(req, res) {
       profesionalId,
       fechaHoraInicio,
       duracionMinutos,
-      observaciones,
       recordatorioHabilitado,
     } = req.body;
 
@@ -54,13 +61,13 @@ async function registrarTurno(req, res) {
       prestacionId,
       fechaHoraInicio: fechaInicio,
       duracionMinutos,
-      profesionalId: profesionalId || req.user?.id || null,
+      profesionalId,
       origen: 'interno',
-      observaciones,
       recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado, { defaultValue: true }),
+      acceso: req.agendaAccess,
     });
 
-    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turno.id);
+    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turno.id, req.agendaAccess);
     req.auditAction = 'registrar_turno';
 
     return res.status(201).json({
@@ -68,7 +75,7 @@ async function registrarTurno(req, res) {
       turno: turnoDetalle,
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al registrar el turno' });
+    return responderErrorAgenda(res, error, 'Error al registrar el turno');
   }
 }
 
@@ -82,7 +89,6 @@ async function editarTurno(req, res) {
       profesionalId,
       fechaHoraInicio,
       duracionMinutos,
-      observaciones,
       recordatorioHabilitado,
     } = req.body;
 
@@ -108,11 +114,11 @@ async function editarTurno(req, res) {
       profesionalId,
       fechaHoraInicio,
       duracionMinutos,
-      observaciones,
       recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado),
+      acceso: req.agendaAccess,
     });
 
-    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoActualizado.id);
+    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoActualizado.id, req.agendaAccess);
 
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
     const whatsappResult = await notificarCambioTurnoPorWhatsapp({
@@ -136,13 +142,13 @@ async function editarTurno(req, res) {
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al editar el turno' });
+    return responderErrorAgenda(res, error, 'Error al editar el turno');
   }
 }
 
 async function listarProfesionales(req, res) {
   try {
-    const profesionales = await turnosService.listarProfesionales();
+    const profesionales = await turnosService.listarProfesionales(req.agendaAccess);
     return res.status(200).json({ profesionales });
   } catch (error) {
     return res.status(400).json({ mensaje: error.message || 'Error al listar profesionales' });
@@ -173,6 +179,7 @@ async function consultarDisponibilidad(req, res) {
       prestacionId: tratamientoId || prestacionId,
       turnoId: turnoId || excluirTurnoId || null,
       duracionMinutos: duracionMinutos || null,
+      acceso: req.agendaAccess,
     });
 
     req.auditAction = 'consultar_disponibilidad_turnos';
@@ -187,7 +194,7 @@ async function consultarDisponibilidad(req, res) {
 
     return res.status(200).json(disponibilidad);
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al consultar disponibilidad' });
+    return responderErrorAgenda(res, error, 'Error al consultar disponibilidad');
   }
 }
 
@@ -212,8 +219,9 @@ async function reprogramarTurno(req, res) {
 
     const turnoReprogramado = await turnosService.reprogramarTurno(id, inicio, fin, {
       recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado),
+      acceso: req.agendaAccess,
     });
-    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoReprogramado.id);
+    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoReprogramado.id, req.agendaAccess);
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
     const whatsappResult = await notificarCambioTurnoPorWhatsapp({
       telefono,
@@ -237,7 +245,7 @@ async function reprogramarTurno(req, res) {
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al reprogramar el turno' });
+    return responderErrorAgenda(res, error, 'Error al reprogramar el turno');
   }
 }
 
@@ -250,8 +258,8 @@ async function cancelarTurno(req, res) {
       return res.status(400).json({ mensaje: 'Id de turno requerido' });
     }
 
-    const turnoCancelado = await turnosService.cancelarTurno(id);
-    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoCancelado.id);
+    const turnoCancelado = await turnosService.cancelarTurno(id, { acceso: req.agendaAccess });
+    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoCancelado.id, req.agendaAccess);
     let whatsappResult = { intentado: false, enviado: false, advertencia: null };
 
     if (enviarMensaje) {
@@ -279,7 +287,7 @@ async function cancelarTurno(req, res) {
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al cancelar el turno' });
+    return responderErrorAgenda(res, error, 'Error al cancelar el turno');
   }
 }
 
@@ -291,7 +299,6 @@ async function confirmarSolicitudTurno(req, res) {
       prestacionId,
       fechaHoraInicio,
       duracionMinutos,
-      observaciones,
       recordatorioHabilitado,
     } = req.body;
 
@@ -310,11 +317,11 @@ async function confirmarSolicitudTurno(req, res) {
       prestacionId,
       fechaHoraInicio: fechaInicio,
       duracionMinutos,
-      observaciones,
       recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado),
+      acceso: req.agendaAccess,
     });
 
-    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoConfirmado.id);
+    const turnoDetalle = await turnosService.obtenerTurnoDetalle(turnoConfirmado.id, req.agendaAccess);
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
     const whatsappResult = await notificarConfirmacionSolicitudTurnoPorWhatsapp({
       telefono,
@@ -337,22 +344,21 @@ async function confirmarSolicitudTurno(req, res) {
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al confirmar la solicitud' });
+    return responderErrorAgenda(res, error, 'Error al confirmar la solicitud');
   }
 }
 
 async function rechazarSolicitudTurno(req, res) {
   try {
     const { id } = req.params;
-    const { observaciones } = req.body || {};
     if (!id) return res.status(400).json({ mensaje: 'Id de turno requerido' });
 
-    const turno = await turnosService.rechazarSolicitudTurno(id, { observaciones });
+    const turno = await turnosService.rechazarSolicitudTurno(id, { acceso: req.agendaAccess });
     let turnoDetalle = turno;
     let whatsappResult = { intentado: false, enviado: false, advertencia: null };
 
     try {
-      turnoDetalle = await turnosService.obtenerTurnoDetalle(turno.id);
+      turnoDetalle = await turnosService.obtenerTurnoDetalle(turno.id, req.agendaAccess);
       whatsappResult = await notificarRechazoSolicitudTurnoPorWhatsapp({
         telefono: turnoDetalle.paciente?.telefono,
         turno: turnoDetalle,
@@ -382,7 +388,7 @@ async function rechazarSolicitudTurno(req, res) {
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al rechazar la solicitud' });
+    return responderErrorAgenda(res, error, 'Error al rechazar la solicitud');
   }
 }
 
@@ -397,6 +403,7 @@ async function listarTurnos(req, res) {
       fecha_desde: fechaDesde,
       fecha_hasta: fechaHasta,
       sort,
+      profesional_id: profesionalPerfilId,
     } = req.query;
 
     const result = await turnosService.listarTurnos({
@@ -408,18 +415,34 @@ async function listarTurnos(req, res) {
       fechaDesde,
       fechaHasta,
       sort,
+      profesionalPerfilId,
+      acceso: req.agendaAccess,
     });
 
     return res.status(200).json(result);
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al listar turnos' });
+    return responderErrorAgenda(res, error, 'Error al listar turnos');
+  }
+}
+
+async function obtenerTurno(req, res) {
+  try {
+    const turno = await turnosService.obtenerTurnoDetalle(req.params.id, req.agendaAccess);
+    return res.status(200).json({ turno });
+  } catch (error) {
+    return responderErrorAgenda(res, error, 'Error al obtener el turno');
   }
 }
 
 async function listarSolicitudesPendientes(req, res) {
   try {
     const { estado = 'pendiente', tipo_solicitud: tipoSolicitud, limit } = req.query;
-    const solicitudes = await listarSolicitudesTurno({ estado, tipoSolicitud, limit });
+    const solicitudes = await listarSolicitudesTurno({
+      estado,
+      tipoSolicitud,
+      limit,
+      profesionalPerfilId: req.agendaAccess.alcance === 'propia' ? req.agendaAccess.profesional_perfil_id : null,
+    });
 
     req.auditAction = 'listar_solicitudes_turno';
     req.auditMeta = { estado, tipo_solicitud: tipoSolicitud || null, total: solicitudes.length };
@@ -432,6 +455,9 @@ async function listarSolicitudesPendientes(req, res) {
 
 async function procesarRecordatorios(req, res) {
   try {
+    if (req.agendaAccess.alcance !== 'general') {
+      return res.status(403).json({ codigo: 'AGENDA_GENERAL_REQUERIDA', mensaje: 'Procesar recordatorios requiere recepción' });
+    }
     const resultado = await procesarRecordatoriosAutomaticos();
 
     req.auditAction = 'procesar_recordatorios_automaticos';
@@ -458,6 +484,7 @@ async function enviarRecordatorioManual(req, res) {
       return res.status(400).json({ mensaje: 'Id de turno requerido' });
     }
 
+    await turnosService.obtenerTurnoDetalle(id, req.agendaAccess);
     const resultado = await enviarRecordatorioManualTurno(id);
 
     req.auditAction = resultado.enviado
@@ -490,6 +517,7 @@ module.exports = {
   confirmarSolicitudTurno,
   rechazarSolicitudTurno,
   listarTurnos,
+  obtenerTurno,
   listarSolicitudesPendientes,
   listarProfesionales,
   consultarDisponibilidad,

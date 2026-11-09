@@ -28,6 +28,7 @@ function createTurnosPool() {
       return result([{ id: params[0], duracion_minutos: 30 }]);
     }
     if (text.startsWith('SELECT id FROM usuarios WHERE id = $1')) return result([{ id: params[0] }]);
+    if (text.includes('SELECT p.id FROM profesionales p')) return result([{ id: params[0] }]);
     if (text.includes('FROM profesionales_horarios_atencion')) {
       return result([{ dia_semana: 1, activo: true, hora_desde: '00:00', hora_hasta: '23:59' }]);
     }
@@ -38,7 +39,8 @@ function createTurnosPool() {
         id: nextId++,
         paciente_id: params[0],
         prestacion_id: params[1],
-        profesional_id: params[2],
+        profesional_id: null,
+        profesional_perfil_id: params[2],
         fecha_hora_inicio: params[3],
         fecha_hora_fin: params[4],
         estado: 'programado',
@@ -59,7 +61,7 @@ function createTurnosPool() {
       const turno = target.turnos.find((item) => Number(item.id) === Number(params[7]));
       turno.paciente_id = params[0];
       turno.prestacion_id = params[1];
-      turno.profesional_id = params[2];
+      turno.profesional_perfil_id = params[2];
       turno.fecha_hora_inicio = params[3];
       turno.fecha_hora_fin = params[4];
       turno.observaciones = params[5];
@@ -72,10 +74,10 @@ function createTurnosPool() {
       return result(turno ? [{ id: turno.id, estado: turno.estado }] : []);
     }
 
-    if (text.startsWith('UPDATE turnos SET profesional_id = $2')) {
+    if (text.startsWith('UPDATE turnos SET profesional_perfil_id = $2')) {
       const turno = target.turnos.find((item) => Number(item.id) === Number(params[0]));
       if (!turno || turno.estado !== 'solicitado') return result();
-      turno.profesional_id = params[1];
+      turno.profesional_perfil_id = params[1];
       turno.prestacion_id = params[2];
       turno.fecha_hora_inicio = params[3];
       turno.fecha_hora_fin = params[4];
@@ -180,6 +182,7 @@ async function testPersistenceAndBooleans() {
     prestacionId: 20,
     profesionalId: 30,
     fechaHoraInicio: future,
+    acceso: { alcance: 'general', usuario_id: 2 },
   };
   const withTrue = await turnosService.crearTurno({ ...base, recordatorioHabilitado: true });
   const withFalse = await turnosService.crearTurno({ ...base, recordatorioHabilitado: false });
@@ -191,6 +194,7 @@ async function testPersistenceAndBooleans() {
   let edited = await turnosService.editarTurno(withTrue.id, {
     ...base,
     recordatorioHabilitado: false,
+    acceso: { alcance: 'general', usuario_id: 2 },
   });
   assert.equal(edited.recordatorio_habilitado, false);
   edited = await turnosService.editarTurno(withTrue.id, base);
@@ -203,6 +207,7 @@ async function testPersistenceAndBooleans() {
     fechaHoraInicio: future,
     duracionMinutos: 30,
     recordatorioHabilitado: false,
+    acceso: { alcance: 'general', usuario_id: 2 },
   });
   assert.equal(confirmed.estado, 'confirmado');
   assert.equal(confirmed.recordatorio_habilitado, false);
