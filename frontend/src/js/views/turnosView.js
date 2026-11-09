@@ -16,6 +16,8 @@ import { renderAlert } from '../components/alerts.js';
 import { checkboxToBoolean } from '../utils/booleans.js';
 
 const state = {
+  identity: null,
+  agendaScope: null,
   page: 1,
   limit: 10,
   total: 0,
@@ -685,12 +687,43 @@ function renderProfesionalesOptions(profesionales) {
     .map((profesional) => {
       const label = profesional.nombre || profesional.email || `Profesional #${profesional.id}`;
       const email = profesional.email && profesional.nombre ? ` (${profesional.email})` : '';
-      return `<option value="${profesional.id}">${label}${email}</option>`;
+      return `<option value="${profesional.id}">${escapeHtml(label)}${escapeHtml(email)}</option>`;
     })
     .join('');
 
   ui.profesionalSelect.innerHTML = `<option value="">Seleccionar profesional</option>${options}`;
   ui.editProfesionalSelect.innerHTML = `<option value="">Seleccionar profesional</option>${options}`;
+  applyAgendaIdentityToSelectors();
+}
+
+function resolveAgendaScope(identity) {
+  const roles = Array.isArray(identity?.roles) ? identity.roles : [];
+  if (roles.includes('recepcion')) return 'general';
+  if (roles.includes('odontologo') && identity?.profesional_perfil_id) return 'propia';
+  return null;
+}
+
+function applyAgendaIdentityToSelectors() {
+  const ownProfileId = state.identity?.profesional_perfil_id;
+  const ownAgenda = state.agendaScope === 'propia';
+
+  [ui.profesionalSelect, ui.editProfesionalSelect].forEach((select) => {
+    if (!select) return;
+    if (ownAgenda && ownProfileId) select.value = String(ownProfileId);
+  });
+}
+
+function ensureHistoricalProfessionalOption(select, professional) {
+  if (!select || !professional?.id) return;
+  const value = String(professional.id);
+  const exists = Array.from(select.options).some((option) => option.value === value);
+  if (exists) return;
+
+  const option = document.createElement('option');
+  option.value = value;
+  option.textContent = `${professional.nombre || `Profesional #${value}`} (histórico, no disponible para nuevas asignaciones)`;
+  option.dataset.historical = 'true';
+  select.appendChild(option);
 }
 
 async function loadProfesionalesForSelect() {
@@ -948,6 +981,7 @@ async function openEditModal(turno) {
   }
   ui.editIdInput.value = turno.id;
   ui.editPacienteSelect.value = String(turno.pacienteId || '');
+  ensureHistoricalProfessionalOption(ui.editProfesionalSelect, turno.profesional);
   ui.editProfesionalSelect.value = String(turno.profesionalId || '');
   ui.editPrestacionSelect.value = String(turno.prestacionId || '');
   ui.editFechaDiaInput.value = formatForDateInput(turno.fechaHoraInicio);
@@ -1145,6 +1179,7 @@ function bindOpenCreateModal() {
   ui.openCreateModalButton.addEventListener('click', async () => {
     await Promise.all([loadPacientesForSelect(), loadPrestacionesForSelect(), loadProfesionalesForSelect()]);
     ui.createForm.reset();
+    applyAgendaIdentityToSelectors();
     ui.recordatorioCheckbox.checked = true;
     resetDisponibilidad();
     turnoModal?.show();
@@ -1157,6 +1192,35 @@ function bindOpenCreateModal() {
     const openCreatePaciente = document.getElementById('open-create-modal');
     if (openCreatePaciente) openCreatePaciente.click();
   });
+}
+
+async function refreshAvailabilityAfterConflict({ edit = false } = {}) {
+  if (edit) {
+    const preserved = state.editSelectedSlot;
+    const preservedStart = ui.editFechaInput.value;
+    await loadEditDisponibilidad();
+    state.editSelectedSlot = preserved;
+    ui.editFechaInput.value = preservedStart;
+    ui.editSelectedSlotLabel.textContent = preserved
+      ? `${preserved.inicio} - ${preserved.fin} (ya no disponible)`
+      : 'Selecciona un horario disponible';
+    renderEditDisponibilidad();
+    ui.editSubmitButton.disabled = true;
+    return;
+  }
+
+  const preserved = state.selectedSlot;
+  const preservedStart = ui.fechaInicioInput.value;
+  const preservedEnd = ui.fechaFinInput.value;
+  await loadDisponibilidad();
+  state.selectedSlot = preserved;
+  ui.fechaInicioInput.value = preservedStart;
+  ui.fechaFinInput.value = preservedEnd;
+  ui.selectedSlotLabel.textContent = preserved
+    ? `${preserved.inicio} - ${preserved.fin} (ya no disponible)`
+    : 'Selecciona un horario disponible';
+  renderDisponibilidad();
+  ui.submitButton.disabled = true;
 }
 
 function bindDisponibilidadForm() {
@@ -1231,7 +1295,11 @@ function bindCreateForm() {
       state.page = 1;
       await refreshTurnosView();
     } catch (error) {
-      renderAlert(ui.alertContainer, error.message, 'danger');
+      const message = error.status === 409
+        ? 'Ese horario acaba de ser reservado. Conservamos tus datos y actualizamos la disponibilidad.'
+        : error.message;
+      renderAlert(ui.alertContainer, message, 'danger');
+      if (error.status === 409) await refreshAvailabilityAfterConflict();
     }
   });
 }
@@ -1279,7 +1347,11 @@ function bindEditForm() {
       turnoEditModal?.hide();
       await refreshTurnosView();
     } catch (error) {
-      renderAlert(ui.alertContainer, error.message, 'danger');
+      const message = error.status === 409
+        ? 'Ese horario acaba de ser reservado. Conservamos tus datos y actualizamos la disponibilidad.'
+        : error.message;
+      renderAlert(ui.alertContainer, message, 'danger');
+      if (error.status === 409) await refreshAvailabilityAfterConflict({ edit: true });
     }
   });
 }
@@ -1399,7 +1471,14 @@ function bindTableActions() {
   });
 }
 
-export async function initTurnosView() {
+export function setTurnosIdentity(identity) {
+  state.identity = identity || null;
+  state.agendaScope = resolveAgendaScope(identity);
+  applyAgendaIdentityToSelectors();
+}
+
+export async function initTurnosView(identity = null) {
+  setTurnosIdentity(identity);
   state.calendarWeekStart = startOfWeek(new Date());
   const today = new Date();
   today.setHours(0, 0, 0, 0);

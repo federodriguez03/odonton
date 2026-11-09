@@ -1,5 +1,5 @@
 import { initPacientesView } from './views/pacientesView.js';
-import { initTurnosView } from './views/turnosView.js';
+import { initTurnosView, setTurnosIdentity } from './views/turnosView.js';
 import { initPrestacionesView } from './views/prestacionesView.js';
 import { initPagosView } from './views/pagosView.js';
 import { initReportesView } from './views/reportesView.js';
@@ -119,12 +119,13 @@ function showApp(user) {
   ui.appShell?.classList.remove('d-none');
 }
 
-async function initAppOnce() {
+async function initAppOnce(user) {
+  setTurnosIdentity(user);
   if (appInitialized) return;
   bindTabs();
   activateSection(getStoredSection(), { persist: false });
   await initPacientesView();
-  await initTurnosView();
+  await initTurnosView(user);
   await initPrestacionesView();
   await initPagosView();
   await initReportesView();
@@ -132,8 +133,8 @@ async function initAppOnce() {
   appInitialized = true;
 }
 
-async function initAuthenticatedApp() {
-  await initAppOnce();
+async function initAuthenticatedApp(user) {
+  await initAppOnce(user);
   try {
     await loadDashboard();
   } catch (_) {
@@ -165,7 +166,7 @@ async function handleLoginSubmit(event) {
     const result = await login({ email, password });
     setToken(result.token);
     showLoadingScreen('Preparando aplicación...');
-    await initAuthenticatedApp();
+    await initAuthenticatedApp(result.user);
     showApp(result.user);
     if (ui.loginError) ui.loginError.classList.add('d-none');
     renderAlert(ui.alertContainer, 'Sesión iniciada correctamente.', 'success');
@@ -198,7 +199,7 @@ async function restoreSession() {
   try {
     showLoadingScreen();
     const data = await getMe();
-    await initAuthenticatedApp();
+    await initAuthenticatedApp(data.user);
     showApp(data.user);
   } catch (error) {
     clearToken();
