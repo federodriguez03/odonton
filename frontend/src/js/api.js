@@ -117,6 +117,13 @@ export function createAtencion(pacienteId, payload) {
   });
 }
 
+export function updateAtencion(pacienteId, atencionId, payload) {
+  return request(`/api/pacientes/${pacienteId}/atenciones/${atencionId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function getOdontogramaPaciente(pacienteId) {
   return request(`/api/odontograma/${pacienteId}`);
 }

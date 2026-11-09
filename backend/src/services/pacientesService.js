@@ -488,6 +488,47 @@ async function registrarAtencion({ pacienteId, turnoId, observaciones }) {
   }
 }
 
+async function editarAtencion({ pacienteId, atencionId, observaciones }) {
+  const pid = Number.parseInt(pacienteId, 10);
+  const aid = Number.parseInt(atencionId, 10);
+  const descripcion = String(observaciones || '').trim();
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error('paciente_id invalido');
+  if (!Number.isInteger(aid) || aid <= 0) throw new Error('atencion_id invalido');
+  if (!descripcion) throw new Error('Las observaciones de la atencion son obligatorias');
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const anteriorRes = await client.query(
+      `SELECT id, paciente_id, turno_id, descripcion, odontograma_snapshot, created_at
+       FROM historias_clinicas
+       WHERE id = $1 AND paciente_id = $2
+       FOR UPDATE`,
+      [aid, pid]
+    );
+    if (!anteriorRes.rowCount) throw new Error('La atencion no pertenece al paciente');
+    const anterior = anteriorRes.rows[0];
+    const { rows } = await client.query(
+      `UPDATE historias_clinicas
+       SET descripcion = $3
+       WHERE id = $1 AND paciente_id = $2
+       RETURNING id, paciente_id, turno_id, descripcion, odontograma_snapshot, created_at`,
+      [aid, pid, descripcion]
+    );
+    await client.query('COMMIT');
+    return {
+      atencion: rows[0],
+      valoresAnteriores: { descripcion: anterior.descripcion },
+      valoresNuevos: { descripcion: rows[0].descripcion },
+    };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 // Exportar todas las funciones
 module.exports = {
 	crearPaciente,
@@ -496,4 +537,5 @@ module.exports = {
 	obtenerPaciente,
 	obtenerFichaClinica,
 	registrarAtencion,
+	editarAtencion,
 };

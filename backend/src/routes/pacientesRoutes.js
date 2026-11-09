@@ -31,6 +31,18 @@ router.post(
 	registrarPaciente
 );
 
+router.put(
+	'/:id/atenciones/:atencionId',
+	middlewareAutenticacion,
+	autorizarOdontologo,
+	middlewareAuditoria,
+	(req, res, next) => {
+		req.auditAction = 'corregir_atencion_clinica';
+		next();
+	},
+	(require('../controllers/pacientesController').editarAtencion)
+);
+
 // Actualizar paciente
 router.put(
 	'/:id',

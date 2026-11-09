@@ -118,12 +118,35 @@ async function registrarAtencion(req, res) {
 	}
 }
 
+async function editarAtencion(req, res) {
+	try {
+		const { id, atencionId } = req.params;
+		const resultado = await pacientesService.editarAtencion({
+			pacienteId: id,
+			atencionId,
+			observaciones: req.body?.observaciones,
+		});
+		req.auditMeta = {
+			atencion_id: Number(atencionId),
+			paciente_id: Number(id),
+			valores_anteriores: resultado.valoresAnteriores,
+			valores_nuevos: resultado.valoresNuevos,
+		};
+		return res.status(200).json({ mensaje: 'Atencion actualizada correctamente', atencion: resultado.atencion });
+	} catch (error) {
+		const mensaje = error.message || 'Error al actualizar atencion';
+		const status = /no pertenece/.test(mensaje) ? 404 : 400;
+		return res.status(status).json({ mensaje });
+	}
+}
+
 module.exports = {
 	registrarPaciente,
 	actualizarPaciente,
 	listarPacientes,
 	obtenerPaciente,
 	registrarAtencion,
+	editarAtencion,
 };
 
 module.exports.fichaClinica = fichaClinica;

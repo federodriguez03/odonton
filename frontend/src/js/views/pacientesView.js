@@ -9,6 +9,7 @@ import {
   getOdontogramaPaciente,
   getPacientes,
   postOdontograma,
+  updateAtencion,
   updatePaciente,
   uploadDocumento,
 } from '../api.js';
@@ -503,6 +504,13 @@ function renderFichaContent(data) {
         const fecha = getHistoriaDateParts(historia.fecha_atencion || historia.created_at || historia.fecha);
         const detalle = historia.descripcion || historia.detalle || 'Sin registrar';
         const resumen = historia.resumen || historia.descripcion || 'Sin registrar';
+        const prestaciones = getHistoriaPrestaciones(historia);
+        const titulo = prestaciones === 'Sin registrar' ? 'Atención clínica' : prestaciones;
+        const profesional = getHistoriaProfesional(historia);
+        const fechaContexto = historia.fecha_atencion || historia.created_at || historia.fecha;
+        const fechaCompleta = fechaContexto && !Number.isNaN(new Date(fechaContexto).getTime())
+          ? new Date(fechaContexto).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })
+          : 'Sin registrar';
         return `
           <article class="atenciones-timeline-item">
             <div class="atenciones-timeline-date">
@@ -514,11 +522,23 @@ function renderFichaContent(data) {
             <div class="card border atenciones-timeline-card">
               <div class="card-body">
                 <div class="atenciones-mobile-date mb-3"><strong>${fecha.day} ${fecha.month} ${fecha.year}</strong>${fecha.time ? ` · ${fecha.time}` : ''}</div>
-                <div class="row g-3 mb-3">
-                  <div class="col-md-6"><span class="text-secondary small d-block">Profesional</span><strong>${escapeHtml(getHistoriaProfesional(historia))}</strong></div>
-                  <div class="col-md-6"><span class="text-secondary small d-block">Prestaciones</span><strong>${escapeHtml(getHistoriaPrestaciones(historia))}</strong></div>
-                  <div class="col-12"><span class="text-secondary small d-block">Observaciones de la atención</span>${escapeHtml(resumen)}</div>
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                  <div>
+                    <h3 class="h5 mb-1">${escapeHtml(titulo)}</h3>
+                    <div class="text-secondary small">Profesional: ${escapeHtml(profesional)}</div>
+                  </div>
+                  <button class="btn btn-sm btn-outline-primary flex-shrink-0" type="button" data-action="editar-atencion" data-id="${historia.id}">Editar atención</button>
                 </div>
+                <div class="mb-3"><span class="text-secondary small d-block">Observaciones de la atención</span>${escapeHtml(resumen)}</div>
+                <form class="editar-atencion-form border rounded-3 p-3 mb-3 d-none" data-atencion-id="${historia.id}">
+                  <div class="row g-3">
+                    <div class="col-md-4"><label class="form-label">Fecha</label><input class="form-control" value="${escapeHtml(fechaCompleta)}" readonly /></div>
+                    <div class="col-md-4"><label class="form-label">Profesional</label><input class="form-control" value="${escapeHtml(profesional)}" readonly /></div>
+                    <div class="col-md-4"><label class="form-label">Prestación</label><input class="form-control" value="${escapeHtml(prestaciones)}" readonly /></div>
+                    <div class="col-12"><label class="form-label">Observaciones</label><textarea name="observaciones" class="form-control" rows="4" required>${escapeHtml(historia.descripcion || '')}</textarea></div>
+                    <div class="col-12 d-flex justify-content-end gap-2"><button class="btn btn-outline-secondary" type="button" data-action="cancelar-edicion-atencion">Cancelar</button><button class="btn btn-primary" type="submit">Guardar corrección</button></div>
+                  </div>
+                </form>
                 <details data-historia-id="${historia.id}">
                   <summary class="text-primary fw-semibold">Ver detalle</summary>
                   <div class="border-top mt-3 pt-3">${escapeHtml(detalle)}</div>
@@ -635,6 +655,7 @@ function renderFichaContent(data) {
   cargarDocumentosFicha();
   bindAtencionDocumentos(historias);
   bindRegistroAtencion();
+  bindEdicionAtenciones();
   historias.forEach((historia) => {
     if (historia.odontograma_snapshot) renderOdontogramaHistorico(historia.id, historia.odontograma_snapshot);
   });
@@ -670,6 +691,36 @@ function bindRegistroAtencion() {
       renderAlert(ui.alertContainer, error.message, 'danger');
       submit.disabled = false;
     }
+  });
+}
+
+function bindEdicionAtenciones() {
+  ui.fichaContent.querySelectorAll('button[data-action="editar-atencion"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const form = ui.fichaContent.querySelector(`.editar-atencion-form[data-atencion-id="${button.dataset.id}"]`);
+      form?.classList.remove('d-none');
+      form?.elements.observaciones?.focus();
+    });
+  });
+  ui.fichaContent.querySelectorAll('button[data-action="cancelar-edicion-atencion"]').forEach((button) => {
+    button.addEventListener('click', () => button.closest('.editar-atencion-form')?.classList.add('d-none'));
+  });
+  ui.fichaContent.querySelectorAll('.editar-atencion-form').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      try {
+        await updateAtencion(state.ficha.pacienteId, form.dataset.atencionId, {
+          observaciones: form.elements.observaciones.value.trim(),
+        });
+        renderAlert(ui.alertContainer, 'Atención corregida correctamente.', 'success');
+        await loadFichaClinica();
+      } catch (error) {
+        renderAlert(ui.alertContainer, error.message, 'danger');
+        submit.disabled = false;
+      }
+    });
   });
 }
 

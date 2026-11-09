@@ -17,6 +17,14 @@ async function main() {
       if (text.includes('FROM tratamientos')) return { rows: [{ id: 70, diente: 11, tipo: 'Obturacion' }], rowCount: 1 };
       if (text.includes('FROM protesis_fijas')) return { rows: [], rowCount: 0 };
       if (text.includes('FROM protesis_removibles')) return { rows: [], rowCount: 0 };
+      if (text.includes('FROM historias_clinicas') && text.includes('FOR UPDATE')) {
+        return params[1] === 1
+          ? { rows: [{ id: 99, paciente_id: 1, turno_id: 8, descripcion: 'Anterior', odontograma_snapshot: snapshotGuardado, created_at: '2026-10-10T14:00:00Z' }], rowCount: 1 }
+          : { rows: [], rowCount: 0 };
+      }
+      if (text.startsWith('UPDATE historias_clinicas')) {
+        return { rows: [{ id: 99, paciente_id: 1, turno_id: 8, descripcion: params[2], odontograma_snapshot: snapshotGuardado, created_at: '2026-10-10T14:00:00Z' }], rowCount: 1 };
+      }
       if (text.startsWith('INSERT INTO historias_clinicas')) {
         if (insertado) {
           const error = new Error('duplicate');
@@ -49,9 +57,21 @@ async function main() {
     /Ya existe una atencion registrada para este turno/,
   );
   assert.ok(queries.includes('ROLLBACK'));
+  const snapshotAntes = JSON.stringify(snapshotGuardado);
+  const edicion = await service.editarAtencion({ pacienteId: 1, atencionId: 99, observaciones: 'Observacion corregida' });
+  assert.equal(edicion.atencion.descripcion, 'Observacion corregida');
+  assert.equal(edicion.atencion.turno_id, 8);
+  assert.equal(JSON.stringify(edicion.atencion.odontograma_snapshot), snapshotAntes);
+  assert.deepEqual(edicion.valoresAnteriores, { descripcion: 'Anterior' });
+  assert.deepEqual(edicion.valoresNuevos, { descripcion: 'Observacion corregida' });
+  const updatesAntes = queries.filter((query) => query.startsWith('UPDATE historias_clinicas')).length;
+  await assert.rejects(service.editarAtencion({ pacienteId: 2, atencionId: 99, observaciones: 'No autorizada' }), /no pertenece/);
+  assert.equal(queries.filter((query) => query.startsWith('UPDATE historias_clinicas')).length, updatesAntes);
   console.log('OK - guarda atencion y snapshot completo en una transaccion');
   console.log('OK - conserva referencias, colores y observaciones del odontograma');
   console.log('OK - rechaza duplicados por turno y revierte la transaccion');
+  console.log('OK - edita solo observaciones y conserva turno y snapshot');
+  console.log('OK - rechaza editar una atencion de otro paciente sin escritura');
 }
 
 main().catch((error) => {
