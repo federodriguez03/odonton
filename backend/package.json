@@ -11,7 +11,8 @@
     "test:db": "node test-db.js",
     "preflight:identity": "node scripts/preflight-identidad-roles.js",
     "demo:identity": "node scripts/crear-cuentas-demo-identidad.js",
-    "test:identity": "node scripts/test-identidad-correspondencias-db.js"
+    "test:identity": "node scripts/test-identidad-correspondencias-db.js",
+    "test:auth-identity": "node scripts/test-auth-identidad-http.js"
   },
   "keywords": [],
   "author": "",

@@ -1,5 +1,5 @@
 const { pool } = require('../config/db');
-const { verificarToken } = require('../utils/jwt');
+const { authenticateIdentity } = require('../middleware/identityMiddleware');
 
 let auditoriaInitDone = false;
 
@@ -30,31 +30,11 @@ async function asegurarTablaAuditoria() {
   auditoriaInitDone = true;
 }
 
-function middlewareAutenticacion(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization || '';
-    const [scheme, token] = authHeader.split(' ');
-
-    if (scheme !== 'Bearer' || !token) {
-      return res.status(401).json({ mensaje: 'Usuario no autenticado' });
-    }
-
-    const payload = verificarToken(token);
-    req.user = {
-      id: payload.userId,
-      email: payload.email,
-      rol: payload.rol || 'odontologo',
-    };
-
-    return next();
-  } catch (err) {
-    return res.status(401).json({ mensaje: 'Usuario no autenticado' });
-  }
-}
+const middlewareAutenticacion = authenticateIdentity;
 
 function autorizarOdontologo(req, res, next) {
   try {
-    if (!req.user || req.user.rol !== 'odontologo') {
+    if (!req.user || !req.user.roles?.includes('odontologo')) {
       return res.status(403).json({ mensaje: 'Acceso permitido solo para odontologos' });
     }
 
@@ -83,7 +63,10 @@ function asignarActorSistema(req, res, next) {
     if (!req.user) {
       req.user = {
         id: null,
-        rol: 'sistema',
+        usuario_id: null,
+        roles: [],
+        profesional_perfil_id: null,
+        actor_tipo: 'sistema',
       };
     }
     return next();

@@ -1,25 +1,5 @@
-const { verificarToken } = require('../utils/jwt');
+const { authenticateIdentity } = require('./identityMiddleware');
 
-function verifyToken(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization || '';
-    const [scheme, token] = authHeader.split(' ');
-
-    if (scheme !== 'Bearer' || !token) {
-      return res.status(401).json({ mensaje: 'Token inválido' });
-    }
-
-    const payload = verificarToken(token);
-
-    req.user = {
-      id: payload.userId,
-      email: payload.email,
-    };
-
-    return next();
-  } catch (error) {
-    return res.status(401).json({ mensaje: 'Token inválido' });
-  }
-}
+const verifyToken = authenticateIdentity;
 
 module.exports = { verifyToken };

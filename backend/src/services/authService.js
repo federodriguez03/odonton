@@ -1,6 +1,7 @@
 const bcrypt = require('bcrypt');
 const { pool } = require('../config/db');
 const { generarToken } = require('../utils/jwt');
+const { exigirCuentaActiva, obtenerIdentidadPorId } = require('./identityService');
 
 function crearErrorCredenciales() {
   const err = new Error('Credenciales inválidas');
@@ -35,24 +36,17 @@ async function login({ email, password }) {
     throw crearErrorCredenciales();
   }
 
+  const identity = exigirCuentaActiva(await obtenerIdentidadPorId(user.id));
   const token = generarToken({ userId: user.id, email: user.email });
 
   return {
     token,
-    user: {
-      id: user.id,
-      nombre: user.nombre,
-      email: user.email,
-    },
+    user: identity,
   };
 }
 
 async function obtenerUsuarioPorId(id) {
-  const { rows } = await pool.query(
-    'SELECT id, nombre, email FROM usuarios WHERE id = $1 LIMIT 1',
-    [id]
-  );
-  return rows[0] || null;
+  return obtenerIdentidadPorId(id);
 }
 
 module.exports = {
