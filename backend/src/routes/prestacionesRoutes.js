@@ -14,11 +14,12 @@ const {
   autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { autorizarAgenda } = require('../middleware/authorizationMiddleware');
 
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_listado_prestaciones';

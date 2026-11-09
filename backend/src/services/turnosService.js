@@ -15,6 +15,7 @@ const ESTADOS_OCUPAN_HORARIO = ['programado', 'reprogramado', 'confirmado'];
 const ESTADOS_EDITABLES = ['programado', 'reprogramado', 'confirmado', 'solicitado', 'reprogramacion_solicitada'];
 const ESTADOS_CANCELABLES = ['programado', 'reprogramado', 'confirmado', 'solicitado', 'reprogramacion_solicitada', 'cancelacion_solicitada'];
 const ESTADOS_RECHAZABLES = ['solicitado', 'reprogramacion_solicitada', 'cancelacion_solicitada'];
+const ACCESO_AGENDA_SISTEMA = Object.freeze({ alcance: 'sistema', usuario_id: null });
 
 function timeToMinutes(hora) {
   const [h, m] = String(hora || '').split(':').map(Number);
@@ -39,6 +40,9 @@ async function asegurarColumnasProfesionalTurnos() {
   if (turnosProfesionalColumnsReady) return;
 
   await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS profesional_id INTEGER`);
+  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS profesional_perfil_id INTEGER`);
+  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS creado_por_usuario_id INTEGER`);
+  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS actualizado_por_usuario_id INTEGER`);
   await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS solicitud_preferencia TEXT`);
   await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS solicitud_confirmada_at TIMESTAMPTZ`);
   await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS solicitud_rechazada_at TIMESTAMPTZ`);
@@ -46,23 +50,7 @@ async function asegurarColumnasProfesionalTurnos() {
   await pool.query(`ALTER TABLE turnos ALTER COLUMN fecha_hora_inicio DROP NOT NULL`);
   await pool.query(`ALTER TABLE turnos ALTER COLUMN fecha_hora_fin DROP NOT NULL`);
   await pool.query(`ALTER TABLE turnos DROP CONSTRAINT IF EXISTS turnos_estado_check`);
-  await pool.query(`
-    UPDATE turnos
-    SET profesional_id = (
-      SELECT id
-      FROM usuarios
-      WHERE COALESCE(activo, true) = true
-      ORDER BY id ASC
-      LIMIT 1
-    )
-    WHERE profesional_id IS NULL
-      AND EXISTS (
-        SELECT 1
-        FROM usuarios
-        WHERE COALESCE(activo, true) = true
-      )
-  `);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_turnos_profesional_inicio ON turnos(profesional_id, fecha_hora_inicio)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_turnos_profesional_perfil_inicio ON turnos(profesional_perfil_id, fecha_hora_inicio)`);
 
   turnosProfesionalColumnsReady = true;
 }
@@ -74,6 +62,7 @@ async function asegurarHorariosProfesionales() {
     CREATE TABLE IF NOT EXISTS profesionales_horarios_atencion (
       id SERIAL PRIMARY KEY,
       profesional_id INTEGER NOT NULL,
+      profesional_perfil_id INTEGER,
       dia_semana INTEGER NOT NULL,
       activo BOOLEAN NOT NULL DEFAULT false,
       hora_desde TIME,
@@ -87,33 +76,52 @@ async function asegurarHorariosProfesionales() {
   horariosProfesionalesReady = true;
 }
 
-async function obtenerProfesionalDefault() {
-  await asegurarColumnasProfesionalTurnos();
-
-  const { rows } = await pool.query(`
-    SELECT id
-    FROM usuarios
-    WHERE COALESCE(activo, true) = true
-    ORDER BY id ASC
-    LIMIT 1
-  `);
-
-  return rows[0]?.id || null;
-}
-
 async function normalizarProfesionalId(profesionalId = null) {
   await asegurarColumnasProfesionalTurnos();
 
-  const id = Number(profesionalId) || await obtenerProfesionalDefault();
+  const id = Number(profesionalId);
   if (!id) throw new Error('Debe seleccionar un profesional');
 
   const { rowCount } = await pool.query(
-    'SELECT id FROM usuarios WHERE id = $1 AND COALESCE(activo, true) = true',
+    `SELECT p.id FROM profesionales p
+     JOIN usuarios u ON u.id=p.usuario_id
+     JOIN usuarios_roles ur ON ur.usuario_id=u.id
+     JOIN roles r ON r.id=ur.rol_id AND r.codigo='odontologo'
+     WHERE p.id=$1 AND p.activo=TRUE AND u.activo=TRUE`,
     [id],
   );
 
   if (!rowCount) throw new Error('El profesional seleccionado no existe o no esta activo');
   return id;
+}
+
+function errorAgenda(code, message, status = 403) {
+  const error = new Error(message);
+  error.code = code;
+  error.status = status;
+  return error;
+}
+
+async function resolverPerfilAgenda(profesionalId, acceso, fallback = null) {
+  if (!acceso) throw errorAgenda('CONTEXTO_AGENDA_REQUERIDO', 'Falta el contexto de autorización de agenda');
+  if (acceso.alcance === 'propia') {
+    const propio = Number(acceso.profesional_perfil_id);
+    if (profesionalId && Number(profesionalId) !== propio) {
+      throw errorAgenda('TURNO_AJENO', 'No puede operar la agenda de otro profesional');
+    }
+    return normalizarProfesionalId(propio);
+  }
+  if (acceso.alcance === 'general' || acceso.alcance === 'sistema') {
+    return normalizarProfesionalId(profesionalId || fallback);
+  }
+  throw errorAgenda('CONTEXTO_AGENDA_INVALIDO', 'Contexto de agenda inválido');
+}
+
+function validarAccesoTurno(turno, acceso) {
+  if (acceso?.alcance === 'general' || acceso?.alcance === 'sistema') return;
+  if (!acceso || Number(turno.profesional_perfil_id) !== Number(acceso.profesional_perfil_id)) {
+    throw errorAgenda('TURNO_AJENO', 'No puede acceder a un turno de otro profesional');
+  }
 }
 
 async function obtenerHorarioProfesionalParaFecha(profesionalId, fechaInicio) {
@@ -124,7 +132,7 @@ async function obtenerHorarioProfesionalParaFecha(profesionalId, fechaInicio) {
     `
       SELECT dia_semana, activo, TO_CHAR(hora_desde, 'HH24:MI') AS hora_desde, TO_CHAR(hora_hasta, 'HH24:MI') AS hora_hasta
       FROM profesionales_horarios_atencion
-      WHERE profesional_id = $1 AND dia_semana = $2
+      WHERE profesional_perfil_id = $1 AND dia_semana = $2
       LIMIT 1
     `,
     [profesionalId, diaSemana],
@@ -179,7 +187,7 @@ async function existeSolapamiento(fechaInicio, fechaFin, turnoId = null, profesi
   await asegurarColumnasProfesionalTurnos();
 
   // Solo los estados con horario definitivo bloquean espacio en la agenda profesional.
-  const whereProfesional = profesionalId ? 'AND profesional_id = $3' : '';
+  const whereProfesional = profesionalId ? 'AND profesional_perfil_id = $3' : '';
   const whereTurno = turnoId ? `AND id <> $${profesionalId ? 4 : 3}` : '';
   const query = `
     SELECT EXISTS (
@@ -223,6 +231,7 @@ async function crearTurno({
   observaciones = null,
   profesionalId = null,
   recordatorioHabilitado = true,
+  acceso,
 }) {
   await asegurarColumnasProfesionalTurnos();
 
@@ -243,7 +252,7 @@ async function crearTurno({
   const duracionPrestacion = Number(prestacionResult.rows[0].duracion_minutos) || null;
   const duracionFinal = validarDuracionTurno(duracionMinutos, duracionPrestacion);
 
-  const profesionalFinalId = await normalizarProfesionalId(profesionalId);
+  const profesionalFinalId = await resolverPerfilAgenda(profesionalId, acceso);
   const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado, { defaultValue: true });
   const fechaHoraFin = new Date(fechaHoraInicio.getTime() + duracionFinal * 60000);
   await validarHorarioProfesional(profesionalFinalId, fechaHoraInicio, fechaHoraFin);
@@ -258,18 +267,22 @@ async function crearTurno({
       paciente_id,
       prestacion_id,
       profesional_id,
+      profesional_perfil_id,
       fecha_hora_inicio,
       fecha_hora_fin,
       estado,
       origen,
       observaciones,
       recordatorio_habilitado
+      ,creado_por_usuario_id
+      ,actualizado_por_usuario_id
     )
-    VALUES ($1, $2, $3, $4, $5, 'programado', $6, $7, $8)
+    VALUES ($1,$2,NULL,$3,$4,$5,'programado',$6,$7,$8,$9,$9)
     RETURNING *;
   `;
 
-  const values = [pacienteId, prestacionId, profesionalFinalId, fechaHoraInicio, fechaHoraFin, origen, observaciones, recordatorioFinal];
+  const values = [pacienteId, prestacionId, profesionalFinalId, fechaHoraInicio, fechaHoraFin, origen,
+    observaciones, recordatorioFinal, acceso.usuario_id || null];
   const { rows } = await pool.query(query, values);
 
   return {
@@ -321,7 +334,7 @@ async function reprogramarTurno(
   turnoId,
   fechaHoraInicio,
   fechaHoraFin,
-  { recordatorioHabilitado } = {},
+  { recordatorioHabilitado, acceso } = {},
 ) {
   await asegurarColumnasProfesionalTurnos();
   const turnoResult = await pool.query('SELECT * FROM turnos WHERE id = $1', [turnoId]);
@@ -335,13 +348,14 @@ async function reprogramarTurno(
   }
 
   const turno = turnoResult.rows[0];
+  validarAccesoTurno(turno, acceso);
   const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
   const estadosPermitidos = ['programado', 'reprogramado', 'confirmado', 'reprogramacion_solicitada'];
   if (!estadosPermitidos.includes(turno.estado)) {
     throw new Error('El turno no puede reprogramarse');
   }
 
-  const profesionalId = turno.profesional_id || await obtenerProfesionalDefault();
+  const profesionalId = await resolverPerfilAgenda(turno.profesional_perfil_id, acceso, turno.profesional_perfil_id);
   await validarHorarioProfesional(profesionalId, fechaHoraInicio, fechaHoraFin);
   const hayConflicto = await existeSolapamiento(fechaHoraInicio, fechaHoraFin, turnoId, profesionalId);
   if (hayConflicto) {
@@ -357,6 +371,7 @@ async function reprogramarTurno(
         estado = 'reprogramado',
         recordatorio_habilitado = COALESCE($4::boolean, recordatorio_habilitado),
         updated_at = NOW()
+        ,actualizado_por_usuario_id = $5
       WHERE id = $3
       RETURNING *
     ), solicitudes_resueltas AS (
@@ -371,7 +386,7 @@ async function reprogramarTurno(
     SELECT * FROM turno_actualizado;
   `;
 
-  const { rows } = await pool.query(query, [fechaHoraInicio, fechaHoraFin, turnoId, recordatorioFinal]);
+  const { rows } = await pool.query(query, [fechaHoraInicio, fechaHoraFin, turnoId, recordatorioFinal, acceso.usuario_id || null]);
   return rows[0];
 }
 
@@ -385,6 +400,7 @@ async function editarTurno(
     observaciones = null,
     profesionalId = null,
     recordatorioHabilitado,
+    acceso,
   },
 ) {
   await asegurarColumnasProfesionalTurnos();
@@ -404,6 +420,7 @@ async function editarTurno(
   if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
 
   const turno = turnoResult.rows[0];
+  validarAccesoTurno(turno, acceso);
   const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
   if (!ESTADOS_EDITABLES.includes(turno.estado)) {
     throw new Error(
@@ -423,7 +440,7 @@ async function editarTurno(
   const duracionPrestacion = Number(prestacionResult.rows[0].duracion_minutos) || null;
   const duracionFinal = validarDuracionTurno(duracionMinutos, duracionActual || duracionPrestacion);
 
-  const profesionalFinalId = await normalizarProfesionalId(profesionalId || turno.profesional_id);
+  const profesionalFinalId = await resolverPerfilAgenda(profesionalId, acceso, turno.profesional_perfil_id);
   const fechaFin = new Date(fechaInicio.getTime() + duracionFinal * 60000);
   await validarHorarioProfesional(profesionalFinalId, fechaInicio, fechaFin);
 
@@ -435,17 +452,19 @@ async function editarTurno(
     SET
       paciente_id = $1,
       prestacion_id = $2,
-      profesional_id = $3,
+      profesional_perfil_id = $3,
       fecha_hora_inicio = $4,
       fecha_hora_fin = $5,
-      observaciones = $6,
+      observaciones = COALESCE($6,observaciones),
       recordatorio_habilitado = COALESCE($7::boolean, recordatorio_habilitado),
       updated_at = NOW()
+      ,actualizado_por_usuario_id = $9
     WHERE id = $8
     RETURNING *;
   `;
 
-  const values = [pacienteId, prestacionId, profesionalFinalId, fechaInicio, fechaFin, observaciones, recordatorioFinal, turnoId];
+  const values = [pacienteId, prestacionId, profesionalFinalId, fechaInicio, fechaFin, observaciones,
+    recordatorioFinal, turnoId, acceso.usuario_id || null];
   const { rows } = await pool.query(query, values);
   return {
     ...rows[0],
@@ -456,7 +475,7 @@ async function editarTurno(
 /**
  * Cancela el turno y resuelve sus solicitudes pendientes en una sola transacción.
  */
-async function cancelarTurno(turnoId) {
+async function cancelarTurno(turnoId, { acceso } = {}) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -468,6 +487,7 @@ async function cancelarTurno(turnoId) {
     if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
 
     const turno = turnoResult.rows[0];
+    validarAccesoTurno(turno, acceso);
     if (!ESTADOS_CANCELABLES.includes(turno.estado)) {
       throw new Error(
         `No se puede cancelar un turno en estado "${turno.estado}".`,
@@ -480,10 +500,11 @@ async function cancelarTurno(turnoId) {
         SET estado = 'cancelado',
             fecha_cancelacion = NOW(),
             updated_at = NOW()
+            ,actualizado_por_usuario_id = $2
         WHERE id = $1
         RETURNING *;
       `,
-      [turnoId],
+      [turnoId, acceso.usuario_id || null],
     );
 
     await cerrarSolicitudesPendientes(client, {
@@ -535,6 +556,7 @@ async function confirmarSolicitudTurno(
     duracionMinutos,
     observaciones = null,
     recordatorioHabilitado,
+    acceso,
   },
 ) {
   await asegurarColumnasProfesionalTurnos();
@@ -543,6 +565,7 @@ async function confirmarSolicitudTurno(
   if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
 
   const turno = turnoResult.rows[0];
+  if (turno.profesional_perfil_id) validarAccesoTurno(turno, acceso);
   const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
   if (turno.estado !== 'solicitado') {
     throw new Error('Solo pueden confirmarse solicitudes en estado solicitado');
@@ -560,7 +583,7 @@ async function confirmarSolicitudTurno(
     ? Math.round((new Date(turno.fecha_hora_fin).getTime() - new Date(turno.fecha_hora_inicio).getTime()) / 60000)
     : null;
   const duracionFinal = validarDuracionTurno(duracionMinutos, duracionActual || prestacionResult.rows[0].duracion_minutos);
-  const profesionalFinalId = await normalizarProfesionalId(profesionalId || turno.profesional_id);
+  const profesionalFinalId = await resolverPerfilAgenda(profesionalId, acceso, turno.profesional_perfil_id);
   const fechaFin = new Date(fechaInicio.getTime() + duracionFinal * 60000);
 
   await validarHorarioProfesional(profesionalFinalId, fechaInicio, fechaFin);
@@ -584,7 +607,7 @@ async function confirmarSolicitudTurno(
     const { rows } = await client.query(
       `
         UPDATE turnos
-        SET profesional_id = $2,
+        SET profesional_perfil_id = $2,
             prestacion_id = $3,
             fecha_hora_inicio = $4,
             fecha_hora_fin = $5,
@@ -593,11 +616,13 @@ async function confirmarSolicitudTurno(
             estado = 'confirmado',
             solicitud_confirmada_at = NOW(),
             updated_at = NOW()
+            ,actualizado_por_usuario_id = $8
         WHERE id = $1
           AND estado = 'solicitado'
         RETURNING *
       `,
-      [turnoId, profesionalFinalId, prestacionFinalId, fechaInicio, fechaFin, observaciones, recordatorioFinal],
+      [turnoId, profesionalFinalId, prestacionFinalId, fechaInicio, fechaFin, observaciones,
+        recordatorioFinal, acceso.usuario_id || null],
     );
     if (!rows.length) throw new Error('La solicitud de turno ya no se encuentra pendiente');
 

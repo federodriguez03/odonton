@@ -14,14 +14,15 @@ const {
   enviarRecordatorioManual,
   listarProfesionales,
   consultarDisponibilidad,
+  obtenerTurno,
 } = require('../controllers/turnosController');
 
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
   validarEntradaCancelarTurno,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { autorizarAgenda } = require('../middleware/authorizationMiddleware');
 
 /**
  * Listar turnos (GET /api/turnos)
@@ -29,7 +30,7 @@ const {
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_listado_turnos';
@@ -41,7 +42,7 @@ router.get(
 router.get(
   '/solicitudes',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'listar_solicitudes_turno';
@@ -53,17 +54,19 @@ router.get(
 router.get(
   '/profesionales',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   listarProfesionales
 );
 
 router.get(
   '/disponibilidad',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   consultarDisponibilidad
 );
+
+router.get('/:id', middlewareAutenticacion, autorizarAgenda, middlewareAuditoria, obtenerTurno);
 
 /**
  * Registrar nuevo turno (Caso de uso 3.1)
@@ -71,7 +74,7 @@ router.get(
 router.post(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'registrar_turno';
@@ -86,7 +89,7 @@ router.post(
 router.post(
   '/:id/recordatorios/whatsapp',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'recordatorio_manual_enviado';
@@ -98,7 +101,7 @@ router.post(
 router.post(
   '/recordatorios/procesar',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'procesar_recordatorios_automaticos';
@@ -113,7 +116,7 @@ router.post(
 router.put(
   '/:id',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'editar_turno';
@@ -128,7 +131,7 @@ router.put(
 router.put(
   '/:id/confirmar-solicitud',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'confirmar_solicitud_turno';
@@ -140,7 +143,7 @@ router.put(
 router.put(
   '/:id/rechazar-solicitud',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'rechazar_solicitud_turno';
@@ -152,7 +155,7 @@ router.put(
 router.put(
   '/:id/reprogramar',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'reprogramar_turno';
@@ -167,7 +170,7 @@ router.put(
 router.put(
   '/:id/cancelar',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
   validarEntradaCancelarTurno,
   middlewareAuditoria,
   (req, res, next) => {
