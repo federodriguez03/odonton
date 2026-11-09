@@ -124,6 +124,39 @@ function formatText(value) {
   return value && String(value).trim() ? value : '-';
 }
 
+function getHistoriaDateParts(value) {
+  if (!value) return { day: '—', month: 'Sin fecha', year: '', time: '' };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { day: '—', month: 'Sin fecha', year: '', time: '' };
+  const hasTime = /(?:T|\s)\d{2}:\d{2}/.test(String(value));
+  return {
+    day: date.toLocaleDateString('es-AR', { day: '2-digit' }),
+    month: date.toLocaleDateString('es-AR', { month: 'short' }).replace('.', '').toUpperCase(),
+    year: date.toLocaleDateString('es-AR', { year: 'numeric' }),
+    time: hasTime ? date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '',
+  };
+}
+
+function getHistoriaProfesional(historia) {
+  const profesional = historia.profesional;
+  if (typeof profesional === 'string') return profesional.trim() || 'Sin registrar';
+  if (profesional && typeof profesional === 'object') {
+    const nombre = [profesional.nombre, profesional.apellido].filter(Boolean).join(' ').trim();
+    return nombre || profesional.nombre_completo || 'Sin registrar';
+  }
+  return historia.profesional_nombre || historia.nombre_profesional || 'Sin registrar';
+}
+
+function getHistoriaPrestaciones(historia) {
+  if (Array.isArray(historia.prestaciones)) {
+    const nombres = historia.prestaciones
+      .map((prestacion) => (typeof prestacion === 'string' ? prestacion : prestacion?.nombre))
+      .filter(Boolean);
+    return nombres.length ? nombres.join(', ') : 'Sin registrar';
+  }
+  return historia.prestacion?.nombre || historia.prestacion_nombre || historia.prestacion || 'Sin registrar';
+}
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -457,20 +490,42 @@ function closeFicha() {
 
 function renderFichaContent(data) {
   const paciente = data.paciente || {};
-  const historias = data.historiasClinicas || [];
+  const historias = [...(data.historiasClinicas || [])].sort((a, b) => {
+    const fechaA = new Date(a.created_at || a.fecha_atencion || a.fecha || 0).getTime();
+    const fechaB = new Date(b.created_at || b.fecha_atencion || b.fecha || 0).getTime();
+    return fechaB - fechaA;
+  });
   const edad = Number.isInteger(paciente.edad) ? `${paciente.edad} años` : 'Edad no disponible';
   const historiasHtml = historias.length
-    ? historias.map((historia) => `
-        <article class="card border mb-3">
-          <div class="card-body">
-            <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
-              <strong>Atención clínica</strong>
-              <span class="text-secondary small">${formatDate(historia.created_at)}</span>
+    ? `<div class="atenciones-timeline">${historias.map((historia) => {
+        const fecha = getHistoriaDateParts(historia.created_at || historia.fecha_atencion || historia.fecha);
+        const detalle = historia.descripcion || historia.detalle || 'Sin registrar';
+        const resumen = historia.resumen || historia.descripcion || 'Sin registrar';
+        return `
+          <article class="atenciones-timeline-item">
+            <div class="atenciones-timeline-date">
+              <strong class="atenciones-timeline-day">${fecha.day}</strong>
+              <span>${fecha.month}</span><span>${fecha.year}</span>
+              ${fecha.time ? `<span class="atenciones-timeline-time">${fecha.time}</span>` : ''}
             </div>
-            <p class="mb-2">${escapeHtml(historia.descripcion || 'Sin descripción')}</p>
-            <div class="small text-secondary">Odontograma histórico: <strong>No disponible</strong></div>
-          </div>
-        </article>`).join('')
+            <div class="atenciones-timeline-axis" aria-hidden="true"><span></span></div>
+            <div class="card border atenciones-timeline-card">
+              <div class="card-body">
+                <div class="atenciones-mobile-date mb-3"><strong>${fecha.day} ${fecha.month} ${fecha.year}</strong>${fecha.time ? ` · ${fecha.time}` : ''}</div>
+                <div class="row g-3 mb-3">
+                  <div class="col-md-6"><span class="text-secondary small d-block">Profesional</span><strong>${escapeHtml(getHistoriaProfesional(historia))}</strong></div>
+                  <div class="col-md-6"><span class="text-secondary small d-block">Prestaciones</span><strong>${escapeHtml(getHistoriaPrestaciones(historia))}</strong></div>
+                  <div class="col-12"><span class="text-secondary small d-block">Resumen</span>${escapeHtml(resumen)}</div>
+                </div>
+                <details>
+                  <summary class="text-primary fw-semibold">Ver detalle existente</summary>
+                  <div class="border-top mt-3 pt-3">${escapeHtml(detalle)}</div>
+                  <div class="small text-secondary mt-3">Odontograma histórico: <strong>No disponible</strong></div>
+                </details>
+              </div>
+            </div>
+          </article>`;
+      }).join('')}</div>`
     : '<div class="text-center text-secondary border rounded-3 py-5">No hay atenciones clínicas registradas.</div>';
 
   ui.fichaContent.innerHTML = `

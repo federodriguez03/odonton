@@ -928,3 +928,85 @@ body {
     min-height: 220px;
   }
 }
+.atenciones-timeline-item {
+  display: grid;
+  grid-template-columns: 82px 28px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.atenciones-timeline-date {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 0.75rem 0 1.5rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.8rem;
+  line-height: 1.15;
+}
+
+.atenciones-timeline-day {
+  color: var(--bs-body-color);
+  font-size: 1.5rem;
+}
+
+.atenciones-timeline-time {
+  margin-top: 0.35rem;
+}
+
+.atenciones-timeline-axis {
+  position: relative;
+}
+
+.atenciones-timeline-axis::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  background: var(--bs-border-color);
+  content: '';
+  transform: translateX(-50%);
+}
+
+.atenciones-timeline-axis span {
+  position: absolute;
+  top: 1.1rem;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  border: 3px solid var(--bs-primary);
+  border-radius: 50%;
+  background: var(--bs-body-bg);
+  transform: translateX(-50%);
+}
+
+.atenciones-timeline-card {
+  margin-bottom: 1.5rem;
+}
+
+.atenciones-mobile-date {
+  display: none;
+}
+
+.atenciones-timeline-card summary {
+  cursor: pointer;
+}
+
+@media (max-width: 575.98px) {
+  .atenciones-timeline-item {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .atenciones-timeline-date {
+    display: none;
+  }
+
+  .atenciones-timeline-axis::before,
+  .atenciones-timeline-axis span {
+    left: 5px;
+  }
+
+  .atenciones-mobile-date {
+    display: block;
+  }
+}
