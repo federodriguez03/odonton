@@ -12,7 +12,7 @@ function resolveDocumentoPath(rutaArchivo) {
 async function subirDocumento(req, res) {
   // Multer ya guardó el archivo; cualquier rechazo posterior debe evitar un upload huérfano.
   try {
-    const { paciente_id, descripcion } = req.body || {};
+    const { paciente_id, historia_clinica_id, descripcion } = req.body || {};
     const file = req.file;
 
     if (!paciente_id) {
@@ -30,6 +30,7 @@ async function subirDocumento(req, res) {
 
     const documento = await documentosService.crearDocumento({
       paciente_id,
+      historia_clinica_id: historia_clinica_id || null,
       nombre_archivo: file.originalname,
       ruta_archivo: rutaRelativa,
       tipo_archivo: file.mimetype,
@@ -50,12 +51,12 @@ async function subirDocumento(req, res) {
 
 async function listarDocumentos(req, res) {
   try {
-    const { paciente_id } = req.query || {};
+    const { paciente_id, historia_clinica_id } = req.query || {};
     if (!paciente_id) {
       return res.status(400).json({ mensaje: 'paciente_id es requerido' });
     }
 
-    const documentos = await documentosService.listarDocumentosPorPaciente(paciente_id);
+    const documentos = await documentosService.listarDocumentosPorPaciente(paciente_id, historia_clinica_id || null);
     return res.status(200).json({
       paciente_id: Number(paciente_id),
       total: documentos.length,

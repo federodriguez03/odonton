@@ -320,10 +320,22 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
 
     // Traer historial clínico (historias_clinicas para este paciente)
     const historiasRes = await pool.query(
-        `SELECT id, paciente_id, turno_id, descripcion, created_at
-         FROM historias_clinicas
-         WHERE paciente_id = $1
-         ORDER BY created_at DESC LIMIT 50`,
+        `SELECT
+           hc.id,
+           hc.paciente_id,
+           hc.turno_id,
+           hc.descripcion,
+           hc.created_at,
+           t.profesional_id,
+           u.nombre AS profesional_nombre,
+           t.prestacion_id,
+           p.nombre AS prestacion_nombre
+         FROM historias_clinicas hc
+         LEFT JOIN turnos t ON t.id = hc.turno_id AND t.paciente_id = hc.paciente_id
+         LEFT JOIN usuarios u ON u.id = t.profesional_id
+         LEFT JOIN prestaciones p ON p.id = t.prestacion_id
+         WHERE hc.paciente_id = $1
+         ORDER BY hc.created_at DESC LIMIT 50`,
         [pacienteId]
     );
 

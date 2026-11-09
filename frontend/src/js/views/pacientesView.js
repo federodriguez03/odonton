@@ -515,12 +515,21 @@ function renderFichaContent(data) {
                 <div class="row g-3 mb-3">
                   <div class="col-md-6"><span class="text-secondary small d-block">Profesional</span><strong>${escapeHtml(getHistoriaProfesional(historia))}</strong></div>
                   <div class="col-md-6"><span class="text-secondary small d-block">Prestaciones</span><strong>${escapeHtml(getHistoriaPrestaciones(historia))}</strong></div>
-                  <div class="col-12"><span class="text-secondary small d-block">Resumen</span>${escapeHtml(resumen)}</div>
+                  <div class="col-12"><span class="text-secondary small d-block">Observaciones de la atención</span>${escapeHtml(resumen)}</div>
                 </div>
-                <details>
-                  <summary class="text-primary fw-semibold">Ver detalle existente</summary>
+                <details data-historia-id="${historia.id}">
+                  <summary class="text-primary fw-semibold">Ver detalle</summary>
                   <div class="border-top mt-3 pt-3">${escapeHtml(detalle)}</div>
                   <div class="small text-secondary mt-3">Odontograma histórico: <strong>No disponible</strong></div>
+                  <div class="border-top mt-3 pt-3">
+                    <h4 class="h6">Archivos de esta atención</h4>
+                    <form class="atencion-documentos-form row g-2 align-items-end mb-3" data-historia-id="${historia.id}">
+                      <div class="col-md-5"><label class="form-label">Descripción</label><input name="descripcion" class="form-control" /></div>
+                      <div class="col-md-5"><label class="form-label">Imagen o PDF</label><input name="archivo" type="file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required /></div>
+                      <div class="col-md-2 d-grid"><button class="btn btn-primary" type="submit">Adjuntar</button></div>
+                    </form>
+                    <div class="atencion-documentos-grid row g-3" id="atencion-documentos-${historia.id}"><div class="col-12 text-secondary small">Cargando archivos...</div></div>
+                  </div>
                 </details>
               </div>
             </div>
@@ -575,7 +584,6 @@ function renderFichaContent(data) {
             <small class="text-secondary d-block mt-2">Tipos permitidos: PDF, JPG, PNG. Máximo 10 MB.</small>
           </div>
           <div class="tab-pane fade" id="ficha-atenciones">
-            <p class="text-secondary">Este historial contiene registros clínicos. Los turnos de agenda no se muestran como atenciones.</p>
             ${historiasHtml}
           </div>
           <div class="tab-pane fade" id="ficha-odontograma">
@@ -602,6 +610,89 @@ function renderFichaContent(data) {
   });
   bindFichaDocumentos();
   cargarDocumentosFicha();
+  bindAtencionDocumentos(historias);
+}
+
+function renderDocumentosAtencion(historiaId, documentos = []) {
+  const grid = document.getElementById(`atencion-documentos-${historiaId}`);
+  if (!grid) return;
+  if (!documentos.length) {
+    grid.innerHTML = '<div class="col-12 text-secondary small">Sin archivos adjuntos.</div>';
+    return;
+  }
+  grid.innerHTML = documentos.map((doc) => `
+    <div class="col-12 col-md-6">
+      <article class="card h-100 border">
+        <div class="ratio ratio-4x3 bg-light border-bottom overflow-hidden" id="documento-miniatura-${doc.id}"><div class="d-flex h-100 align-items-center justify-content-center text-secondary">Cargando vista previa...</div></div>
+        <div class="card-body d-flex flex-column">
+          <h5 class="h6 text-break">${escapeHtml(doc.nombre_archivo)}</h5>
+          <p class="small text-secondary">${escapeHtml(doc.descripcion || 'Sin descripción')}</p>
+          <div class="d-flex flex-wrap gap-2 mt-auto">
+            <button class="btn btn-sm btn-outline-primary" type="button" data-action="preview-doc" data-id="${doc.id}" data-name="${escapeHtml(doc.nombre_archivo)}" data-type="${escapeHtml(doc.tipo_archivo)}">Ampliar</button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-action="download-doc" data-id="${doc.id}">Descargar</button>
+          </div>
+        </div>
+      </article>
+    </div>`).join('');
+  documentos.forEach((doc) => hydrateDocumentoMiniatura(doc));
+}
+
+async function cargarDocumentosAtencion(historiaId) {
+  try {
+    const data = await getDocumentos(state.ficha.pacienteId, historiaId);
+    renderDocumentosAtencion(historiaId, data.documentos || []);
+  } catch (error) {
+    const grid = document.getElementById(`atencion-documentos-${historiaId}`);
+    if (grid) grid.innerHTML = `<div class="col-12 text-danger small">${escapeHtml(error.message)}</div>`;
+  }
+}
+
+async function mostrarDocumento(button) {
+  const doc = { id: button.dataset.id, nombre_archivo: button.dataset.name, tipo_archivo: button.dataset.type };
+  const url = await getDocumentoObjectUrl(doc);
+  const isPdf = String(doc.tipo_archivo).toLowerCase() === 'application/pdf';
+  ui.documentoPreviewLabel.textContent = doc.nombre_archivo || 'Vista previa';
+  ui.documentoPreviewContent.innerHTML = isPdf
+    ? `<iframe src="${url}" title="Vista previa de ${escapeHtml(doc.nombre_archivo)}" class="w-100 border-0" style="height:75vh"></iframe>`
+    : `<img src="${url}" alt="${escapeHtml(doc.nombre_archivo)}" class="img-fluid d-block mx-auto" style="max-height:75vh" />`;
+  documentoPreviewModal?.show();
+}
+
+function bindAtencionDocumentos(historias) {
+  historias.forEach((historia) => cargarDocumentosAtencion(historia.id));
+  document.querySelectorAll('.atencion-documentos-form').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const historiaId = form.dataset.historiaId;
+      const archivo = form.elements.archivo?.files?.[0];
+      if (!archivo) return;
+      const formData = new FormData();
+      formData.append('paciente_id', String(state.ficha.pacienteId));
+      formData.append('historia_clinica_id', historiaId);
+      formData.append('descripcion', form.elements.descripcion?.value?.trim() || '');
+      formData.append('archivo', archivo);
+      try {
+        await uploadDocumento(formData);
+        form.reset();
+        await cargarDocumentosAtencion(historiaId);
+        renderAlert(ui.alertContainer, 'Archivo adjuntado a la atención.', 'success');
+      } catch (error) {
+        renderAlert(ui.alertContainer, error.message, 'danger');
+      }
+    });
+  });
+  document.querySelectorAll('.atencion-documentos-grid').forEach((grid) => {
+    grid.addEventListener('click', async (event) => {
+      const button = event.target.closest('button[data-action]');
+      if (!button) return;
+      try {
+        if (button.dataset.action === 'preview-doc') await mostrarDocumento(button);
+        if (button.dataset.action === 'download-doc') await downloadDocumento(button.dataset.id);
+      } catch (error) {
+        renderAlert(ui.alertContainer, error.message, 'danger');
+      }
+    });
+  });
 }
 
 function renderDocumentosFicha(documentos = []) {

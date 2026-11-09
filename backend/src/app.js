@@ -69,6 +69,10 @@ app.get('/health', (req, res) => {
 
 const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
 
+app.use('/uploads', (req, res) => {
+  res.status(404).json({ mensaje: 'Recurso no disponible' });
+});
+
 app.use(express.static(frontendDistPath));
 
 app.use((req, res, next) => {

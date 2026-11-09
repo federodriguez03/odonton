@@ -13,6 +13,7 @@ async function asegurarTabla() {
       ruta_archivo TEXT NOT NULL,
       tipo_archivo VARCHAR(100) NOT NULL,
       descripcion TEXT,
+      historia_clinica_id INTEGER REFERENCES historias_clinicas(id) ON DELETE SET NULL,
       fecha_subida TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
@@ -31,7 +32,19 @@ function validarPacienteId(pacienteId) {
   return pid;
 }
 
-async function crearDocumento({ paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion }) {
+async function validarHistoriaPaciente(historiaClinicaId, pacienteId) {
+  if (historiaClinicaId === null || historiaClinicaId === undefined || historiaClinicaId === '') return null;
+  const historiaId = Number.parseInt(historiaClinicaId, 10);
+  if (!Number.isInteger(historiaId) || historiaId <= 0) throw new Error('historia_clinica_id invalido');
+  const { rowCount } = await pool.query(
+    'SELECT id FROM historias_clinicas WHERE id = $1 AND paciente_id = $2',
+    [historiaId, pacienteId]
+  );
+  if (!rowCount) throw new Error('La atencion no pertenece al paciente indicado');
+  return historiaId;
+}
+
+async function crearDocumento({ paciente_id, historia_clinica_id = null, nombre_archivo, ruta_archivo, tipo_archivo, descripcion }) {
   await asegurarTabla();
   const pid = validarPacienteId(paciente_id);
 
@@ -39,31 +52,34 @@ async function crearDocumento({ paciente_id, nombre_archivo, ruta_archivo, tipo_
   if (pacienteRes.rowCount === 0) {
     throw new Error('Paciente no encontrado');
   }
+  const historiaId = await validarHistoriaPaciente(historia_clinica_id, pid);
 
   const result = await pool.query(
     `
-      INSERT INTO documentos_paciente (paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion)
-      VALUES ($1, $2, $3, $4, $5)
-      RETURNING id, paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
+      INSERT INTO documentos_paciente (paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
     `,
-    [pid, nombre_archivo, ruta_archivo, tipo_archivo, descripcion || null]
+    [pid, historiaId, nombre_archivo, ruta_archivo, tipo_archivo, descripcion || null]
   );
 
   return result.rows[0];
 }
 
-async function listarDocumentosPorPaciente(pacienteId) {
+async function listarDocumentosPorPaciente(pacienteId, historiaClinicaId = null) {
   await asegurarTabla();
   const pid = validarPacienteId(pacienteId);
 
+  const historiaId = await validarHistoriaPaciente(historiaClinicaId, pid);
   const { rows } = await pool.query(
     `
-      SELECT id, paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
+      SELECT id, paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
       FROM documentos_paciente
       WHERE paciente_id = $1
+        AND historia_clinica_id ${historiaId === null ? 'IS NULL' : '= $2'}
       ORDER BY fecha_subida DESC, id DESC
     `,
-    [pid]
+    historiaId === null ? [pid] : [pid, historiaId]
   );
 
   return rows;
@@ -78,7 +94,7 @@ async function obtenerDocumentoPorId(id) {
 
   const { rows } = await pool.query(
     `
-      SELECT id, paciente_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
+      SELECT id, paciente_id, historia_clinica_id, nombre_archivo, ruta_archivo, tipo_archivo, descripcion, fecha_subida
       FROM documentos_paciente
       WHERE id = $1
     `,

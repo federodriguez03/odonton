@@ -314,8 +314,9 @@ export function anularPago(id, payload) {
   });
 }
 
-export function getDocumentos(pacienteId) {
-  return request(`/api/documentos?paciente_id=${pacienteId}`);
+export function getDocumentos(pacienteId, historiaClinicaId = null) {
+  const historiaQuery = historiaClinicaId ? `&historia_clinica_id=${historiaClinicaId}` : '';
+  return request(`/api/documentos?paciente_id=${pacienteId}${historiaQuery}`);
 }
 
 export function uploadDocumento(formData) {
