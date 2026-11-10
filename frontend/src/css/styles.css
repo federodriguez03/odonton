@@ -1,14 +1,54 @@
 ﻿:root {
   --brand-900: #112337;
   --brand-700: #1c3f5f;
+  --brand-100: #e8f0f7;
   --accent: #f2b84b;
   --paper: #f7f9fc;
+  --text-primary: #172033;
+  --text-secondary: #526173;
+  --border-soft: #dbe3eb;
+  --surface-soft: #f6f8fb;
+  --space-section: 1.5rem;
 }
 
 body {
   background: radial-gradient(circle at top right, #d7e7ff 0%, var(--paper) 45%, #eef2f7 100%);
+  color: var(--text-primary);
+  font-size: 1rem;
+  line-height: 1.55;
   min-height: 100vh;
 }
+
+/* Jerarquía reutilizable: aplicar estas clases en interfaces nuevas. */
+.page-title,
+#app-shell main section > .card > .card-body > .d-flex:first-child h2,
+#app-shell main section > .d-flex:first-child h2,
+#app-shell .content-area > section > .row:first-child > .col-12:first-child > .d-flex:first-child h2,
+#paciente-ficha-content > .card > .card-body > .d-flex h2 {
+  color: var(--brand-900);
+  font-size: clamp(1.5rem, 1.25rem + .7vw, 2rem) !important;
+  font-weight: 600;
+  letter-spacing: -.015em;
+}
+
+.section-title,
+#app-shell main h3,
+#app-shell main h4,
+#app-shell main .card-body > h2:not(.modal-title) {
+  color: var(--brand-700);
+  font-size: 1.15rem !important;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.data-label,
+.form-text,
+.text-secondary,
+small.text-secondary { color: var(--text-secondary) !important; }
+
+.data-label { display: block; font-size: .8125rem; font-weight: 500; margin-bottom: .15rem; }
+.data-value { color: var(--text-primary); font-size: 1rem; font-weight: 400; }
+.content-area > section:not(.d-none) { color: var(--text-primary); }
 
 .app-header {
   background: linear-gradient(130deg, var(--brand-900), var(--brand-700));
@@ -92,17 +132,39 @@ body {
   background-color: var(--brand-700);
 }
 
+.nav-tabs { border-bottom-color: var(--border-soft); gap: .25rem; }
+.nav-tabs .nav-link { border: 0; border-bottom: 3px solid transparent; color: var(--text-secondary); font-weight: 500; padding: .7rem 1rem; }
+.nav-tabs .nav-link:hover,
+.nav-tabs .nav-link:focus-visible { background: var(--surface-soft); color: var(--brand-700); }
+.nav-tabs .nav-link.active { background: var(--brand-100); border-bottom-color: var(--brand-700); color: var(--brand-900); font-weight: 600; }
+
 .card {
+  border-color: var(--border-soft);
   border-radius: 1rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, .05);
 }
+
+.card-body { padding: clamp(1rem, .75rem + .75vw, 1.5rem); }
 
 .table thead th {
   background-color: #f1f5fb;
+  color: var(--brand-900);
+  font-size: .8125rem;
+  font-weight: 600;
+  letter-spacing: .015em;
+  white-space: nowrap;
 }
 
+.table > :not(caption) > * > * { border-bottom-color: var(--border-soft); padding: .75rem; vertical-align: middle; }
+.table tbody td { color: var(--text-primary); }
+
 .badge {
-  letter-spacing: 0.06em;
+  font-weight: 600;
+  letter-spacing: .02em;
 }
+
+.btn { border-radius: .55rem; font-weight: 500; padding-inline: .9rem; }
+.btn-sm { border-radius: .45rem; }
 
 .btn-primary {
   --bs-btn-bg: var(--brand-700);
@@ -111,8 +173,44 @@ body {
   --bs-btn-hover-border-color: var(--brand-900);
 }
 
+.btn-outline-secondary {
+  --bs-btn-color: var(--text-secondary);
+  --bs-btn-border-color: #aebac7;
+  --bs-btn-hover-bg: #edf1f5;
+  --bs-btn-hover-border-color: #8998a8;
+  --bs-btn-hover-color: var(--text-primary);
+}
+
+.btn-danger,
+.btn-outline-danger { font-weight: 600; }
+
+.form-label { color: var(--text-secondary); font-size: .875rem; font-weight: 500; margin-bottom: .35rem; }
+.form-control,
+.form-select { border-color: #bcc8d4; border-radius: .55rem; color: var(--text-primary); min-height: 2.65rem; }
+.form-control:focus,
+.form-select:focus { border-color: var(--brand-700); box-shadow: 0 0 0 .2rem rgba(28, 63, 95, .14); }
+
+.modal-content { border: 0; border-radius: 1rem; }
+.modal-header,
+.modal-footer { border-color: var(--border-soft); }
+.modal-title { color: var(--brand-900); font-weight: 600; }
+
+.alert { align-items: flex-start; border-radius: .7rem; display: flex; gap: .65rem; }
+.alert .alert-icon { flex: 0 0 auto; font-size: 1.1rem; line-height: 1.5; }
+.alert .alert-message { flex: 1 1 auto; }
+
 #alert-container .alert {
   margin-bottom: 0;
+}
+
+@media (max-width: 767.98px) {
+  :root { --space-section: 1rem; }
+  .card { border-radius: .75rem; }
+  .card-body { padding: 1rem; }
+  .nav-tabs { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; }
+  .nav-tabs .nav-link { padding-inline: .75rem; white-space: nowrap; }
+  .table > :not(caption) > * > * { padding: .65rem .55rem; }
+  .btn { min-height: 2.5rem; }
 }
 
 .odontograma-svg {

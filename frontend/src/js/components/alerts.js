@@ -4,9 +4,18 @@
   const previousTimer = alertTimers.get(container);
   if (previousTimer) window.clearTimeout(previousTimer);
 
+  const icons = {
+    success: 'bi-check-circle-fill',
+    danger: 'bi-exclamation-octagon-fill',
+    warning: 'bi-exclamation-triangle-fill',
+    info: 'bi-info-circle-fill',
+  };
+  const icon = icons[type] || icons.info;
+
   container.innerHTML = `
     <div class="alert alert-${type} alert-dismissible fade show" role="alert">
-      ${message}
+      <i class="bi ${icon} alert-icon" aria-hidden="true"></i>
+      <span class="alert-message">${message}</span>
       <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
   `;

@@ -36,6 +36,21 @@ const SECTION_MAP = {
 };
 let appInitialized = false;
 
+function setLoginMessage(message = '') {
+  if (!ui.loginError) return;
+  ui.loginError.replaceChildren();
+  if (message) {
+    const icon = document.createElement('i');
+    icon.className = 'bi bi-exclamation-octagon-fill alert-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    const text = document.createElement('span');
+    text.className = 'alert-message';
+    text.textContent = message;
+    ui.loginError.append(icon, text);
+  }
+  ui.loginError.classList.toggle('d-none', !message);
+}
+
 function getStoredSection() {
   try {
     return sessionStorage.getItem(ACTIVE_SECTION_KEY);
@@ -90,10 +105,7 @@ function showLoginScreen(message = '') {
   ui.loginScreen?.classList.remove('d-none');
   ui.appShell?.classList.add('d-none');
   if (ui.loginForm) ui.loginForm.reset();
-  if (ui.loginError) {
-    ui.loginError.textContent = message || '';
-    ui.loginError.classList.toggle('d-none', !message);
-  }
+  setLoginMessage(message);
 }
 
 function showLoadingScreen(message = 'Validando sesión...') {
@@ -149,10 +161,7 @@ async function handleLoginSubmit(event) {
   const submitBtn = ui.loginForm?.querySelector('button[type="submit"]');
 
   if (!email || !password) {
-    if (ui.loginError) {
-      ui.loginError.textContent = 'Email y contraseña son requeridos';
-      ui.loginError.classList.remove('d-none');
-    }
+    setLoginMessage('Email y contraseña son requeridos');
     return;
   }
 

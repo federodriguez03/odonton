@@ -659,7 +659,7 @@ function renderFichaContent(data) {
               <div class="col-12 col-lg-8"><span class="text-secondary small d-block">Domicilio</span>${escapeHtml(formatText(paciente.domicilio))}</div>
             </div>
             <div class="row g-3 mb-4">
-              <div class="col-12"><h3 class="h5 mb-0">Información clínica existente</h3></div>
+              <div class="col-12"><h3 class="h5 mb-0">Antecedentes y declaración de salud</h3></div>
               <div class="col-md-4"><span class="text-secondary small d-block">Alergias</span>${escapeHtml(formatText(paciente.alergias))}</div>
               <div class="col-md-4"><span class="text-secondary small d-block">Condiciones</span>${escapeHtml(formatText(paciente.condiciones))}</div>
               <div class="col-md-4"><span class="text-secondary small d-block">Estado del tratamiento</span>${escapeHtml(formatText(paciente.estado_tratamiento))}</div>
@@ -667,7 +667,7 @@ function renderFichaContent(data) {
             </div>
             <hr class="my-4" />
             <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
-              <h3 class="h5 mb-0">Archivos</h3>
+              <h3 class="h5 mb-0">Todos los archivos</h3>
               <button class="btn btn-outline-secondary btn-sm" type="button" id="ficha-documentos-refresh">Actualizar</button>
             </div>
             <form id="ficha-documentos-form" class="row g-2 align-items-end mb-3">

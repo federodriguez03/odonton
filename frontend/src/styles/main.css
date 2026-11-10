@@ -3,13 +3,10 @@
 :root {
   --surface: #ffffff;
   --surface-muted: #f4f7fb;
-  --surface-soft: #eef2f7;
-  --text-primary: #0f172a;
-  --text-muted: #64748b;
-  --border-soft: #e2e8f0;
-  --brand-primary: #1c3f5f;
+  --text-muted: var(--text-secondary);
+  --brand-primary: var(--brand-700);
   --brand-secondary: #2f6ea0;
-  --brand-accent: #f2b84b;
+  --brand-accent: var(--accent);
 }
 
 body {
@@ -130,53 +127,17 @@ body {
   padding: 24px;
 }
 
-.card {
-  border: 1px solid var(--border-soft);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
-}
-
 .table {
   border-collapse: separate;
   border-spacing: 0;
-}
-
-.table thead th {
-  background: var(--surface-muted);
-  color: var(--text-muted);
-  font-weight: 600;
-  border-bottom: 1px solid var(--border-soft);
 }
 
 .table tbody tr:hover {
   background: #f8fafc;
 }
 
-.form-control,
-.form-select {
-  border-radius: 10px;
-  border-color: var(--border-soft);
-}
-
-.form-control:focus,
-.form-select:focus {
-  border-color: var(--brand-secondary);
-  box-shadow: 0 0 0 0.2rem rgba(47, 110, 160, 0.15);
-}
-
-.btn-primary {
-  --bs-btn-bg: var(--brand-primary);
-  --bs-btn-border-color: var(--brand-primary);
-  --bs-btn-hover-bg: var(--brand-secondary);
-  --bs-btn-hover-border-color: var(--brand-secondary);
-}
-
 .btn-outline-light {
   border-color: rgba(255, 255, 255, 0.4);
-}
-
-.modal-content {
-  border-radius: 16px;
-  border: 1px solid var(--border-soft);
 }
 
 .stat-card {
