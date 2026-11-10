@@ -140,6 +140,16 @@ export function getOdontogramaReferencias(pacienteId = null) {
   return request(`/api/odontograma/referencias${query}`);
 }
 
+export function getProtesisFijas(pacienteId) {
+  const query = new URLSearchParams({ pacienteId });
+  return request(`/api/protesis-fijas?${query.toString()}`);
+}
+
+export function getProtesisRemovibles(pacienteId) {
+  const query = new URLSearchParams({ pacienteId });
+  return request(`/api/protesis-removibles?${query.toString()}`);
+}
+
 export function getTratamientos(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {

@@ -145,12 +145,14 @@ body {
 }
 
 .odonto-face.state-sano { fill: #ffffff; }
+.odonto-face.state-sin_evaluar { fill: #e5e7eb; stroke-dasharray: 2 1; }
 .odonto-face.state-existente { fill: #ff4d4d; }
 .odonto-face.state-requerido { fill: #4d79ff; }
 .odonto-face.state-corona { fill: #fcd34d; }
 .odonto-face.state-protesis_fija { fill: #cbd5ff; }
 .odonto-face.state-protesis_removible { fill: #9dd6c8; }
 .odonto-face.state-ausente { fill: #e2e8f0; }
+.odonto-corona-completa { fill: none; stroke: #92400e; stroke-width: 2.5; }
 
 .odonto-tooth-outline {
   fill: none;

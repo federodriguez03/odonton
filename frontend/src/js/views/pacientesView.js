@@ -9,12 +9,15 @@ import {
   getOdontogramaPaciente,
   getOdontogramaReferencias,
   getPacientes,
+  getProtesisFijas,
+  getProtesisRemovibles,
   postOdontograma,
   updateAtencion,
   updatePaciente,
   uploadDocumento,
 } from '../api.js';
 import { renderAlert } from '../components/alerts.js';
+import { buildOdontogramaChangePayloads } from '../odontogramaChanges.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -29,10 +32,12 @@ const temporales = {
 };
 
 const estados = {
+  sin_evaluar: '#e5e7eb',
   sano: '#ffffff',
   existente: '#ff4d4d', // prestaciones existentes
   requerido: '#4d79ff', // prestaciones requeridas
   corona: '#ffcc00',
+  corona_completa: '#f59e0b',
   protesis_fija: '#cbd5ff',
   protesis_removible: '#9dd6c8',
   ausente: '#4b5563',
@@ -69,6 +74,7 @@ const state = {
     pacienteId: null,
     selectedTooth: null,
     registros: new Map(),
+    dirtyKeys: new Set(),
     metaDirty: false,
     referencias: new Map(),
   },
@@ -108,6 +114,9 @@ const ui = {
   odontoSarro: document.getElementById('odonto-sarro'),
   odontoPeriodontal: document.getElementById('odonto-periodontal'),
   odontoCount: document.getElementById('odonto-count-existentes'),
+  odontoCountProtesisFijas: document.getElementById('odonto-count-protesis-fijas'),
+  odontoCountProtesisRemovibles: document.getElementById('odonto-count-protesis-removibles'),
+  odontoCountMarcasHeredadas: document.getElementById('odonto-count-marcas-protesis-heredadas'),
   odontoDenticion: document.getElementById('odonto-denticion'),
   odontoExportPdf: document.getElementById('odonto-export-pdf'),
   odontoDetails: document.getElementById('odontograma-tooth-details'),
@@ -750,14 +759,33 @@ function renderOdontogramaHistorico(historiaId, rawSnapshot) {
     const y = row === 0 ? 8 : 67;
     FACES.forEach((cara) => {
       const registro = registroMap.get(`${diente}-${cara}`);
-      const estado = registro?.estado || 'sano';
-      svg.appendChild(createSvgEl('polygon', {
+      const estado = registro?.estado || 'sin_informacion_registrada';
+      const polygon = createSvgEl('polygon', {
         points: pointsToAbsolute(FACE_POLYGONS[cara], x, y, size),
-        fill: registro?.color || colores[estado] || colores.sano || '#ffffff',
+        fill: registro?.color || colores[estado] || '#d1d5db',
         stroke: '#6c757d',
         'stroke-width': 0.5,
-      }));
+        ...(registro ? {} : { 'stroke-dasharray': '2 1' }),
+      });
+      if (!registro) {
+        const title = createSvgEl('title');
+        title.textContent = 'Sin información registrada';
+        polygon.appendChild(title);
+      }
+      svg.appendChild(polygon);
     });
+    if (FACES.every((cara) => registroMap.get(`${diente}-${cara}`)?.estado === 'corona_completa')) {
+      svg.appendChild(createSvgEl('rect', {
+        x: x + 1.5,
+        y: y + 1.5,
+        width: size - 3,
+        height: size - 3,
+        rx: 5,
+        fill: 'none',
+        stroke: '#92400e',
+        'stroke-width': 2.5,
+      }));
+    }
     const label = createSvgEl('text', { x: x + size / 2, y: y + size + 9, 'text-anchor': 'middle', 'font-size': 7 });
     label.textContent = String(diente);
     svg.appendChild(label);
@@ -770,6 +798,9 @@ function renderOdontogramaHistorico(historiaId, rawSnapshot) {
       color: registro.color || catalogada?.color || colores[registro.estado] || '#ffffff',
     }];
   })).values()];
+  if (dientes.some((diente) => FACES.some((cara) => !registroMap.has(`${diente}-${cara}`)))) {
+    referenciasHistoricas.push({ nombre: 'Sin información registrada', color: '#d1d5db' });
+  }
   if (referenciasHistoricas.length) {
     const legend = document.createElement('div');
     legend.className = 'd-flex flex-wrap gap-2 mb-2';
@@ -1053,7 +1084,7 @@ function pointsToAbsolute(points, x, y, size) {
 
 function getRecordState(toothNumber, face) {
   const key = `${toothNumber}-${face}`;
-  return state.odontograma.registros.get(key) || 'sano';
+  return state.odontograma.registros.get(key) || 'sin_evaluar';
 }
 
 function getReferencia(codigo) {
@@ -1061,15 +1092,17 @@ function getReferencia(codigo) {
 }
 
 function renderReferenciasOdontograma(referencias) {
-  state.odontograma.referencias = new Map(referencias.map((ref) => [ref.codigo, ref]));
+  const sinEvaluar = { codigo: 'sin_evaluar', nombre: 'Sin evaluar', color: estados.sin_evaluar, alcance: 'cara', activo: false, sistema: true };
+  state.odontograma.referencias = new Map([sinEvaluar, ...referencias].map((ref) => [ref.codigo, ref]));
   const activas = referencias.filter((ref) => ref.activo);
   ui.odontoEstadoClinico.innerHTML = activas.map((ref) => `<option value="${escapeHtml(ref.codigo)}">${escapeHtml(ref.nombre)}</option>`).join('');
-  ui.odontoLegend.innerHTML = referencias.map((ref) => `<span class="badge border text-dark" style="background:${ref.color}">${escapeHtml(ref.nombre)}${ref.activo ? '' : ' (inactiva)'}</span>`).join(' ');
+  ui.odontoLegend.innerHTML = [sinEvaluar, ...referencias].map((ref) => `<span class="badge border text-dark" style="background:${ref.color}">${escapeHtml(ref.nombre)}${ref.sistema || ref.activo ? '' : ' (inactiva)'}${ref.codigo === 'corona_completa' ? ' ◯' : ''}</span>`).join(' ');
 }
 
 function paintFace(toothNumber, face, estado) {
   const key = `${toothNumber}-${face}`;
   state.odontograma.registros.set(key, estado);
+  state.odontograma.dirtyKeys.add(key);
 
   const selector = `.odonto-face[data-tooth="${toothNumber}"][data-face="${face}"]`;
   const el = ui.odontoSvg?.querySelector(selector);
@@ -1080,13 +1113,34 @@ function paintFace(toothNumber, face, estado) {
   }
 }
 
+function toothHasState(toothNumber, codigo) {
+  return FACES.every((face) => getRecordState(toothNumber, face) === codigo);
+}
+
+function countLegacyProstheticMarks() {
+  const teeth = new Set();
+  state.odontograma.registros.forEach((codigo, key) => {
+    if (codigo === 'protesis_fija' || codigo === 'protesis_removible') teeth.add(key.split('-')[0]);
+  });
+  return teeth.size;
+}
+
+function updateProsthesisCounts() {
+  if (ui.odontoCountProtesisFijas) ui.odontoCountProtesisFijas.textContent = String(state.odontograma.protesisFijas.length);
+  if (ui.odontoCountProtesisRemovibles) ui.odontoCountProtesisRemovibles.textContent = String(state.odontograma.protesisRemovibles.length);
+  if (ui.odontoCountMarcasHeredadas) ui.odontoCountMarcasHeredadas.textContent = String(countLegacyProstheticMarks());
+}
+
 function toothHasOnlyAusente(toothNumber) {
   return FACES.every((face) => ['ausente', 'pieza_ausente'].includes(getRecordState(toothNumber, face)));
 }
 
 function buildTooltipText(toothNumber) {
   const estados = FACES.map((f) => `${f}: ${getRecordState(toothNumber, f)}`).join(' | ');
-  return `Pieza ${toothNumber}\n${estados}`;
+  const heredada = FACES.some((face) => ['protesis_fija', 'protesis_removible'].includes(getRecordState(toothNumber, face)))
+    ? '\nMarca heredada sin detalle protésico'
+    : '';
+  return `Pieza ${toothNumber}\n${estados}${heredada}`;
 }
 
 function renderToothDetails() {
@@ -1102,6 +1156,9 @@ function renderToothDetails() {
     estadosCaras,
     `Sarro: ${ui.odontoSarro?.checked ? 'Sí' : 'No'} | Periodontal: ${ui.odontoPeriodontal?.checked ? 'Sí' : 'No'}`,
   ];
+  if (FACES.some((face) => ['protesis_fija', 'protesis_removible'].includes(getRecordState(tooth, face)))) {
+    rows.push('Marca heredada sin detalle protésico');
+  }
   ui.odontoDetails.textContent = rows.join(' · ');
 }
 
@@ -1161,6 +1218,17 @@ function createToothSVG(toothNumber, x = 0, y = 0, size = 38) {
     });
     group.appendChild(line1);
     group.appendChild(line2);
+  }
+
+  if (toothHasState(toothNumber, 'corona_completa')) {
+    group.appendChild(createSvgEl('rect', {
+      x: x + 1.5,
+      y: y + 1.5,
+      width: size - 3,
+      height: size - 3,
+      rx: 5,
+      class: 'odonto-corona-completa',
+    }));
   }
 
   const text = createSvgEl('text', {
@@ -1254,15 +1322,18 @@ async function loadOdontograma(pacienteId) {
   state.odontograma.pacienteId = Number(pacienteId);
   state.odontograma.selectedTooth = null;
   state.odontograma.registros.clear();
+  state.odontograma.dirtyKeys.clear();
   ui.odontoSelectedPiece.textContent = '-';
   ui.odontoSaveBtn.disabled = true;
   ui.odontoObservaciones.value = '';
   state.odontograma.metaDirty = false;
   ui.odontoModalLabel.textContent = 'Cargando odontograma...';
 
-  const [data, referenciasData] = await Promise.all([
+  const [data, referenciasData, fijasData, removiblesData] = await Promise.all([
     getOdontogramaPaciente(pacienteId),
     getOdontogramaReferencias(pacienteId),
+    getProtesisFijas(pacienteId),
+    getProtesisRemovibles(pacienteId),
   ]);
   renderReferenciasOdontograma(referenciasData.referencias || []);
   const paciente = data.paciente || {};
@@ -1273,8 +1344,8 @@ async function loadOdontograma(pacienteId) {
   });
 
   state.odontograma.tratamientosByTooth = new Map();
-  state.odontograma.protesisFijas = [];
-  state.odontograma.protesisRemovibles = [];
+  state.odontograma.protesisFijas = fijasData.protesis || [];
+  state.odontograma.protesisRemovibles = removiblesData.protesis || [];
 
   if (data.meta) {
     ui.odontoSarro.checked = Boolean(data.meta.sarro);
@@ -1289,6 +1360,7 @@ async function loadOdontograma(pacienteId) {
 
   renderOdontograma();
   updateCountExistentes();
+  updateProsthesisCounts();
   renderToothDetails();
 }
 
@@ -1314,39 +1386,22 @@ async function guardarToothSeleccionado() {
     return;
   }
 
-  // Guardar todo el odontograma (todas las caras de todos los dientes cargados)
-  const dientes = new Set();
-  state.odontograma.registros.forEach((_, key) => {
-    const [d] = key.split('-');
-    const n = Number(d);
-    if (Number.isInteger(n)) dientes.add(n);
-  });
-
-  if (dientes.size === 0) {
-    renderAlert(ui.alertContainer, 'No hay datos de odontograma para guardar.', 'warning');
+  const dirtyKeys = [...state.odontograma.dirtyKeys];
+  if (dirtyKeys.length === 0 && !state.odontograma.metaDirty) {
+    renderAlert(ui.alertContainer, 'No hay cambios de odontograma para guardar.', 'warning');
     return;
   }
 
-  const requests = [];
-  dientes.forEach((d) => {
-    FACES.forEach((face) => {
-      const estado = getRecordState(d, face);
-      requests.push(
-        postOdontograma({
-          paciente_id: pacienteId,
-          diente: d,
-          cara: face,
-          estado,
-          ...metaPayload,
-        }),
-      );
-    });
-  });
+  const payloads = buildOdontogramaChangePayloads({ pacienteId, registros: state.odontograma.registros, dirtyKeys });
+  const requests = payloads.map((payload) => postOdontograma(payload));
 
   await Promise.all(requests);
+  if (state.odontograma.metaDirty) await postOdontograma(metaPayload);
+  dirtyKeys.forEach((key) => state.odontograma.dirtyKeys.delete(key));
   state.odontograma.metaDirty = false;
   renderAlert(ui.alertContainer, 'Odontograma guardado correctamente.', 'success');
   updateCountExistentes();
+  updateProsthesisCounts();
 }
 
 function bindOdontograma() {
@@ -1392,6 +1447,9 @@ function bindOdontograma() {
     const sarro = ui.odontoSarro.checked ? 'Sí' : 'No';
     const perio = ui.odontoPeriodontal.checked ? 'Sí' : 'No';
     const obs = ui.odontoObservaciones.value?.trim() || 'Sin observaciones';
+    const fijas = state.odontograma.protesisFijas.length;
+    const removibles = state.odontograma.protesisRemovibles.length;
+    const marcasHeredadas = countLegacyProstheticMarks();
     const legend = `<ul class="legend">${[...state.odontograma.referencias.values()].map((ref) => `<li><span class="swatch" style="background:${ref.color}"></span>${escapeHtml(ref.nombre)}${ref.activo ? '' : ' (inactiva)'}</li>`).join('')}</ul>`;
     const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Odontograma</title>
@@ -1432,6 +1490,8 @@ svg{width:100%;height:auto;}
 <div class="meta"><strong>Dentición:</strong> ${dent}</div>
 <div class="meta"><strong>Sarro:</strong> ${sarro} | <strong>Periodontal:</strong> ${perio}</div>
 <div class="meta"><strong>Observaciones:</strong> ${obs}</div>
+<div class="meta"><strong>Prótesis registradas:</strong> ${fijas} fijas · ${removibles} removibles</div>
+<div class="meta"><strong>Marcas heredadas sin detalle protésico:</strong> ${marcasHeredadas}</div>
 <div class="block">${legend}</div>
 <div class="svg-wrap">
 ${ui.odontoSvg.outerHTML}
