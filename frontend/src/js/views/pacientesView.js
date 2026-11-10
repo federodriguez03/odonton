@@ -6,12 +6,14 @@ import {
   getDocumentoPreview,
   getFichaClinica,
   getDocumentos,
+  getDeclaracionSalud,
   getOdontogramaPaciente,
   getOdontogramaReferencias,
   getPacientes,
   getProtesisFijas,
   getProtesisRemovibles,
   postOdontograma,
+  saveDeclaracionSalud,
   updateAtencion,
   updatePaciente,
   uploadDocumento,
@@ -79,6 +81,7 @@ const state = {
     total: 0,
     documentoUrls: new Map(),
   },
+  declaracionSalud: { pacienteId: null, data: null },
   odontograma: {
     pacienteId: null,
     selectedTooth: null,
@@ -135,6 +138,7 @@ const ui = {
 
 const pacienteModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('paciente-modal'));
 const documentoPreviewModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('documento-preview-modal'));
+const declaracionSaludModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('declaracion-salud-modal'));
 
 function odontogramaEditorHtml() {
   return `
@@ -561,6 +565,142 @@ function closeFicha() {
   ui.pacientesListView.classList.remove('d-none');
 }
 
+const DECLARACION_ANSWER_LABELS = { yes: 'Sí', no: 'No', unknown: 'No sabe', not_applicable: 'No corresponde' };
+
+function renderDeclaracionSaludResumen(data) {
+  const container = document.getElementById('declaracion-salud-resumen');
+  if (!container) return;
+  const latest = data?.latest;
+  if (!latest) {
+    container.innerHTML = `<div class="d-flex flex-wrap justify-content-between align-items-center gap-3"><div><h4 class="section-title mb-1">Declaración de salud pendiente</h4><p class="small text-secondary mb-0">Todavía no hay respuestas declaradas por el paciente o tutor.</p></div><button class="btn btn-primary" type="button" id="declaracion-salud-open">Completar</button></div>`;
+  } else {
+    const summary = latest.resumen || [];
+    container.innerHTML = `
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3"><div><h4 class="section-title mb-1">Declaración de salud ${latest.estado === 'completa' ? 'completa' : 'incompleta'}</h4><p class="small text-secondary mb-0">Versión ${latest.numero_version} · ${formatDate(latest.created_at)} · Respondió: ${latest.respondido_por === 'tutor' ? `Tutor/a: ${escapeHtml(latest.nombre_tutor || '')}` : 'Paciente'} · Cargó: ${escapeHtml(latest.cargado_por_nombre || `Usuario ${latest.cargado_por_usuario_id}`)}</p></div><button class="btn btn-outline-primary" type="button" id="declaracion-salud-open">Ver / actualizar declaración</button></div>
+      <div class="small fw-semibold text-secondary mb-2">Datos declarados que requieren atención</div>
+      ${summary.length ? `<ul class="mb-0">${summary.map((item) => `<li><strong>${escapeHtml(item.label)}:</strong> ${escapeHtml(item.value)}</li>`).join('')}</ul>` : '<p class="mb-0 text-secondary">No hay respuestas positivas para resumir. Consulte el formulario completo; vacío nunca equivale a “No”.</p>'}`;
+  }
+  document.getElementById('declaracion-salud-open')?.addEventListener('click', () => {
+    openDeclaracionSalud().catch((error) => renderAlert(ui.alertContainer, error.message, 'danger'));
+  });
+}
+
+async function loadDeclaracionSaludResumen(pacienteId) {
+  try {
+    const data = await getDeclaracionSalud(pacienteId);
+    if (String(state.ficha.pacienteId) !== String(pacienteId)) return;
+    state.declaracionSalud = { pacienteId: Number(pacienteId), data };
+    renderDeclaracionSaludResumen(data);
+  } catch (error) {
+    const container = document.getElementById('declaracion-salud-resumen');
+    if (container) container.innerHTML = `<span class="text-danger"><i class="bi bi-exclamation-octagon-fill me-1" aria-hidden="true"></i>${escapeHtml(error.message)}</span>`;
+  }
+}
+
+function renderDeclaracionDetail(question, detail, response) {
+  const current = response?.details?.[detail.id];
+  const requiredCopy = (detail.requiredWhen || []).includes('yes') ? ' <span class="text-secondary">(necesario para completar)</span>' : '';
+  if (detail.type === 'multi') {
+    const selected = new Set(Array.isArray(current) ? current : []);
+    return `<fieldset class="col-12 col-lg-6" data-detail-id="${detail.id}"><legend class="form-label mb-2">${escapeHtml(detail.label)}${requiredCopy}</legend><div class="d-flex flex-wrap gap-3">${detail.options.map((option) => `<label class="form-check"><input class="form-check-input" type="checkbox" value="${escapeHtml(option)}" ${selected.has(option) ? 'checked' : ''}><span class="form-check-label">${escapeHtml(option)}</span></label>`).join('')}</div></fieldset>`;
+  }
+  const type = ['date', 'number'].includes(detail.type) ? detail.type : 'text';
+  const control = detail.type === 'textarea'
+    ? `<textarea class="form-control" rows="2">${escapeHtml(current || '')}</textarea>`
+    : `<input class="form-control" type="${type}" value="${escapeHtml(current ?? '')}" ${type === 'number' ? 'min="0" max="60"' : ''}>`;
+  return `<div class="col-12 col-lg-6" data-detail-id="${detail.id}"><label class="form-label">${escapeHtml(detail.label)}${requiredCopy}</label>${control}</div>`;
+}
+
+function renderDeclaracionQuestions(questionnaire, latest) {
+  const container = document.getElementById('declaracion-preguntas');
+  if (!container) return;
+  const responses = latest?.respuestas || {};
+  container.innerHTML = questionnaire.sections.map((section) => `
+    <section class="card border mb-3 health-declaration-section"><div class="card-body"><h3 class="section-title mb-3">${escapeHtml(section.title)}</h3><div class="d-grid gap-3">
+      ${section.questions.map((question) => {
+        const response = responses[question.id];
+        return `<div class="health-question border rounded-3 p-3" data-question-id="${question.id}"><div class="row g-3 align-items-start"><div class="col-lg-7"><label class="form-label fw-semibold text-dark" for="health-${question.id}">${escapeHtml(question.label)}</label></div><div class="col-lg-5"><select id="health-${question.id}" class="form-select health-answer"><option value="">Sin responder</option>${question.answers.map((answer) => `<option value="${answer}" ${response?.answer === answer ? 'selected' : ''}>${DECLARACION_ANSWER_LABELS[answer]}</option>`).join('')}</select></div><div class="col-12 health-details ${response?.answer === 'yes' ? '' : 'd-none'}"><div class="row g-3">${(question.details || []).map((detail) => renderDeclaracionDetail(question, detail, response)).join('')}</div></div></div></div>`;
+      }).join('')}
+    </div></div></section>`).join('');
+  container.querySelectorAll('.health-answer').forEach((select) => select.addEventListener('change', () => {
+    const question = select.closest('.health-question');
+    const details = question?.querySelector('.health-details');
+    details?.classList.toggle('d-none', select.value !== 'yes');
+    if (select.value !== 'yes') details?.querySelectorAll('input, textarea').forEach((control) => {
+      if (control.type === 'checkbox') control.checked = false;
+      else control.value = '';
+    });
+  }));
+}
+
+async function openDeclaracionSalud() {
+  const pacienteId = state.declaracionSalud.pacienteId || Number(state.ficha.pacienteId);
+  if (!pacienteId) return;
+  const data = await getDeclaracionSalud(pacienteId);
+  state.declaracionSalud = { pacienteId, data };
+  const latest = data.latest;
+  const respondedBy = document.getElementById('declaracion-respondido-por');
+  const tutorName = document.getElementById('declaracion-tutor-nombre');
+  respondedBy.value = latest?.respondido_por || '';
+  tutorName.value = latest?.nombre_tutor || '';
+  document.getElementById('declaracion-tutor-group').classList.toggle('d-none', respondedBy.value !== 'tutor');
+  document.getElementById('declaracion-estado-ayuda').textContent = latest ? `Última versión: ${latest.numero_version} · ${latest.estado}. Cada guardado conserva la versión anterior.` : 'Puede guardarse incompleta y continuarse después.';
+  renderDeclaracionQuestions(data.questionnaire, latest);
+  declaracionSaludModal?.show();
+}
+
+function collectDeclaracionResponses(questionnaire) {
+  const responses = {};
+  questionnaire.sections.flatMap((section) => section.questions).forEach((question) => {
+    const block = document.querySelector(`.health-question[data-question-id="${question.id}"]`);
+    const answer = block?.querySelector('.health-answer')?.value;
+    if (!answer) return;
+    const details = {};
+    if (answer === 'yes') {
+      (question.details || []).forEach((detail) => {
+        const detailBlock = block.querySelector(`[data-detail-id="${detail.id}"]`);
+        if (detail.type === 'multi') {
+          const values = [...detailBlock.querySelectorAll('input:checked')].map((input) => input.value);
+          if (values.length) details[detail.id] = values;
+        } else {
+          const value = detailBlock?.querySelector('input, textarea')?.value?.trim();
+          if (value) details[detail.id] = detail.type === 'number' ? Number(value) : value;
+        }
+      });
+    }
+    responses[question.id] = { answer, ...(Object.keys(details).length ? { details } : {}) };
+  });
+  return responses;
+}
+
+function bindDeclaracionSalud() {
+  const respondedBy = document.getElementById('declaracion-respondido-por');
+  respondedBy?.addEventListener('change', () => {
+    const isTutor = respondedBy.value === 'tutor';
+    document.getElementById('declaracion-tutor-group')?.classList.toggle('d-none', !isTutor);
+    if (!isTutor) document.getElementById('declaracion-tutor-nombre').value = '';
+  });
+  document.getElementById('declaracion-salud-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const data = state.declaracionSalud.data;
+    if (!data) return;
+    try {
+      const result = await saveDeclaracionSalud(state.declaracionSalud.pacienteId, {
+        respondido_por: respondedBy.value,
+        nombre_tutor: document.getElementById('declaracion-tutor-nombre').value.trim() || null,
+        respuestas: collectDeclaracionResponses(data.questionnaire),
+      });
+      renderAlert(document.getElementById('declaracion-salud-alert'), result.mensaje, 'success');
+      const refreshed = await getDeclaracionSalud(state.declaracionSalud.pacienteId);
+      state.declaracionSalud.data = refreshed;
+      renderDeclaracionSaludResumen(refreshed);
+      document.getElementById('declaracion-estado-ayuda').textContent = `Versión ${refreshed.latest.numero_version} guardada como ${refreshed.latest.estado}.`;
+    } catch (error) {
+      renderAlert(document.getElementById('declaracion-salud-alert'), error.message, 'danger');
+    }
+  });
+}
+
 function renderFichaContent(data) {
   const paciente = data.paciente || {};
   const turnosAtencion = data.turnosDisponiblesAtencion || [];
@@ -660,10 +800,12 @@ function renderFichaContent(data) {
             </div>
             <div class="row g-3 mb-4">
               <div class="col-12"><h3 class="h5 mb-0">Antecedentes y declaración de salud</h3></div>
+              <div class="col-12"><p class="small text-secondary mb-0">Información clínica previa registrada en la ficha; no se convierte automáticamente en respuestas declaradas.</p></div>
               <div class="col-md-4"><span class="text-secondary small d-block">Alergias</span>${escapeHtml(formatText(paciente.alergias))}</div>
               <div class="col-md-4"><span class="text-secondary small d-block">Condiciones</span>${escapeHtml(formatText(paciente.condiciones))}</div>
               <div class="col-md-4"><span class="text-secondary small d-block">Estado del tratamiento</span>${escapeHtml(formatText(paciente.estado_tratamiento))}</div>
               <div class="col-12"><span class="text-secondary small d-block">Observaciones</span>${escapeHtml(formatText(paciente.observaciones))}</div>
+              <div class="col-12"><div id="declaracion-salud-resumen" class="border rounded-3 p-3 bg-light-subtle"><span class="text-secondary">Cargando declaración de salud...</span></div></div>
             </div>
             <hr class="my-4" />
             <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
@@ -717,6 +859,7 @@ function renderFichaContent(data) {
   bindAtencionDocumentos(historias);
   bindRegistroAtencion();
   bindEdicionAtenciones();
+  loadDeclaracionSaludResumen(paciente.id);
   historias.forEach((historia) => {
     if (historia.odontograma_snapshot) renderOdontogramaHistorico(historia.id, historia.odontograma_snapshot);
   });
@@ -1860,5 +2003,6 @@ export async function initPacientesView() {
   bindTableActions();
   bindOdontograma();
   bindClinicalAuxiliaryForms();
+  bindDeclaracionSalud();
   await loadPacientes();
 }

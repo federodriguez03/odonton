@@ -880,6 +880,29 @@
       </div>
     </div>
 
+    <div class="modal fade" id="declaracion-salud-modal" tabindex="-1" aria-labelledby="declaracion-salud-modal-label" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-sm-down">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div><h2 class="modal-title fs-4" id="declaracion-salud-modal-label">Declaración de salud</h2><p class="small text-secondary mb-0">Datos informados por el paciente o tutor. No constituye consentimiento ni diagnóstico.</p></div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+          </div>
+          <form id="declaracion-salud-form">
+            <div class="modal-body">
+              <div id="declaracion-salud-alert"></div>
+              <div class="card border mb-4"><div class="card-body"><h3 class="section-title">Quién respondió</h3><div class="row g-3">
+                <div class="col-md-5"><label class="form-label" for="declaracion-respondido-por">Respondido por</label><select id="declaracion-respondido-por" class="form-select" required><option value="">Seleccionar</option><option value="paciente">Paciente</option><option value="tutor">Tutor/a</option></select></div>
+                <div class="col-md-7 d-none" id="declaracion-tutor-group"><label class="form-label" for="declaracion-tutor-nombre">Nombre del tutor/a</label><input id="declaracion-tutor-nombre" class="form-control" maxlength="160" /></div>
+              </div></div></div>
+              <div id="declaracion-preguntas"></div>
+              <div class="alert alert-info mt-4" role="note"><i class="bi bi-info-circle-fill alert-icon" aria-hidden="true"></i><span class="alert-message"><strong>Evaluación profesional separada:</strong> diagnóstico, odontograma, plan de tratamiento y consentimiento no forman parte de estas respuestas declaradas.</span></div>
+            </div>
+            <div class="modal-footer justify-content-between"><span id="declaracion-estado-ayuda" class="small text-secondary">Puede guardarse incompleta y continuarse después.</span><div class="d-flex gap-2"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button><button type="submit" class="btn btn-primary">Guardar declaración</button></div></div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <div class="modal fade" id="tratamiento-modal" tabindex="-1" aria-labelledby="tratamiento-modal-label" aria-hidden="true">
       <div class="modal-dialog">
         <div class="modal-content">

@@ -16,6 +16,7 @@ const {
 	validarEntradaPaciente,
 	validarConsultaPacientes,
 } = require('../middlewares/pacientesMiddleware');
+const declaracionesSaludController = require('../controllers/declaracionesSaludController');
 
 // Crear paciente
 router.post(
@@ -84,6 +85,24 @@ router.get(
 		next();
 	},
 	(require('../controllers/pacientesController').fichaClinica)
+);
+
+router.get(
+	'/:id/declaracion-salud',
+	middlewareAutenticacion,
+	autorizarOdontologo,
+	middlewareAuditoria,
+	(req, res, next) => { req.auditAction = 'consultar_declaracion_salud'; next(); },
+	declaracionesSaludController.getDeclaration
+);
+
+router.post(
+	'/:id/declaracion-salud',
+	middlewareAutenticacion,
+	autorizarOdontologo,
+	middlewareAuditoria,
+	(req, res, next) => { req.auditAction = 'guardar_declaracion_salud'; next(); },
+	declaracionesSaludController.saveDeclaration
 );
 
 router.post(

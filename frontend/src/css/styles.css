@@ -199,6 +199,11 @@ small.text-secondary { color: var(--text-secondary) !important; }
 .alert .alert-icon { flex: 0 0 auto; font-size: 1.1rem; line-height: 1.5; }
 .alert .alert-message { flex: 1 1 auto; }
 
+.health-declaration-section { box-shadow: none; }
+.health-question { background: #fff; border-color: var(--border-soft) !important; }
+.health-question:focus-within { border-color: var(--brand-700) !important; box-shadow: 0 0 0 .15rem rgba(28, 63, 95, .08); }
+.health-details { padding-top: .25rem; }
+
 #alert-container .alert {
   margin-bottom: 0;
 }

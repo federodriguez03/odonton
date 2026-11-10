@@ -110,6 +110,17 @@ export function getFichaClinica(id, params = {}) {
   return request(`/api/pacientes/${id}/ficha-clinica${suffix}`);
 }
 
+export function getDeclaracionSalud(pacienteId) {
+  return request(`/api/pacientes/${pacienteId}/declaracion-salud`);
+}
+
+export function saveDeclaracionSalud(pacienteId, payload) {
+  return request(`/api/pacientes/${pacienteId}/declaracion-salud`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 export function createAtencion(pacienteId, payload) {
   return request(`/api/pacientes/${pacienteId}/atenciones`, {
     method: 'POST',
