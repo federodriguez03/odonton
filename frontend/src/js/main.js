@@ -175,10 +175,7 @@ async function handleLoginSubmit(event) {
       localStorage.removeItem(REMEMBER_EMAIL_KEY);
     }
   } catch (error) {
-    if (ui.loginError) {
-      ui.loginError.textContent = error.message || 'No se pudo iniciar sesión';
-      ui.loginError.classList.remove('d-none');
-    }
+    showLoginScreen(error.message || 'No se pudo preparar la aplicación');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
