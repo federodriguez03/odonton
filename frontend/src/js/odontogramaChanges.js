@@ -6,3 +6,7 @@ export function buildOdontogramaChangePayloads({ pacienteId, registros, dirtyKey
     return { paciente_id: pacienteId, diente: Number(diente), cara, estado };
   });
 }
+
+export function getOdontogramaTargetFaces({ face, alcance, faces }) {
+  return alcance === 'pieza' ? [...faces] : [face];
+}

@@ -17,7 +17,7 @@ import {
   uploadDocumento,
 } from '../api.js';
 import { renderAlert } from '../components/alerts.js';
-import { buildOdontogramaChangePayloads } from '../odontogramaChanges.js';
+import { buildOdontogramaChangePayloads, getOdontogramaTargetFaces } from '../odontogramaChanges.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -44,6 +44,15 @@ const estados = {
 };
 
 const FACES = ['vestibular', 'mesial', 'distal', 'oclusal', 'lingual'];
+const REFERENCE_NAMES = {
+  sano: 'Sano', existente: 'Prestación existente', requerido: 'Prestación requerida', corona: 'Corona anterior', corona_completa: 'Corona completa',
+  protesis_fija: 'Marca anterior de prótesis fija', protesis_removible: 'Marca anterior de prótesis removible', ausente: 'Ausente / a extraer (anterior)',
+  pieza_ausente: 'Pieza ausente', extraccion_indicada: 'Extracción indicada', sin_evaluar: 'Sin evaluar',
+};
+
+function getReferenceDisplayName(codigo) {
+  return REFERENCE_NAMES[codigo] || 'Marca anterior';
+}
 
 const FACE_POLYGONS = {
   vestibular: '0,0 100,0 75,25 25,25',
@@ -77,6 +86,7 @@ const state = {
     dirtyKeys: new Set(),
     metaDirty: false,
     referencias: new Map(),
+    exportReferences: [],
   },
 };
 
@@ -125,7 +135,56 @@ const ui = {
 
 const pacienteModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('paciente-modal'));
 const documentoPreviewModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('documento-preview-modal'));
-const odontoModal = window.bootstrap?.Modal.getOrCreateInstance(document.getElementById('odontograma-modal'));
+
+function odontogramaEditorHtml() {
+  return `
+    <section class="odontograma-editor" aria-labelledby="odontograma-editor-title">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+        <div><h3 class="h5 mb-1" id="odontograma-editor-title">Odontograma actual</h3><p class="text-secondary mb-0" id="odontograma-paciente-info">Cargando...</p></div>
+        <div class="d-flex gap-2 align-items-center">
+          <label class="visually-hidden" for="odonto-denticion">Dentición</label>
+          <select id="odonto-denticion" class="form-select form-select-sm">
+            <option value="permanente">Dentición permanente</option><option value="temporal">Dentición temporal</option><option value="mixta">Dentición mixta</option>
+          </select>
+          <button id="odonto-export-pdf" type="button" class="btn btn-outline-secondary btn-sm text-nowrap">Exportar PDF</button>
+        </div>
+      </div>
+      <form id="odontograma-form">
+        <div class="odontograma-flow border rounded-3 p-3 mb-3 bg-light-subtle">
+          <div class="row g-3 align-items-end">
+            <div class="col-lg-5"><label class="form-label fw-semibold" for="odonto-estado-clinico">1. Elegí una marca</label><select id="odonto-estado-clinico" class="form-select" required></select></div>
+            <div class="col-lg-7"><span class="small text-secondary d-block mb-1">2. Seleccioná una pieza o una cara</span><div id="odonto-selected-mark" class="fw-semibold" role="status">Seleccioná una marca</div><div class="small text-secondary">Selección actual: <strong id="odontograma-pieza-selected">ninguna</strong></div></div>
+          </div>
+        </div>
+        <div id="odontograma-legend" class="odontograma-legend mb-3"></div>
+        <details id="odontograma-marcas-anteriores" class="mb-3 d-none"><summary class="small fw-semibold text-secondary">Marcas anteriores</summary><div id="odontograma-legend-anteriores" class="odontograma-legend mt-2"></div></details>
+        <div class="odontograma-canvas border rounded-3 p-2 bg-light-subtle"><svg id="odontograma-svg" class="odontograma-svg" role="img" aria-label="Odontograma dental interactivo"></svg></div>
+        <div id="odontograma-tooth-details" class="mt-2 small text-secondary" aria-live="polite"></div>
+        <div class="d-flex flex-wrap gap-3 mt-3">
+          <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="odonto-sarro"><label class="form-check-label" for="odonto-sarro">Presencia de sarro</label></div>
+          <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="odonto-periodontal"><label class="form-check-label" for="odonto-periodontal">Enfermedad periodontal</label></div>
+          <div class="ms-lg-auto small text-secondary">Dientes registrados presentes: <strong id="odonto-count-existentes">-</strong></div>
+        </div>
+        <div class="d-flex flex-wrap gap-3 mt-2 small text-secondary" aria-label="Resumen de prótesis registradas">
+          <span>Prótesis fijas: <strong id="odonto-count-protesis-fijas">0</strong></span><span>Prótesis removibles: <strong id="odonto-count-protesis-removibles">0</strong></span><span>Marcas protésicas anteriores: <strong id="odonto-count-marcas-protesis-heredadas">0</strong></span>
+        </div>
+        <div class="mt-4"><label class="form-label fw-semibold" for="odonto-observaciones">Observaciones del odontograma</label><textarea id="odonto-observaciones" class="form-control" rows="3"></textarea></div>
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mt-3"><span id="odontograma-unsaved" class="small text-secondary" role="status">Sin cambios pendientes</span><button id="odontograma-save-btn" class="btn btn-primary" type="submit" disabled>Guardar cambios</button></div>
+      </form>
+    </section>`;
+}
+
+function refreshOdontogramaUi() {
+  Object.assign(ui, {
+    odontoModalLabel: document.getElementById('odontograma-paciente-info'), odontoSvg: document.getElementById('odontograma-svg'), odontoForm: document.getElementById('odontograma-form'),
+    odontoSelectedPiece: document.getElementById('odontograma-pieza-selected'), odontoEstadoClinico: document.getElementById('odonto-estado-clinico'), odontoSelectedMark: document.getElementById('odonto-selected-mark'),
+    odontoObservaciones: document.getElementById('odonto-observaciones'), odontoSaveBtn: document.getElementById('odontograma-save-btn'), odontoUnsaved: document.getElementById('odontograma-unsaved'),
+    odontoSarro: document.getElementById('odonto-sarro'), odontoPeriodontal: document.getElementById('odonto-periodontal'), odontoCount: document.getElementById('odonto-count-existentes'),
+    odontoCountProtesisFijas: document.getElementById('odonto-count-protesis-fijas'), odontoCountProtesisRemovibles: document.getElementById('odonto-count-protesis-removibles'), odontoCountMarcasHeredadas: document.getElementById('odonto-count-marcas-protesis-heredadas'),
+    odontoDenticion: document.getElementById('odonto-denticion'), odontoExportPdf: document.getElementById('odonto-export-pdf'), odontoDetails: document.getElementById('odontograma-tooth-details'),
+    odontoLegend: document.getElementById('odontograma-legend'), odontoPreviousLegend: document.getElementById('odontograma-legend-anteriores'), odontoPreviousDetails: document.getElementById('odontograma-marcas-anteriores'),
+  });
+}
 
 function formatDate(value) {
   if (!value) return '-';
@@ -642,11 +701,7 @@ function renderFichaContent(data) {
             ${historiasHtml}
           </div>
           <div class="tab-pane fade" id="ficha-odontograma">
-            <div class="border rounded-3 p-4">
-              <h3 class="h5">Odontograma actual</h3>
-              <p class="text-secondary">Consultá y guardá el estado odontológico vigente con el editor existente.</p>
-              <button id="ficha-abrir-odontograma" class="btn btn-primary" type="button"><i class="bi bi-grid-3x3-gap me-1"></i>Abrir editor de odontograma</button>
-            </div>
+            ${odontogramaEditorHtml()}
           </div>
         </div>
       </div>
@@ -654,15 +709,9 @@ function renderFichaContent(data) {
 
   document.getElementById('ficha-volver')?.addEventListener('click', closeFicha);
   document.getElementById('ficha-editar-paciente')?.addEventListener('click', () => openEditModal(paciente));
-  document.getElementById('ficha-abrir-odontograma')?.addEventListener('click', async () => {
-    odontoModal?.show();
-    try {
-      await loadOdontograma(paciente.id);
-    } catch (error) {
-      odontoModal?.hide();
-      renderAlert(ui.alertContainer, error.message, 'danger');
-    }
-  });
+  refreshOdontogramaUi();
+  bindOdontogramaEditorControls();
+  loadOdontograma(paciente.id).catch((error) => renderAlert(ui.alertContainer, error.message, 'danger'));
   bindFichaDocumentos();
   cargarDocumentosFicha();
   bindAtencionDocumentos(historias);
@@ -786,6 +835,10 @@ function renderOdontogramaHistorico(historiaId, rawSnapshot) {
         'stroke-width': 2.5,
       }));
     }
+    if (FACES.every((cara) => ['ausente', 'pieza_ausente'].includes(registroMap.get(`${diente}-${cara}`)?.estado))) {
+      svg.appendChild(createSvgEl('line', { x1: x + 2, y1: y + 2, x2: x + size - 2, y2: y + size - 2, stroke: '#000', 'stroke-width': 1.5 }));
+      svg.appendChild(createSvgEl('line', { x1: x + size - 2, y1: y + 2, x2: x + 2, y2: y + size - 2, stroke: '#000', 'stroke-width': 1.5 }));
+    }
     const label = createSvgEl('text', { x: x + size / 2, y: y + size + 9, 'text-anchor': 'middle', 'font-size': 7 });
     label.textContent = String(diente);
     svg.appendChild(label);
@@ -794,7 +847,7 @@ function renderOdontogramaHistorico(historiaId, rawSnapshot) {
   const referenciasHistoricas = [...new Map(registros.map((registro) => {
     const catalogada = snapshot?.referencias_catalogo?.[registro.estado];
     return [registro.estado, {
-      nombre: registro.nombre || catalogada?.nombre || registro.estado,
+      nombre: registro.nombre || catalogada?.nombre || getReferenceDisplayName(registro.estado),
       color: registro.color || catalogada?.color || colores[registro.estado] || '#ffffff',
     }];
   })).values()];
@@ -812,7 +865,7 @@ function renderOdontogramaHistorico(historiaId, rawSnapshot) {
   const referencias = snapshot?.referencias || {};
   const info = document.createElement('div');
   info.className = 'small text-secondary mt-2';
-  info.textContent = `Sarro: ${meta.sarro ? 'Sí' : 'No'} · Periodontal: ${meta.periodontal ? 'Sí' : 'No'} · Observaciones: ${meta.observaciones || 'Sin registrar'} · Referencias: ${(referencias.tratamientos || []).length} tratamientos, ${(referencias.protesis_fijas || []).length} prótesis fijas, ${(referencias.protesis_removibles || []).length} prótesis removibles`;
+  info.textContent = `Sarro: ${meta.sarro ? 'Sí' : 'No'} · Periodontal: ${meta.periodontal ? 'Sí' : 'No'} · Observaciones: ${normalizeOdontogramaObservacion(meta.observaciones) || 'Sin registrar'} · Referencias: ${(referencias.tratamientos || []).length} tratamientos, ${(referencias.protesis_fijas || []).length} prótesis fijas, ${(referencias.protesis_removibles || []).length} prótesis removibles`;
   container.appendChild(info);
 }
 
@@ -1088,21 +1141,62 @@ function getRecordState(toothNumber, face) {
 }
 
 function getReferencia(codigo) {
-  return state.odontograma.referencias.get(codigo) || { codigo, nombre: codigo, color: estados[codigo] || '#ffffff', alcance: 'cara', activo: false };
+  return state.odontograma.referencias.get(codigo) || { codigo, nombre: getReferenceDisplayName(codigo), color: estados[codigo] || '#ffffff', alcance: 'cara', activo: false };
+}
+
+function getReferenceSymbol(codigo) {
+  if (codigo === 'pieza_ausente' || codigo === 'ausente') return '×';
+  if (codigo === 'corona_completa') return '○';
+  if (codigo === 'sin_evaluar') return '···';
+  return '■';
+}
+
+function renderReferenceBadges(referencias) {
+  return referencias.map((ref) => `<span class="odonto-legend-item"><span class="odonto-legend-symbol" style="color:${ref.color}" aria-hidden="true">${getReferenceSymbol(ref.codigo)}</span>${escapeHtml(ref.nombre)}</span>`).join('');
+}
+
+function updateSelectedMark() {
+  const referencia = getReferencia(ui.odontoEstadoClinico?.value || '');
+  if (!ui.odontoSelectedMark) return;
+  ui.odontoSelectedMark.innerHTML = `<span class="odonto-legend-symbol me-1" style="color:${referencia.color}" aria-hidden="true">${getReferenceSymbol(referencia.codigo)}</span>${escapeHtml(referencia.nombre)} <span class="badge text-bg-light border ms-1">Se aplica a ${referencia.alcance === 'pieza' ? 'toda la pieza' : 'una cara'}</span>`;
 }
 
 function renderReferenciasOdontograma(referencias) {
   const sinEvaluar = { codigo: 'sin_evaluar', nombre: 'Sin evaluar', color: estados.sin_evaluar, alcance: 'cara', activo: false, sistema: true };
   state.odontograma.referencias = new Map([sinEvaluar, ...referencias].map((ref) => [ref.codigo, ref]));
-  const activas = referencias.filter((ref) => ref.activo);
+  const codigosAnteriores = new Set(['corona', 'protesis_fija', 'protesis_removible', 'ausente']);
+  const usadas = new Set(state.odontograma.registros.values());
+  const activas = referencias.filter((ref) => ref.activo && !codigosAnteriores.has(ref.codigo));
+  const principales = [sinEvaluar, ...activas];
+  const anteriores = referencias.filter((ref) => usadas.has(ref.codigo) && (!ref.activo || codigosAnteriores.has(ref.codigo)));
+  state.odontograma.exportReferences = [...principales, ...anteriores];
   ui.odontoEstadoClinico.innerHTML = activas.map((ref) => `<option value="${escapeHtml(ref.codigo)}">${escapeHtml(ref.nombre)}</option>`).join('');
-  ui.odontoLegend.innerHTML = [sinEvaluar, ...referencias].map((ref) => `<span class="badge border text-dark" style="background:${ref.color}">${escapeHtml(ref.nombre)}${ref.sistema || ref.activo ? '' : ' (inactiva)'}${ref.codigo === 'corona_completa' ? ' ◯' : ''}</span>`).join(' ');
+  ui.odontoLegend.innerHTML = renderReferenceBadges(principales);
+  ui.odontoPreviousLegend.innerHTML = renderReferenceBadges(anteriores);
+  ui.odontoPreviousDetails.classList.toggle('d-none', anteriores.length === 0);
+  updateSelectedMark();
+}
+
+function normalizeOdontogramaObservacion(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value);
+  return text.trim().toLowerCase() === 'null' ? '' : text;
+}
+
+function updateUnsavedState() {
+  const pending = state.odontograma.dirtyKeys.size > 0 || state.odontograma.metaDirty;
+  if (ui.odontoUnsaved) {
+    ui.odontoUnsaved.textContent = pending ? 'Hay cambios sin guardar' : 'Sin cambios pendientes';
+    ui.odontoUnsaved.className = pending ? 'small fw-semibold text-warning-emphasis' : 'small text-secondary';
+  }
+  if (ui.odontoSaveBtn) ui.odontoSaveBtn.disabled = !pending;
 }
 
 function paintFace(toothNumber, face, estado) {
   const key = `${toothNumber}-${face}`;
   state.odontograma.registros.set(key, estado);
   state.odontograma.dirtyKeys.add(key);
+  updateUnsavedState();
 
   const selector = `.odonto-face[data-tooth="${toothNumber}"][data-face="${face}"]`;
   const el = ui.odontoSvg?.querySelector(selector);
@@ -1136,7 +1230,7 @@ function toothHasOnlyAusente(toothNumber) {
 }
 
 function buildTooltipText(toothNumber) {
-  const estados = FACES.map((f) => `${f}: ${getRecordState(toothNumber, f)}`).join(' | ');
+  const estados = FACES.map((f) => `${f}: ${getReferencia(getRecordState(toothNumber, f)).nombre}`).join(' | ');
   const heredada = FACES.some((face) => ['protesis_fija', 'protesis_removible'].includes(getRecordState(toothNumber, face)))
     ? '\nMarca heredada sin detalle protésico'
     : '';
@@ -1150,7 +1244,7 @@ function renderToothDetails() {
     ui.odontoDetails.textContent = 'Seleccione un diente para ver detalles.';
     return;
   }
-  const estadosCaras = FACES.map((f) => `${f}: ${getRecordState(tooth, f)}`).join(' | ');
+  const estadosCaras = FACES.map((f) => `${f}: ${getReferencia(getRecordState(tooth, f)).nombre}`).join(' | ');
   const rows = [
     `Pieza ${tooth}`,
     estadosCaras,
@@ -1170,7 +1264,7 @@ function updateCountExistentes() {
       : mode === 'mixta'
         ? [...permanentes.superior, ...permanentes.inferior, ...temporales.superior, ...temporales.inferior]
         : [...permanentes.superior, ...permanentes.inferior];
-  const count = base.filter((t) => !toothHasOnlyAusente(t)).length;
+  const count = base.filter((t) => FACES.some((face) => state.odontograma.registros.has(`${t}-${face}`)) && !toothHasOnlyAusente(t)).length;
   if (ui.odontoCount) ui.odontoCount.textContent = String(count);
 }
 
@@ -1278,21 +1372,22 @@ function renderOdontograma() {
   if (!ui.odontoSvg) return;
 
   ui.odontoSvg.innerHTML = '';
-  ui.odontoSvg.setAttribute('viewBox', '0 0 980 600');
-
-  const toothSize = 38;
-  const gap = 12;
-
   const mode = ui.odontoDenticion?.value || 'permanente';
+  ui.odontoSvg.setAttribute('viewBox', `0 0 980 ${mode === 'mixta' ? 410 : 205}`);
+
+  const toothSize = 50;
+  const gap = 8;
+
   if (mode === 'permanente' || mode === 'mixta') {
     addLabel(ui.odontoSvg, 'Denticion permanente', 20, 20);
     drawRow(ui.odontoSvg, permanentes.superior, 20, 30, toothSize, gap, 7);
-    drawRow(ui.odontoSvg, permanentes.inferior, 20, 112, toothSize, gap, 7);
+    drawRow(ui.odontoSvg, permanentes.inferior, 20, 125, toothSize, gap, 7);
   }
   if (mode === 'temporal' || mode === 'mixta') {
-    addLabel(ui.odontoSvg, 'Denticion temporal', 112, 260);
-    drawRow(ui.odontoSvg, temporales.superior, 112, 274, toothSize, gap, 4);
-    drawRow(ui.odontoSvg, temporales.inferior, 112, 356, toothSize, gap, 4);
+    const offset = mode === 'mixta' ? 215 : 0;
+    addLabel(ui.odontoSvg, 'Denticion temporal', 192, offset + 20);
+    drawRow(ui.odontoSvg, temporales.superior, 192, offset + 30, toothSize, gap, 4);
+    drawRow(ui.odontoSvg, temporales.inferior, 192, offset + 125, toothSize, gap, 4);
   }
 
 }
@@ -1300,16 +1395,10 @@ function renderOdontograma() {
 function handleToothFaceClick(toothNumber, face) {
   const estadoSeleccionado = ui.odontoEstadoClinico.value || 'sano';
   state.odontograma.selectedTooth = Number(toothNumber);
-  ui.odontoSelectedPiece.textContent = String(toothNumber);
-  ui.odontoSaveBtn.disabled = false;
 
   const affectAll = getReferencia(estadoSeleccionado).alcance === 'pieza';
-
-  if (affectAll) {
-    FACES.forEach((f) => paintFace(toothNumber, f, estadoSeleccionado));
-  } else {
-    paintFace(toothNumber, face, estadoSeleccionado);
-  }
+  ui.odontoSelectedPiece.textContent = affectAll ? `pieza ${toothNumber} completa` : `pieza ${toothNumber}, cara ${face}`;
+  getOdontogramaTargetFaces({ face, alcance: affectAll ? 'pieza' : 'cara', faces: FACES }).forEach((targetFace) => paintFace(toothNumber, targetFace, estadoSeleccionado));
 
   renderOdontograma();
   updateCountExistentes();
@@ -1335,13 +1424,13 @@ async function loadOdontograma(pacienteId) {
     getProtesisFijas(pacienteId),
     getProtesisRemovibles(pacienteId),
   ]);
-  renderReferenciasOdontograma(referenciasData.referencias || []);
   const paciente = data.paciente || {};
   ui.odontoModalLabel.textContent = `${paciente.apellido || ''}, ${paciente.nombre || ''} - DNI ${paciente.dni || '-'}`;
 
   (data.registros || []).forEach((r) => {
     state.odontograma.registros.set(`${r.diente}-${r.cara}`, r.estado);
   });
+  renderReferenciasOdontograma(referenciasData.referencias || []);
 
   state.odontograma.tratamientosByTooth = new Map();
   state.odontograma.protesisFijas = fijasData.protesis || [];
@@ -1350,13 +1439,14 @@ async function loadOdontograma(pacienteId) {
   if (data.meta) {
     ui.odontoSarro.checked = Boolean(data.meta.sarro);
     ui.odontoPeriodontal.checked = Boolean(data.meta.periodontal);
-    ui.odontoObservaciones.value = data.meta.observaciones || '';
+    ui.odontoObservaciones.value = normalizeOdontogramaObservacion(data.meta.observaciones);
   } else {
     ui.odontoSarro.checked = false;
     ui.odontoPeriodontal.checked = false;
     ui.odontoObservaciones.value = '';
   }
   state.odontograma.metaDirty = false;
+  updateUnsavedState();
 
   renderOdontograma();
   updateCountExistentes();
@@ -1375,13 +1465,14 @@ async function guardarToothSeleccionado() {
     paciente_id: pacienteId,
     sarro: ui.odontoSarro.checked,
     periodontal: ui.odontoPeriodontal.checked,
-    observaciones: ui.odontoObservaciones.value?.trim() || null,
+    observaciones: normalizeOdontogramaObservacion(ui.odontoObservaciones.value).trim() || null,
   };
 
   // Si sólo se modificó meta
   if (state.odontograma.metaDirty && state.odontograma.selectedTooth === null) {
     await postOdontograma(metaPayload);
     state.odontograma.metaDirty = false;
+    updateUnsavedState();
     renderAlert(ui.alertContainer, 'Metadatos guardados.', 'success');
     return;
   }
@@ -1399,6 +1490,7 @@ async function guardarToothSeleccionado() {
   if (state.odontograma.metaDirty) await postOdontograma(metaPayload);
   dirtyKeys.forEach((key) => state.odontograma.dirtyKeys.delete(key));
   state.odontograma.metaDirty = false;
+  updateUnsavedState();
   renderAlert(ui.alertContainer, 'Odontograma guardado correctamente.', 'success');
   updateCountExistentes();
   updateProsthesisCounts();
@@ -1415,7 +1507,9 @@ function bindOdontograma() {
 
     handleToothFaceClick(toothNumber, face);
   });
+}
 
+function bindOdontogramaEditorControls() {
   ui.odontoDenticion?.addEventListener('change', () => {
     renderOdontograma();
     updateCountExistentes();
@@ -1433,24 +1527,28 @@ function bindOdontograma() {
 
   ui.odontoSarro?.addEventListener('change', () => {
     state.odontograma.metaDirty = true;
+    updateUnsavedState();
   });
   ui.odontoPeriodontal?.addEventListener('change', () => {
     state.odontograma.metaDirty = true;
+    updateUnsavedState();
   });
   ui.odontoObservaciones?.addEventListener('input', () => {
     state.odontograma.metaDirty = true;
+    updateUnsavedState();
   });
+  ui.odontoEstadoClinico?.addEventListener('change', updateSelectedMark);
 
   ui.odontoExportPdf?.addEventListener('click', () => {
     const now = new Date().toLocaleString('es-AR');
     const dent = ui.odontoDenticion?.value || 'permanente';
     const sarro = ui.odontoSarro.checked ? 'Sí' : 'No';
     const perio = ui.odontoPeriodontal.checked ? 'Sí' : 'No';
-    const obs = ui.odontoObservaciones.value?.trim() || 'Sin observaciones';
+    const obs = normalizeOdontogramaObservacion(ui.odontoObservaciones.value).trim() || 'Sin observaciones';
     const fijas = state.odontograma.protesisFijas.length;
     const removibles = state.odontograma.protesisRemovibles.length;
     const marcasHeredadas = countLegacyProstheticMarks();
-    const legend = `<ul class="legend">${[...state.odontograma.referencias.values()].map((ref) => `<li><span class="swatch" style="background:${ref.color}"></span>${escapeHtml(ref.nombre)}${ref.activo ? '' : ' (inactiva)'}</li>`).join('')}</ul>`;
+    const legend = `<ul class="legend">${state.odontograma.exportReferences.map((ref) => `<li><strong style="color:${ref.color}">${getReferenceSymbol(ref.codigo)}</strong>${escapeHtml(ref.nombre)}</li>`).join('')}</ul>`;
     const html = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Odontograma</title>
 <style>
@@ -1472,6 +1570,7 @@ h1,h2,h3{margin:0 0 8px 0;}
 .svg-wrap{border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;}
 svg{width:100%;height:auto;}
 .odonto-face{stroke:#334155;stroke-width:0.9;}
+.odonto-face.state-sin_evaluar{fill:#e5e7eb;stroke-dasharray:2 1;}
 .odonto-face.state-sano{fill:#ffffff;}
 .odonto-face.state-existente{fill:#ff4d4d;}
 .odonto-face.state-requerido{fill:#4d79ff;}
@@ -1481,7 +1580,8 @@ svg{width:100%;height:auto;}
 .odonto-face.state-ausente{fill:#4b5563;}
 .odonto-tooth-outline{fill:none;stroke:#475569;stroke-width:0.9;}
 .odonto-tooth-outline.active{stroke:#1c3f5f;stroke-width:1.8;}
-.odonto-tooth-label{font-size:8px;font-weight:600;fill:#0f172a;text-anchor:middle;dominant-baseline:middle;}
+.odonto-corona-completa{fill:none;stroke:#92400e;stroke-width:2.5;}
+.odonto-tooth-label{font-size:11px;font-weight:700;fill:#0f172a;text-anchor:middle;dominant-baseline:middle;}
 @page { size: A4; margin: 16mm; }
 </style></head><body>
 <h2>Odontograma</h2>
@@ -1504,7 +1604,9 @@ ${ui.odontoSvg.outerHTML}
     win.focus();
     win.print();
   });
+}
 
+function bindClinicalAuxiliaryForms() {
   ui.tratamientoForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
@@ -1721,17 +1823,6 @@ function bindTableActions() {
       return;
     }
 
-  if (action === 'odontograma') {
-    try {
-      odontoModal?.show();
-      await loadOdontograma(id);
-    } catch (error) {
-      odontoModal?.hide();
-      renderAlert(ui.alertContainer, error.message, 'danger');
-    }
-    return;
-  }
-
   if (action === 'tratamiento') {
     const paciente = getPacienteFromRowButton(button);
     if (!paciente) return;
@@ -1768,6 +1859,6 @@ export async function initPacientesView() {
   bindPagination();
   bindTableActions();
   bindOdontograma();
-  renderOdontograma();
+  bindClinicalAuxiliaryForms();
   await loadPacientes();
 }
