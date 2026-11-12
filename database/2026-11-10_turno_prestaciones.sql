@@ -27,4 +27,3 @@ ON CONFLICT (turno_id, prestacion_id) DO NOTHING;
 
 COMMENT ON COLUMN public.turnos.prestacion_id IS
   'Compatibilidad: debe coincidir con prestacion_id de turno_prestaciones donde orden=1.';
-
