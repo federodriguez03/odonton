@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
 
 let pacientesClinicosInitDone = false;
+const CAMPOS_ADMIN_SQL = 'id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, created_at, updated_at';
 
 async function asegurarColumnasClinicasPacientes() {
 	if (pacientesClinicosInitDone) return;
@@ -36,10 +37,6 @@ async function crearPaciente({
 	telefono = null,
 	email = null,
 	fecha_nacimiento = null,
-	observaciones = null,
-	alergias = null,
-	condiciones = null,
-	estado_tratamiento = null,
 }) {
 	await asegurarColumnasClinicasPacientes();
 	const telefonoNormalizado = normalizarTelefonoPaciente(telefono);
@@ -51,10 +48,9 @@ async function crearPaciente({
 	}
 
 	const query = `
-		INSERT INTO pacientes (
-			nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, observaciones, alergias, condiciones, estado_tratamiento, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW(),NOW())
-		RETURNING *;
+		INSERT INTO pacientes (nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW(),NOW())
+		RETURNING ${CAMPOS_ADMIN_SQL};
 	`;
 
 	const values = [
@@ -66,10 +62,6 @@ async function crearPaciente({
 		telefonoNormalizado,
 		email,
 		fecha_nacimiento,
-		observaciones,
-		alergias,
-		condiciones,
-		estado_tratamiento,
 	];
 
 	const { rows } = await pool.query(query, values);
@@ -110,10 +102,6 @@ const allowed = [
 		'telefono',
 		'email',
 		'fecha_nacimiento',
-		'observaciones',
-		'alergias',
-		'condiciones',
-		'estado_tratamiento',
 	];
 
 	const sets = [];
@@ -134,7 +122,7 @@ const allowed = [
 	// Añadir updated_at
 	sets.push('updated_at = NOW()');
 
-	const query = `UPDATE pacientes SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *;`;
+	const query = `UPDATE pacientes SET ${sets.join(', ')} WHERE id = $${idx} RETURNING ${CAMPOS_ADMIN_SQL};`;
 	values.push(id);
 
 	const { rows } = await pool.query(query, values);
@@ -159,7 +147,7 @@ async function listarPacientes({ page = 1, limit = 20, q = null, dni = null, sor
 	let idx = 1;
 
 	if (q) {
-		where.push(`(nombre ILIKE $${idx} OR apellido ILIKE $${idx})`);
+		where.push(`(nombre ILIKE $${idx} OR apellido ILIKE $${idx} OR CAST(dni AS TEXT) ILIKE $${idx})`);
 		values.push(`%${q}%`);
 		idx++;
 	}
@@ -192,7 +180,7 @@ async function listarPacientes({ page = 1, limit = 20, q = null, dni = null, sor
 	const offset = (page - 1) * limit;
 
 	const dataQuery = `
-		SELECT id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, observaciones, created_at, updated_at
+		SELECT ${CAMPOS_ADMIN_SQL}
 		FROM pacientes
 		${whereClause}
 		ORDER BY ${orderBy}
@@ -217,7 +205,7 @@ async function listarPacientes({ page = 1, limit = 20, q = null, dni = null, sor
 async function obtenerPaciente(id) {
 	await asegurarColumnasClinicasPacientes();
 
-	const { rows } = await pool.query('SELECT * FROM pacientes WHERE id = $1', [id]);
+	const { rows } = await pool.query(`SELECT ${CAMPOS_ADMIN_SQL} FROM pacientes WHERE id = $1`, [id]);
 	if (rows.length === 0) return null;
 	return rows[0];
 }
@@ -234,7 +222,8 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
 	if (limit > 50) limit = 50;
 
 	// Obtener paciente
-	const paciente = await obtenerPaciente(pacienteId);
+	const { rows: pacientes } = await pool.query('SELECT * FROM pacientes WHERE id = $1', [pacienteId]);
+	const paciente = pacientes[0] || null;
 	if (!paciente) return null;
 
 	// Calcular edad si existe fecha_nacimiento
@@ -331,7 +320,7 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
            t.profesional_id,
            u.nombre AS profesional_nombre,
            t.prestacion_id,
-           p.nombre AS prestacion_nombre
+           COALESCE((SELECT string_agg(tp.nombre_snapshot, ' + ' ORDER BY tp.orden) FROM turno_prestaciones tp WHERE tp.turno_id=t.id), p.nombre) AS prestacion_nombre
          FROM historias_clinicas hc
          LEFT JOIN turnos t ON t.id = hc.turno_id AND t.paciente_id = hc.paciente_id
          LEFT JOIN usuarios u ON u.id = t.profesional_id
@@ -348,7 +337,7 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
          t.profesional_id,
          u.nombre AS profesional_nombre,
          t.prestacion_id,
-         p.nombre AS prestacion_nombre
+         COALESCE((SELECT string_agg(tp.nombre_snapshot, ' + ' ORDER BY tp.orden) FROM turno_prestaciones tp WHERE tp.turno_id=t.id), p.nombre) AS prestacion_nombre
        FROM turnos t
        LEFT JOIN usuarios u ON u.id = t.profesional_id
        LEFT JOIN prestaciones p ON p.id = t.prestacion_id
@@ -429,10 +418,11 @@ async function registrarAtencion({ pacienteId, turnoId, observaciones }) {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
     const turnoRes = await client.query(
       `SELECT t.id, t.paciente_id, t.estado, t.fecha_hora_inicio,
-              t.profesional_id, u.nombre AS profesional_nombre,
-              t.prestacion_id, p.nombre AS prestacion_nombre
+              t.profesional_id, t.profesional_perfil_id, COALESCE(pf.nombre_mostrado,u.nombre) AS profesional_nombre,
+              t.prestacion_id, COALESCE((SELECT string_agg(tp.nombre_snapshot, ' + ' ORDER BY tp.orden) FROM turno_prestaciones tp WHERE tp.turno_id=t.id), p.nombre) AS prestacion_nombre
        FROM turnos t
        LEFT JOIN usuarios u ON u.id = t.profesional_id
+       LEFT JOIN profesionales pf ON pf.id=t.profesional_perfil_id
        LEFT JOIN prestaciones p ON p.id = t.prestacion_id
        WHERE t.id = $1 AND t.paciente_id = $2
        FOR UPDATE OF t`,
@@ -440,7 +430,7 @@ async function registrarAtencion({ pacienteId, turnoId, observaciones }) {
     );
     if (!turnoRes.rowCount) throw new Error('El turno no pertenece al paciente');
     if (turnoRes.rows[0].estado !== 'realizado') throw new Error('Solo se puede registrar una atencion para un turno realizado');
-    if (!turnoRes.rows[0].profesional_id || !turnoRes.rows[0].prestacion_id) {
+    if (!(turnoRes.rows[0].profesional_perfil_id || turnoRes.rows[0].profesional_id) || !turnoRes.rows[0].prestacion_id) {
       throw new Error('El turno no tiene profesional y prestacion validos');
     }
 

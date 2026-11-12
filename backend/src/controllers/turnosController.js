@@ -22,19 +22,28 @@ function parseFechaHora(value) {
   return date;
 }
 
+function aplicarVisibilidadAgenda(turno, req) {
+  if (!turno || !req.agenda?.ocultarClinica) return turno;
+  const limpio = { ...turno };
+  delete limpio.observaciones;
+  delete limpio.solicitud_preferencia;
+  delete limpio.respuesta_paciente;
+  return limpio;
+}
+
 async function registrarTurno(req, res) {
   try {
     const {
       pacienteId,
       prestacionId,
-      profesionalId,
+      prestacionIds,
       fechaHoraInicio,
       duracionMinutos,
       observaciones,
       recordatorioHabilitado,
     } = req.body;
 
-    if (!pacienteId || !prestacionId || !fechaHoraInicio) {
+    if (!pacienteId || !(prestacionIds?.length || prestacionId) || !fechaHoraInicio) {
       return res.status(400).json({
         mensaje: 'Faltan datos obligatorios para registrar el turno: paciente, prestacion y fecha/hora de inicio',
       });
@@ -52,9 +61,10 @@ async function registrarTurno(req, res) {
     const turno = await turnosService.crearTurno({
       pacienteId,
       prestacionId,
+      prestacionIds,
       fechaHoraInicio: fechaInicio,
       duracionMinutos,
-      profesionalId: profesionalId || req.user?.id || null,
+      profesionalPerfilId: req.profesionalResponsableId,
       origen: 'interno',
       observaciones,
       recordatorioHabilitado: resolverRecordatorioHabilitado(recordatorioHabilitado, { defaultValue: true }),
@@ -65,7 +75,7 @@ async function registrarTurno(req, res) {
 
     return res.status(201).json({
       mensaje: 'Turno registrado correctamente',
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
     });
   } catch (error) {
     return res.status(400).json({ mensaje: error.message || 'Error al registrar el turno' });
@@ -79,7 +89,7 @@ async function editarTurno(req, res) {
     const {
       pacienteId,
       prestacionId,
-      profesionalId,
+      prestacionIds,
       fechaHoraInicio,
       duracionMinutos,
       observaciones,
@@ -90,7 +100,7 @@ async function editarTurno(req, res) {
       return res.status(400).json({ mensaje: 'Id de turno requerido' });
     }
 
-    if (!pacienteId || !prestacionId) {
+    if (!pacienteId || !(prestacionIds?.length || prestacionId)) {
       return res.status(400).json({ mensaje: 'Paciente y prestacion son obligatorios' });
     }
 
@@ -105,7 +115,8 @@ async function editarTurno(req, res) {
     const turnoActualizado = await turnosService.editarTurno(id, {
       pacienteId,
       prestacionId,
-      profesionalId,
+      prestacionIds,
+      profesionalPerfilId: req.profesionalResponsableId,
       fechaHoraInicio,
       duracionMinutos,
       observaciones,
@@ -117,7 +128,7 @@ async function editarTurno(req, res) {
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
     const whatsappResult = await notificarCambioTurnoPorWhatsapp({
       telefono,
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
     });
 
     req.auditAction = 'editar_turno';
@@ -131,7 +142,7 @@ async function editarTurno(req, res) {
 
     return res.status(200).json({
       mensaje: 'El turno se actualizo correctamente',
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
       notificacion: whatsappResult,
       ...(advertencias.length > 0 && { advertencias }),
     });
@@ -142,7 +153,9 @@ async function editarTurno(req, res) {
 
 async function listarProfesionales(req, res) {
   try {
-    const profesionales = await turnosService.listarProfesionales();
+    const profesionales = req.agenda?.general
+      ? await turnosService.listarProfesionales()
+      : await turnosService.listarProfesionales({ profesionalPerfilId: req.agenda.profesionalPerfilId });
     return res.status(200).json({ profesionales });
   } catch (error) {
     return res.status(400).json({ mensaje: error.message || 'Error al listar profesionales' });
@@ -152,34 +165,38 @@ async function listarProfesionales(req, res) {
 async function consultarDisponibilidad(req, res) {
   try {
     const {
-      profesional_id: profesionalId,
+      profesional_perfil_id: profesionalPerfilId,
       fecha,
       tratamiento_id: tratamientoId,
       prestacion_id: prestacionId,
+      prestacion_ids: prestacionIds,
       turno_id: turnoId,
       excluir_turno_id: excluirTurnoId,
       duracion_minutos: duracionMinutos,
     } = req.query;
 
-    if (!profesionalId || !fecha || !(tratamientoId || prestacionId)) {
+    const profesionalAlcance = req.agenda?.general ? profesionalPerfilId : req.agenda?.profesionalPerfilId;
+    if (!profesionalAlcance || !fecha || !(prestacionIds || tratamientoId || prestacionId)) {
       return res.status(400).json({
-        mensaje: 'profesional_id, fecha y tratamiento_id son obligatorios',
+        mensaje: 'profesional_perfil_id, fecha y una prestacion son obligatorios',
       });
     }
 
     const disponibilidad = await turnosService.consultarDisponibilidad({
-      profesionalId,
+      profesionalPerfilId: profesionalAlcance,
       fecha,
       prestacionId: tratamientoId || prestacionId,
+      prestacionIds: prestacionIds ? String(prestacionIds).split(',') : null,
       turnoId: turnoId || excluirTurnoId || null,
       duracionMinutos: duracionMinutos || null,
     });
 
     req.auditAction = 'consultar_disponibilidad_turnos';
     req.auditMeta = {
-      profesional_id: profesionalId,
+      profesional_perfil_id: profesionalAlcance,
       fecha,
       prestacion_id: tratamientoId || prestacionId,
+      prestacion_ids: prestacionIds || null,
       turno_id: turnoId || excluirTurnoId || null,
       duracion_minutos: duracionMinutos || null,
       slots: disponibilidad.length,
@@ -217,7 +234,7 @@ async function reprogramarTurno(req, res) {
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
     const whatsappResult = await notificarCambioTurnoPorWhatsapp({
       telefono,
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
     });
 
     req.auditAction = 'reprogramar_turno';
@@ -232,7 +249,7 @@ async function reprogramarTurno(req, res) {
 
     return res.status(200).json({
       mensaje: 'El turno se reprogramo correctamente',
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
       notificacion: whatsappResult,
       ...(advertencias.length > 0 && { advertencias }),
     });
@@ -274,7 +291,7 @@ async function cancelarTurno(req, res) {
 
     return res.status(200).json({
       mensaje: 'El turno se cancelo correctamente',
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
       notificacion: whatsappResult,
       ...(advertencias.length > 0 && { advertencias }),
     });
@@ -287,8 +304,8 @@ async function confirmarSolicitudTurno(req, res) {
   try {
     const { id } = req.params;
     const {
-      profesionalId,
       prestacionId,
+      prestacionIds,
       fechaHoraInicio,
       duracionMinutos,
       observaciones,
@@ -296,7 +313,7 @@ async function confirmarSolicitudTurno(req, res) {
     } = req.body;
 
     if (!id) return res.status(400).json({ mensaje: 'Id de turno requerido' });
-    if (!profesionalId || !fechaHoraInicio) {
+    if (!req.profesionalResponsableId || !fechaHoraInicio) {
       return res.status(400).json({
         mensaje: 'Profesional y fecha/hora son obligatorios para confirmar la solicitud',
       });
@@ -306,8 +323,9 @@ async function confirmarSolicitudTurno(req, res) {
     if (!fechaInicio) return res.status(400).json({ mensaje: 'Fecha y hora de inicio invalidas' });
 
     const turnoConfirmado = await turnosService.confirmarSolicitudTurno(id, {
-      profesionalId,
+      profesionalPerfilId: req.profesionalResponsableId,
       prestacionId,
+      prestacionIds,
       fechaHoraInicio: fechaInicio,
       duracionMinutos,
       observaciones,
@@ -318,7 +336,7 @@ async function confirmarSolicitudTurno(req, res) {
     const telefono = await turnosService.obtenerTelefonoPaciente(turnoDetalle.paciente.id);
     const whatsappResult = await notificarConfirmacionSolicitudTurnoPorWhatsapp({
       telefono,
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
     });
 
     req.auditAction = 'confirmar_solicitud_turno';
@@ -332,7 +350,7 @@ async function confirmarSolicitudTurno(req, res) {
     const advertencias = [whatsappResult.advertencia].filter(Boolean);
     return res.status(200).json({
       mensaje: 'La solicitud fue confirmada correctamente',
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
       notificacion: whatsappResult,
       ...(advertencias.length > 0 && { advertencias }),
     });
@@ -355,7 +373,7 @@ async function rechazarSolicitudTurno(req, res) {
       turnoDetalle = await turnosService.obtenerTurnoDetalle(turno.id);
       whatsappResult = await notificarRechazoSolicitudTurnoPorWhatsapp({
         telefono: turnoDetalle.paciente?.telefono,
-        turno: turnoDetalle,
+        turno: aplicarVisibilidadAgenda(turnoDetalle, req),
       });
     } catch (notificationError) {
       whatsappResult = {
@@ -377,7 +395,7 @@ async function rechazarSolicitudTurno(req, res) {
 
     return res.status(200).json({
       mensaje: 'Solicitud rechazada correctamente',
-      turno: turnoDetalle,
+      turno: aplicarVisibilidadAgenda(turnoDetalle, req),
       notificacion: whatsappResult,
       ...(advertencias.length > 0 && { advertencias }),
     });
@@ -408,6 +426,8 @@ async function listarTurnos(req, res) {
       fechaDesde,
       fechaHasta,
       sort,
+      profesionalPerfilId: req.agenda?.general ? null : req.agenda?.profesionalPerfilId,
+      incluirObservaciones: !req.agenda?.ocultarClinica,
     });
 
     return res.status(200).json(result);

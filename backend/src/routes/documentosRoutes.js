@@ -11,6 +11,7 @@ const {
   UPLOADS_BASE_DIR,
 } = require('../controllers/documentosController');
 const { middlewareAutenticacion, middlewareAuditoria } = require('../middlewares/turnosMiddleware');
+const { autorizarClinicaPacientes, exigirProfesionalConfirmado } = require('../middlewares/pacientesAutorizacion');
 
 const router = express.Router();
 
@@ -60,6 +61,8 @@ function manejarSubida(req, res, next) {
 router.post(
   '/subir',
   middlewareAutenticacion,
+  autorizarClinicaPacientes,
+  exigirProfesionalConfirmado,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'subir_documento_paciente';
@@ -72,6 +75,7 @@ router.post(
 router.get(
   '/',
   middlewareAutenticacion,
+  autorizarClinicaPacientes,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'listar_documentos_paciente';
@@ -83,6 +87,7 @@ router.get(
 router.get(
   '/descargar/:id',
   middlewareAutenticacion,
+  autorizarClinicaPacientes,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'descargar_documento_paciente';
@@ -94,6 +99,8 @@ router.get(
 router.delete(
   '/:id',
   middlewareAutenticacion,
+  autorizarClinicaPacientes,
+  exigirProfesionalConfirmado,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'eliminar_documento_paciente';

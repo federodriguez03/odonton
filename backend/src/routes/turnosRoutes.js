@@ -22,6 +22,7 @@ const {
   validarEntradaCancelarTurno,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { autorizarAgenda, resolverAlcanceAgenda, resolverProfesionalEscritura, autorizarTurnoObjetivo } = require('../middlewares/turnosAutorizacion');
 
 /**
  * Listar turnos (GET /api/turnos)
@@ -29,7 +30,8 @@ const {
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
+  resolverAlcanceAgenda,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_listado_turnos';
@@ -53,14 +55,16 @@ router.get(
 router.get(
   '/profesionales',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
+  resolverAlcanceAgenda,
   listarProfesionales
 );
 
 router.get(
   '/disponibilidad',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
+  resolverAlcanceAgenda,
   middlewareAuditoria,
   consultarDisponibilidad
 );
@@ -71,7 +75,9 @@ router.get(
 router.post(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
+  resolverAlcanceAgenda,
+  resolverProfesionalEscritura,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'registrar_turno';
@@ -113,7 +119,10 @@ router.post(
 router.put(
   '/:id',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
+  resolverAlcanceAgenda,
+  autorizarTurnoObjetivo,
+  resolverProfesionalEscritura,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'editar_turno';
@@ -128,7 +137,9 @@ router.put(
 router.put(
   '/:id/confirmar-solicitud',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
+  resolverAlcanceAgenda,
+  resolverProfesionalEscritura,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'confirmar_solicitud_turno';
@@ -152,7 +163,9 @@ router.put(
 router.put(
   '/:id/reprogramar',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
+  resolverAlcanceAgenda,
+  autorizarTurnoObjetivo,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'reprogramar_turno';
@@ -167,7 +180,9 @@ router.put(
 router.put(
   '/:id/cancelar',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarAgenda,
+  resolverAlcanceAgenda,
+  autorizarTurnoObjetivo,
   validarEntradaCancelarTurno,
   middlewareAuditoria,
   (req, res, next) => {

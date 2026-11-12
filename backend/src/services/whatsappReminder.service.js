@@ -195,7 +195,7 @@ async function buildReminderMessage(turno) {
         nombre: turno.prestacion_nombre,
       },
       profesional: {
-        id: turno.profesional_id,
+        id: turno.profesional_perfil_id || turno.profesional_id,
         nombre: turno.profesional_nombre,
       },
     },
@@ -211,6 +211,7 @@ async function getAppointment(appointmentId) {
         t.paciente_id,
         t.prestacion_id,
         t.profesional_id,
+        t.profesional_perfil_id,
         t.fecha_hora_inicio,
         t.fecha_hora_fin,
         t.estado,
@@ -219,12 +220,13 @@ async function getAppointment(appointmentId) {
         p.apellido AS paciente_apellido,
         p.dni AS paciente_dni,
         p.telefono AS paciente_telefono,
-        pr.nombre AS prestacion_nombre,
-        u.nombre AS profesional_nombre
+        COALESCE((SELECT string_agg(tp.nombre_snapshot, ' + ' ORDER BY tp.orden) FROM turno_prestaciones tp WHERE tp.turno_id=t.id), pr.nombre) AS prestacion_nombre,
+        COALESCE(pf.nombre_mostrado,u.nombre) AS profesional_nombre
       FROM turnos t
       JOIN pacientes p ON p.id = t.paciente_id
       LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
       LEFT JOIN usuarios u ON u.id = t.profesional_id
+      LEFT JOIN profesionales pf ON pf.id=t.profesional_perfil_id
       WHERE t.id = $1
       LIMIT 1
     `,
@@ -373,17 +375,19 @@ async function findPendingReminderByPhone(phone) {
         t.paciente_id,
         t.prestacion_id,
         t.profesional_id,
+        t.profesional_perfil_id,
         p.nombre AS paciente_nombre,
         p.apellido AS paciente_apellido,
         p.dni AS paciente_dni,
         p.telefono AS paciente_telefono,
-        pr.nombre AS prestacion_nombre,
-        u.nombre AS profesional_nombre
+        COALESCE((SELECT string_agg(tp.nombre_snapshot, ' + ' ORDER BY tp.orden) FROM turno_prestaciones tp WHERE tp.turno_id=t.id), pr.nombre) AS prestacion_nombre,
+        COALESCE(pf.nombre_mostrado,u.nombre) AS profesional_nombre
       FROM whatsapp_reminders wr
       JOIN turnos t ON t.id = wr.appointment_id
       JOIN pacientes p ON p.id = t.paciente_id
       LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
       LEFT JOIN usuarios u ON u.id = t.profesional_id
+      LEFT JOIN profesionales pf ON pf.id=t.profesional_perfil_id
       WHERE (
           regexp_replace(wr.phone, '[^0-9]', '', 'g') = $1
           OR ($2::text IS NOT NULL AND wr.phone = $2)
@@ -426,7 +430,7 @@ async function buildConfirmationReply(reminder) {
         nombre: reminder.prestacion_nombre,
       },
       profesional: {
-        id: reminder.profesional_id,
+        id: reminder.profesional_perfil_id || reminder.profesional_id,
         nombre: reminder.profesional_nombre,
       },
     },

@@ -8,9 +8,14 @@ const {
 
 const {
 	middlewareAutenticacion,
-	autorizarOdontologo,
 	middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const {
+	autorizarAdministracionPacientes,
+	autorizarClinicaPacientes,
+	rechazarCamposClinicosEnAdministracion,
+	exigirProfesionalConfirmado,
+} = require('../middlewares/pacientesAutorizacion');
 
 const {
 	validarEntradaPaciente,
@@ -22,7 +27,8 @@ const declaracionesSaludController = require('../controllers/declaracionesSaludC
 router.post(
 	'/',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarAdministracionPacientes,
+	rechazarCamposClinicosEnAdministracion,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'registrar_paciente';
@@ -35,7 +41,8 @@ router.post(
 router.put(
 	'/:id/atenciones/:atencionId',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarClinicaPacientes,
+	exigirProfesionalConfirmado,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'corregir_atencion_clinica';
@@ -48,7 +55,8 @@ router.put(
 router.put(
 	'/:id',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarAdministracionPacientes,
+	rechazarCamposClinicosEnAdministracion,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'actualizar_paciente';
@@ -62,7 +70,7 @@ router.put(
 router.get(
 	'/',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarAdministracionPacientes,
 	validarConsultaPacientes,
 	middlewareAuditoria,
 	(req, res, next) => {
@@ -78,7 +86,7 @@ router.get(
 router.get(
 	'/:id/ficha-clinica',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarClinicaPacientes,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'consultar_ficha_clinica';
@@ -90,7 +98,7 @@ router.get(
 router.get(
 	'/:id/declaracion-salud',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarClinicaPacientes,
 	middlewareAuditoria,
 	(req, res, next) => { req.auditAction = 'consultar_declaracion_salud'; next(); },
 	declaracionesSaludController.getDeclaration
@@ -99,7 +107,8 @@ router.get(
 router.post(
 	'/:id/declaracion-salud',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarClinicaPacientes,
+	exigirProfesionalConfirmado,
 	middlewareAuditoria,
 	(req, res, next) => { req.auditAction = 'guardar_declaracion_salud'; next(); },
 	declaracionesSaludController.saveDeclaration
@@ -108,7 +117,8 @@ router.post(
 router.post(
 	'/:id/atenciones',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarClinicaPacientes,
+	exigirProfesionalConfirmado,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'registrar_atencion_clinica';
@@ -121,7 +131,7 @@ router.post(
 router.get(
 	'/:id',
 	middlewareAutenticacion,
-	autorizarOdontologo,
+	autorizarAdministracionPacientes,
 	middlewareAuditoria,
 	(req, res, next) => {
 		req.auditAction = 'ver_paciente';

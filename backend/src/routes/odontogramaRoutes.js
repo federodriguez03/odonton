@@ -3,9 +3,9 @@ const router = express.Router();
 
 const {
   middlewareAutenticacion,
-  autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { autorizarClinicaPacientes, exigirProfesionalConfirmado } = require('../middlewares/pacientesAutorizacion');
 
 const {
   getOdontogramaPaciente,
@@ -13,12 +13,12 @@ const {
   getReferencias,
 } = require('../controllers/odontogramaController');
 
-router.get('/referencias', middlewareAutenticacion, autorizarOdontologo, getReferencias);
+router.get('/referencias', middlewareAutenticacion, autorizarClinicaPacientes, getReferencias);
 
 router.get(
   '/:pacienteId',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarClinicaPacientes,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'consultar_odontograma_v2';
@@ -30,7 +30,8 @@ router.get(
 router.post(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarClinicaPacientes,
+  exigirProfesionalConfirmado,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'guardar_odontograma_v2';

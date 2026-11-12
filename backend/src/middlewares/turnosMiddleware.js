@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { verificarToken } = require('../utils/jwt');
+const { obtenerIdentidadVigente } = require('../services/identidadService');
 
 let auditoriaInitDone = false;
 
@@ -30,37 +31,34 @@ async function asegurarTablaAuditoria() {
   auditoriaInitDone = true;
 }
 
-function middlewareAutenticacion(req, res, next) {
-  try {
-    const authHeader = req.headers.authorization || '';
-    const [scheme, token] = authHeader.split(' ');
-
-    if (scheme !== 'Bearer' || !token) {
-      return res.status(401).json({ mensaje: 'Usuario no autenticado' });
-    }
-
-    const payload = verificarToken(token);
-    req.user = {
-      id: payload.userId,
-      email: payload.email,
-      rol: payload.rol || 'odontologo',
-    };
-
-    return next();
-  } catch (err) {
-    return res.status(401).json({ mensaje: 'Usuario no autenticado' });
-  }
-}
-
 function autorizarOdontologo(req, res, next) {
   try {
-    if (!req.user || req.user.rol !== 'odontologo') {
-      return res.status(403).json({ mensaje: 'Acceso permitido solo para odontologos' });
+    if (!req.user || req.user.rol !== 'dueno') {
+      return res.status(403).json({ mensaje: 'Acceso temporalmente reservado al dueño', codigo: 'RUTA_RESERVADA_DUENO' });
     }
 
     return next();
   } catch (err) {
     return next(err);
+  }
+}
+
+// La autenticacion solo resuelve la identidad canonica vigente. Cada ruta aplica
+// luego su politica; las no adaptadas conservan autorizarOdontologo (solo dueno).
+async function middlewareAutenticacion(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const [scheme, token] = authHeader.split(' ');
+    if (scheme !== 'Bearer' || !token) return res.status(401).json({ mensaje: 'Usuario no autenticado' });
+    const payload = verificarToken(token);
+    req.user = await obtenerIdentidadVigente(payload.userId, undefined, { tokenVersion: payload.tokenVersion });
+    if (req.user.debe_cambiar_password && req.originalUrl !== '/api/auth/cambiar-password') {
+      return res.status(403).json({ mensaje: 'Debe cambiar la contraseña temporal antes de continuar', codigo: 'PASSWORD_CHANGE_REQUIRED' });
+    }
+    return next();
+  } catch (err) {
+    const status = err.status || 401;
+    return res.status(status).json({ mensaje: err.code ? err.message : 'Usuario no autenticado', ...(err.code ? { codigo: err.code } : {}) });
   }
 }
 

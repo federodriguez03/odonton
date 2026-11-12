@@ -28,7 +28,8 @@ function minutesToTime(minutos) {
 }
 
 function fechaLocalDesdeFechaYHora(fecha, hora) {
-  return new Date(`${fecha}T${hora}:00`);
+  // El consultorio opera en America/Buenos_Aires (UTC-03, sin horario de verano vigente).
+  return new Date(`${fecha}T${hora}:00-03:00`);
 }
 
 function esFechaValida(date) {
@@ -46,22 +47,6 @@ async function asegurarColumnasProfesionalTurnos() {
   await pool.query(`ALTER TABLE turnos ALTER COLUMN fecha_hora_inicio DROP NOT NULL`);
   await pool.query(`ALTER TABLE turnos ALTER COLUMN fecha_hora_fin DROP NOT NULL`);
   await pool.query(`ALTER TABLE turnos DROP CONSTRAINT IF EXISTS turnos_estado_check`);
-  await pool.query(`
-    UPDATE turnos
-    SET profesional_id = (
-      SELECT id
-      FROM usuarios
-      WHERE COALESCE(activo, true) = true
-      ORDER BY id ASC
-      LIMIT 1
-    )
-    WHERE profesional_id IS NULL
-      AND EXISTS (
-        SELECT 1
-        FROM usuarios
-        WHERE COALESCE(activo, true) = true
-      )
-  `);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_turnos_profesional_inicio ON turnos(profesional_id, fecha_hora_inicio)`);
 
   turnosProfesionalColumnsReady = true;
@@ -87,33 +72,27 @@ async function asegurarHorariosProfesionales() {
   horariosProfesionalesReady = true;
 }
 
-async function obtenerProfesionalDefault() {
-  await asegurarColumnasProfesionalTurnos();
-
-  const { rows } = await pool.query(`
-    SELECT id
-    FROM usuarios
-    WHERE COALESCE(activo, true) = true
-    ORDER BY id ASC
-    LIMIT 1
-  `);
-
-  return rows[0]?.id || null;
+async function normalizarPerfilProfesionalId(profesionalPerfilId) {
+  const id = Number(profesionalPerfilId);
+  if (!Number.isInteger(id) || id <= 0) throw new Error('Debe seleccionar un perfil profesional');
+  const { rowCount } = await pool.query(
+    `SELECT p.id FROM profesionales p
+     JOIN usuarios u ON u.id=p.usuario_id AND COALESCE(u.activo,true)=true
+     JOIN usuarios_roles_vigentes ur ON ur.usuario_id=u.id
+     JOIN roles r ON r.id=ur.rol_id AND r.codigo IN ('odontologo','dueno')
+     WHERE p.id=$1 AND p.activo=true AND p.vinculo_confirmado_at IS NOT NULL`, [id]);
+  if (!rowCount) throw new Error('El perfil profesional no esta confirmado, activo o habilitado');
+  return id;
 }
 
-async function normalizarProfesionalId(profesionalId = null) {
-  await asegurarColumnasProfesionalTurnos();
-
-  const id = Number(profesionalId) || await obtenerProfesionalDefault();
-  if (!id) throw new Error('Debe seleccionar un profesional');
-
-  const { rowCount } = await pool.query(
-    'SELECT id FROM usuarios WHERE id = $1 AND COALESCE(activo, true) = true',
-    [id],
-  );
-
-  if (!rowCount) throw new Error('El profesional seleccionado no existe o no esta activo');
-  return id;
+async function existeSolapamientoPerfil(fechaInicio, fechaFin, turnoId, profesionalPerfilId) {
+  const params = [fechaInicio, fechaFin, profesionalPerfilId];
+  let excluir = '';
+  if (turnoId) { params.push(turnoId); excluir = 'AND id <> $4'; }
+  const { rows } = await pool.query(`SELECT EXISTS(SELECT 1 FROM turnos
+    WHERE profesional_perfil_id=$3 AND fecha_hora_inicio<$2 AND fecha_hora_fin>$1
+      AND estado IN ('programado','reprogramado','confirmado') ${excluir}) existe`, params);
+  return rows[0].existe;
 }
 
 async function obtenerHorarioProfesionalParaFecha(profesionalId, fechaInicio) {
@@ -214,14 +193,82 @@ function validarDuracionTurno(duracionMinutos, fallback = null) {
   return duracionFinal;
 }
 
+function normalizarPrestacionIds(prestacionIds, prestacionId = null) {
+  const raw = Array.isArray(prestacionIds) && prestacionIds.length ? prestacionIds : (prestacionId ? [prestacionId] : []);
+  const ids = raw.map(Number);
+  if (!ids.length || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+    throw new Error('Debe seleccionar al menos una prestacion valida');
+  }
+  if (new Set(ids).size !== ids.length) throw new Error('No se permiten prestaciones duplicadas');
+  return ids;
+}
+
+async function obtenerPrestacionesCatalogo(client, ids, { soloActivas = false } = {}) {
+  const { rows } = await client.query(
+    `SELECT id, nombre, duracion_minutos FROM prestaciones
+      WHERE id = ANY($1::int[]) ${soloActivas ? 'AND COALESCE(activo, true) = true' : ''}`,
+    [ids],
+  );
+  const byId = new Map(rows.map((row) => [Number(row.id), row]));
+  if (byId.size !== ids.length) throw new Error('Una o mas prestaciones no existen o no estan activas');
+  return ids.map((id, index) => {
+    const row = byId.get(id);
+    const duracion = Number(row.duracion_minutos);
+    if (!Number.isFinite(duracion) || duracion <= 0) throw new Error(`La prestacion ${row.nombre} no tiene una duracion valida`);
+    return { prestacion_id: id, orden: index + 1, nombre_snapshot: row.nombre, duracion_minutos_snapshot: duracion };
+  });
+}
+
+async function obtenerPrestacionesTurno(client, turnoId) {
+  const { rows } = await client.query(
+    `SELECT prestacion_id, orden, nombre_snapshot, duracion_minutos_snapshot
+       FROM turno_prestaciones WHERE turno_id = $1 ORDER BY orden`, [turnoId],
+  );
+  return rows;
+}
+
+async function obtenerPrestacionesPorTurnos(client, turnoIds) {
+  if (!turnoIds.length) return new Map();
+  const { rows } = await client.query(
+    `SELECT turno_id, prestacion_id AS id, orden, nombre_snapshot AS nombre,
+            duracion_minutos_snapshot AS duracion_minutos
+       FROM turno_prestaciones WHERE turno_id = ANY($1::int[]) ORDER BY turno_id, orden`,
+    [turnoIds],
+  );
+  const map = new Map();
+  rows.forEach((row) => map.set(Number(row.turno_id), [...(map.get(Number(row.turno_id)) || []), row]));
+  return map;
+}
+
+async function reemplazarPrestacionesTurno(client, turnoId, prestaciones) {
+  await client.query('DELETE FROM turno_prestaciones WHERE turno_id = $1', [turnoId]);
+  for (const item of prestaciones) {
+    await client.query(
+      `INSERT INTO turno_prestaciones
+        (turno_id, prestacion_id, orden, nombre_snapshot, duracion_minutos_snapshot)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [turnoId, item.prestacion_id, item.orden, item.nombre_snapshot, item.duracion_minutos_snapshot],
+    );
+  }
+}
+
+function mismaSeleccion(actuales, ids) {
+  return actuales.length === ids.length && actuales.every((item, index) => Number(item.prestacion_id) === ids[index]);
+}
+
+function sumarDuraciones(prestaciones) {
+  return prestaciones.reduce((total, item) => total + Number(item.duracion_minutos_snapshot), 0);
+}
+
 async function crearTurno({
   pacienteId,
   prestacionId,
+  prestacionIds,
   fechaHoraInicio,
   duracionMinutos = null,
   origen = 'interno',
   observaciones = null,
-  profesionalId = null,
+  profesionalPerfilId,
   recordatorioHabilitado = true,
 }) {
   await asegurarColumnasProfesionalTurnos();
@@ -230,52 +277,34 @@ async function crearTurno({
     throw new Error('No se pueden crear turnos en el pasado');
   }
 
-  const pacienteResult = await pool.query('SELECT id FROM pacientes WHERE id = $1', [pacienteId]);
-  if (pacienteResult.rowCount === 0) {
-    throw new Error('El paciente seleccionado no existe');
-  }
-
-  const prestacionResult = await pool.query('SELECT id, duracion_minutos FROM prestaciones WHERE id = $1', [prestacionId]);
-  if (prestacionResult.rowCount === 0) {
-    throw new Error('La prestacion seleccionada no existe');
-  }
-
-  const duracionPrestacion = Number(prestacionResult.rows[0].duracion_minutos) || null;
-  const duracionFinal = validarDuracionTurno(duracionMinutos, duracionPrestacion);
-
-  const profesionalFinalId = await normalizarProfesionalId(profesionalId);
+  const ids = normalizarPrestacionIds(prestacionIds, prestacionId);
+  const profesionalFinalId = await normalizarPerfilProfesionalId(profesionalPerfilId);
   const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado, { defaultValue: true });
-  const fechaHoraFin = new Date(fechaHoraInicio.getTime() + duracionFinal * 60000);
-  await validarHorarioProfesional(profesionalFinalId, fechaHoraInicio, fechaHoraFin);
-
-  const hayConflicto = await existeSolapamiento(fechaHoraInicio, fechaHoraFin, null, profesionalFinalId);
-  if (hayConflicto) {
-    throw new Error('El horario seleccionado no esta disponible');
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const pacienteResult = await client.query('SELECT id FROM pacientes WHERE id = $1', [pacienteId]);
+    if (!pacienteResult.rowCount) throw new Error('El paciente seleccionado no existe');
+    const prestaciones = await obtenerPrestacionesCatalogo(client, ids, { soloActivas: true });
+    const duracionFinal = validarDuracionTurno(duracionMinutos, sumarDuraciones(prestaciones));
+    const fechaHoraFin = new Date(fechaHoraInicio.getTime() + duracionFinal * 60000);
+    await validarHorarioProfesional(profesionalFinalId, fechaHoraInicio, fechaHoraFin);
+    if (await existeSolapamientoPerfil(fechaHoraInicio, fechaHoraFin, null, profesionalFinalId)) throw new Error('El horario seleccionado no esta disponible');
+    const { rows } = await client.query(
+      `INSERT INTO turnos
+        (paciente_id, prestacion_id, profesional_id, profesional_perfil_id, fecha_hora_inicio, fecha_hora_fin, estado, origen, observaciones, recordatorio_habilitado)
+       VALUES ($1,$2,NULL,$3,$4,$5,'programado',$6,$7,$8) RETURNING *`,
+      [pacienteId, ids[0], profesionalFinalId, fechaHoraInicio, fechaHoraFin, origen, observaciones, recordatorioFinal],
+    );
+    await reemplazarPrestacionesTurno(client, rows[0].id, prestaciones);
+    await client.query('COMMIT');
+    return { ...rows[0], duracion_minutos: duracionFinal };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const query = `
-    INSERT INTO turnos (
-      paciente_id,
-      prestacion_id,
-      profesional_id,
-      fecha_hora_inicio,
-      fecha_hora_fin,
-      estado,
-      origen,
-      observaciones,
-      recordatorio_habilitado
-    )
-    VALUES ($1, $2, $3, $4, $5, 'programado', $6, $7, $8)
-    RETURNING *;
-  `;
-
-  const values = [pacienteId, prestacionId, profesionalFinalId, fechaHoraInicio, fechaHoraFin, origen, observaciones, recordatorioFinal];
-  const { rows } = await pool.query(query, values);
-
-  return {
-    ...rows[0],
-    duracion_minutos: duracionFinal,
-  };
 }
 
 async function crearSolicitudTurno({
@@ -341,9 +370,12 @@ async function reprogramarTurno(
     throw new Error('El turno no puede reprogramarse');
   }
 
-  const profesionalId = turno.profesional_id || await obtenerProfesionalDefault();
+  const profesionalId = turno.profesional_perfil_id || turno.profesional_id;
+  if (!profesionalId) throw new Error('El turno no tiene un profesional responsable');
   await validarHorarioProfesional(profesionalId, fechaHoraInicio, fechaHoraFin);
-  const hayConflicto = await existeSolapamiento(fechaHoraInicio, fechaHoraFin, turnoId, profesionalId);
+  const hayConflicto = turno.profesional_perfil_id
+    ? await existeSolapamientoPerfil(fechaHoraInicio, fechaHoraFin, turnoId, profesionalId)
+    : await existeSolapamiento(fechaHoraInicio, fechaHoraFin, turnoId, profesionalId);
   if (hayConflicto) {
     throw new Error('El horario seleccionado no esta disponible');
   }
@@ -380,16 +412,17 @@ async function editarTurno(
   {
     pacienteId,
     prestacionId,
+    prestacionIds,
     fechaHoraInicio,
     duracionMinutos = null,
     observaciones = null,
-    profesionalId = null,
+    profesionalPerfilId,
     recordatorioHabilitado,
   },
 ) {
   await asegurarColumnasProfesionalTurnos();
   if (!pacienteId) throw new Error('El paciente es obligatorio');
-  if (!prestacionId) throw new Error('La prestacion es obligatoria');
+  if (!(prestacionIds?.length || prestacionId)) throw new Error('La prestacion es obligatoria');
 
   const fechaInicio = new Date(fechaHoraInicio);
   if (Number.isNaN(fechaInicio.getTime())) {
@@ -400,57 +433,44 @@ async function editarTurno(
     throw new Error('No se pueden programar turnos en el pasado');
   }
 
-  const turnoResult = await pool.query('SELECT * FROM turnos WHERE id = $1', [turnoId]);
-  if (turnoResult.rowCount === 0) throw new Error('El turno no existe');
-
-  const turno = turnoResult.rows[0];
-  const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
-  if (!ESTADOS_EDITABLES.includes(turno.estado)) {
-    throw new Error(
-      `No se puede editar un turno en estado "${turno.estado}".`,
+  const ids = normalizarPrestacionIds(prestacionIds, prestacionId);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const turnoResult = await client.query('SELECT * FROM turnos WHERE id = $1 FOR UPDATE', [turnoId]);
+    if (!turnoResult.rowCount) throw new Error('El turno no existe');
+    const turno = turnoResult.rows[0];
+    if (!ESTADOS_EDITABLES.includes(turno.estado)) throw new Error(`No se puede editar un turno en estado "${turno.estado}".`);
+    const pacienteResult = await client.query('SELECT id FROM pacientes WHERE id = $1', [pacienteId]);
+    if (!pacienteResult.rowCount) throw new Error('El paciente seleccionado no existe');
+    const actuales = await obtenerPrestacionesTurno(client, turnoId);
+    const seleccionCambio = !mismaSeleccion(actuales, ids);
+    const prestaciones = seleccionCambio ? await obtenerPrestacionesCatalogo(client, ids, { soloActivas: true }) : actuales;
+    const duracionActual = turno.fecha_hora_inicio && turno.fecha_hora_fin
+      ? Math.round((new Date(turno.fecha_hora_fin) - new Date(turno.fecha_hora_inicio)) / 60000) : null;
+    const duracionBase = seleccionCambio ? sumarDuraciones(prestaciones) : duracionActual || sumarDuraciones(prestaciones);
+    const duracionFinal = validarDuracionTurno(duracionMinutos, duracionBase);
+    const profesionalFinalId = await normalizarPerfilProfesionalId(profesionalPerfilId);
+    const fechaFin = new Date(fechaInicio.getTime() + duracionFinal * 60000);
+    await validarHorarioProfesional(profesionalFinalId, fechaInicio, fechaFin);
+    if (await existeSolapamientoPerfil(fechaInicio, fechaFin, turnoId, profesionalFinalId)) throw new Error('El horario seleccionado no esta disponible');
+    const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
+    const { rows } = await client.query(
+      `UPDATE turnos SET paciente_id=$1, prestacion_id=$2, profesional_id=NULL, profesional_perfil_id=$3,
+        fecha_hora_inicio=$4, fecha_hora_fin=$5, observaciones=$6,
+        recordatorio_habilitado=COALESCE($7::boolean,recordatorio_habilitado), updated_at=NOW()
+       WHERE id=$8 RETURNING *`,
+      [pacienteId, ids[0], profesionalFinalId, fechaInicio, fechaFin, observaciones, recordatorioFinal, turnoId],
     );
+    if (seleccionCambio) await reemplazarPrestacionesTurno(client, turnoId, prestaciones);
+    await client.query('COMMIT');
+    return { ...rows[0], duracion_minutos: duracionFinal };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
   }
-
-  const pacienteResult = await pool.query('SELECT id FROM pacientes WHERE id = $1', [pacienteId]);
-  if (pacienteResult.rowCount === 0) throw new Error('El paciente seleccionado no existe');
-
-  const prestacionResult = await pool.query('SELECT id, duracion_minutos FROM prestaciones WHERE id = $1', [prestacionId]);
-  if (prestacionResult.rowCount === 0) throw new Error('La prestacion seleccionada no existe');
-
-  const duracionActual = turno.fecha_hora_inicio && turno.fecha_hora_fin
-    ? Math.round((new Date(turno.fecha_hora_fin).getTime() - new Date(turno.fecha_hora_inicio).getTime()) / 60000)
-    : null;
-  const duracionPrestacion = Number(prestacionResult.rows[0].duracion_minutos) || null;
-  const duracionFinal = validarDuracionTurno(duracionMinutos, duracionActual || duracionPrestacion);
-
-  const profesionalFinalId = await normalizarProfesionalId(profesionalId || turno.profesional_id);
-  const fechaFin = new Date(fechaInicio.getTime() + duracionFinal * 60000);
-  await validarHorarioProfesional(profesionalFinalId, fechaInicio, fechaFin);
-
-  const hayConflicto = await existeSolapamiento(fechaInicio, fechaFin, turnoId, profesionalFinalId);
-  if (hayConflicto) throw new Error('El horario seleccionado no esta disponible');
-
-  const query = `
-    UPDATE turnos
-    SET
-      paciente_id = $1,
-      prestacion_id = $2,
-      profesional_id = $3,
-      fecha_hora_inicio = $4,
-      fecha_hora_fin = $5,
-      observaciones = $6,
-      recordatorio_habilitado = COALESCE($7::boolean, recordatorio_habilitado),
-      updated_at = NOW()
-    WHERE id = $8
-    RETURNING *;
-  `;
-
-  const values = [pacienteId, prestacionId, profesionalFinalId, fechaInicio, fechaFin, observaciones, recordatorioFinal, turnoId];
-  const { rows } = await pool.query(query, values);
-  return {
-    ...rows[0],
-    duracion_minutos: duracionFinal,
-  };
 }
 
 /**
@@ -529,8 +549,9 @@ async function confirmarTurno(turnoId) {
 async function confirmarSolicitudTurno(
   turnoId,
   {
-    profesionalId,
+    profesionalPerfilId,
     prestacionId = null,
+    prestacionIds = null,
     fechaHoraInicio,
     duracionMinutos,
     observaciones = null,
@@ -552,19 +573,18 @@ async function confirmarSolicitudTurno(
   if (!esFechaValida(fechaInicio)) throw new Error('Fecha y hora de inicio invalidas');
   if (fechaInicio < new Date()) throw new Error('No se pueden confirmar turnos en el pasado');
 
-  const prestacionFinalId = Number(prestacionId) || turno.prestacion_id;
-  const prestacionResult = await pool.query('SELECT id, duracion_minutos FROM prestaciones WHERE id = $1', [prestacionFinalId]);
-  if (!prestacionResult.rowCount) throw new Error('La prestacion seleccionada no existe');
+  const ids = normalizarPrestacionIds(prestacionIds, prestacionId || turno.prestacion_id);
+  const prestaciones = await obtenerPrestacionesCatalogo(pool, ids, { soloActivas: true });
 
   const duracionActual = turno.fecha_hora_inicio && turno.fecha_hora_fin
     ? Math.round((new Date(turno.fecha_hora_fin).getTime() - new Date(turno.fecha_hora_inicio).getTime()) / 60000)
     : null;
-  const duracionFinal = validarDuracionTurno(duracionMinutos, duracionActual || prestacionResult.rows[0].duracion_minutos);
-  const profesionalFinalId = await normalizarProfesionalId(profesionalId || turno.profesional_id);
+  const duracionFinal = validarDuracionTurno(duracionMinutos, duracionActual || sumarDuraciones(prestaciones));
+  const profesionalFinalId = await normalizarPerfilProfesionalId(profesionalPerfilId);
   const fechaFin = new Date(fechaInicio.getTime() + duracionFinal * 60000);
 
   await validarHorarioProfesional(profesionalFinalId, fechaInicio, fechaFin);
-  const hayConflicto = await existeSolapamiento(fechaInicio, fechaFin, turnoId, profesionalFinalId);
+  const hayConflicto = await existeSolapamientoPerfil(fechaInicio, fechaFin, turnoId, profesionalFinalId);
   if (hayConflicto) throw new Error('El horario seleccionado no esta disponible');
 
   const client = await pool.connect();
@@ -584,7 +604,8 @@ async function confirmarSolicitudTurno(
     const { rows } = await client.query(
       `
         UPDATE turnos
-        SET profesional_id = $2,
+        SET profesional_id = NULL,
+            profesional_perfil_id = $2,
             prestacion_id = $3,
             fecha_hora_inicio = $4,
             fecha_hora_fin = $5,
@@ -597,10 +618,11 @@ async function confirmarSolicitudTurno(
           AND estado = 'solicitado'
         RETURNING *
       `,
-      [turnoId, profesionalFinalId, prestacionFinalId, fechaInicio, fechaFin, observaciones, recordatorioFinal],
+      [turnoId, profesionalFinalId, ids[0], fechaInicio, fechaFin, observaciones, recordatorioFinal],
     );
     if (!rows.length) throw new Error('La solicitud de turno ya no se encuentra pendiente');
 
+    await reemplazarPrestacionesTurno(client, turnoId, prestaciones);
     await cerrarSolicitudesPendientes(client, {
       turnoId,
       tipos: ['nuevo_turno', 'primera_consulta'],
@@ -692,6 +714,7 @@ async function obtenerTurnoDetalle(turnoId) {
       t.paciente_id,
       t.prestacion_id,
       t.profesional_id,
+      t.profesional_perfil_id,
       t.fecha_hora_inicio,
       t.fecha_hora_fin,
       t.estado,
@@ -708,12 +731,14 @@ async function obtenerTurnoDetalle(turnoId) {
       p.dni AS paciente_dni,
       p.telefono AS paciente_telefono,
       pr.nombre AS prestacion_nombre,
-      u.nombre AS profesional_nombre,
-      u.email AS profesional_email
+      COALESCE(pf.nombre_mostrado,u.nombre) AS profesional_nombre,
+      COALESCE(up.email,u.email) AS profesional_email
     FROM turnos t
     LEFT JOIN pacientes p ON p.id = t.paciente_id
     LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
     LEFT JOIN usuarios u ON u.id = t.profesional_id
+    LEFT JOIN profesionales pf ON pf.id=t.profesional_perfil_id
+    LEFT JOIN usuarios up ON up.id=pf.usuario_id
     WHERE t.id = $1
     LIMIT 1
   `;
@@ -722,6 +747,8 @@ async function obtenerTurnoDetalle(turnoId) {
   if (!rows.length) throw new Error('El turno no existe');
 
   const row = rows[0];
+  const prestaciones = (await obtenerPrestacionesPorTurnos(pool, [row.id])).get(Number(row.id)) || [];
+  const prestacionPrincipal = prestaciones[0] || { id: row.prestacion_id, nombre: row.prestacion_nombre };
   return {
     id: row.id,
     fecha_hora_inicio: row.fecha_hora_inicio,
@@ -742,12 +769,12 @@ async function obtenerTurnoDetalle(turnoId) {
       dni: row.paciente_dni,
       telefono: row.paciente_telefono,
     },
-    prestacion: {
-      id: row.prestacion_id,
-      nombre: row.prestacion_nombre,
-    },
+    prestaciones,
+    prestacion: { id: prestacionPrincipal.id, nombre: prestaciones.map((item) => item.nombre).join(' + ') || prestacionPrincipal.nombre },
     profesional: {
-      id: row.profesional_id,
+      id: row.profesional_perfil_id || row.profesional_id,
+      perfil_id: row.profesional_perfil_id,
+      referencia: row.profesional_perfil_id ? 'perfil' : 'historica_usuario',
       nombre: row.profesional_nombre,
       email: row.profesional_email,
     },
@@ -763,6 +790,8 @@ async function listarTurnos({
   fechaDesde = null,
   fechaHasta = null,
   sort = 'fecha_hora_inicio:asc',
+  profesionalPerfilId = null,
+  incluirObservaciones = true,
 }) {
   await asegurarColumnasRecordatorioTurnos();
   await asegurarColumnasProfesionalTurnos();
@@ -811,6 +840,12 @@ async function listarTurnos({
     idx++;
   }
 
+  if (profesionalPerfilId) {
+    where.push(`t.profesional_perfil_id = $${idx}`);
+    values.push(profesionalPerfilId);
+    idx++;
+  }
+
   if (q) {
     where.push(`(
       translate(lower(p.nombre), 'áéíóúäëïöüñ', 'aeiouaeioun') LIKE $${idx}
@@ -822,30 +857,34 @@ async function listarTurnos({
   }
 
   if (fechaDesde) {
+    const esDiaConsultorio = /^\d{4}-\d{2}-\d{2}$/.test(String(fechaDesde).trim());
+    const limiteDesde = esDiaConsultorio
+      ? `($${idx}::date::timestamp AT TIME ZONE 'America/Buenos_Aires')`
+      : `$${idx}::timestamptz`;
     where.push(`(
-      t.fecha_hora_inicio >= $${idx}
+      t.fecha_hora_inicio >= ${limiteDesde}
       OR (
         t.estado = 'solicitado'
         AND t.fecha_hora_inicio IS NULL
-        AND t.created_at >= $${idx}
+        AND t.created_at >= ${limiteDesde}
       )
     )`);
-    values.push(normalizarDesde(fechaDesde));
+    values.push(esDiaConsultorio ? String(fechaDesde).trim() : normalizarDesde(fechaDesde));
     idx++;
   }
 
   if (fechaHasta) {
     const hasta = normalizarHastaExclusiva(fechaHasta);
-    if (/^\d{4}-\d{2}-\d{2}T00:00:00$/.test(hasta)) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(fechaHasta).trim())) {
       where.push(`(
-        t.fecha_hora_inicio < ($${idx}::timestamp + INTERVAL '1 day')
+        t.fecha_hora_inicio < ((($${idx}::date + 1)::timestamp) AT TIME ZONE 'America/Buenos_Aires')
         OR (
           t.estado = 'solicitado'
           AND t.fecha_hora_inicio IS NULL
-          AND t.created_at < ($${idx}::timestamp + INTERVAL '1 day')
+          AND t.created_at < ((($${idx}::date + 1)::timestamp) AT TIME ZONE 'America/Buenos_Aires')
         )
       )`);
-      values.push(hasta);
+      values.push(String(fechaHasta).trim());
     } else {
       where.push(`(
         t.fecha_hora_inicio <= $${idx}
@@ -894,6 +933,7 @@ async function listarTurnos({
       t.paciente_id,
       t.prestacion_id,
       t.profesional_id,
+      t.profesional_perfil_id,
       t.fecha_hora_inicio,
       t.fecha_hora_fin,
       t.estado,
@@ -915,12 +955,14 @@ async function listarTurnos({
       p.dni AS paciente_dni,
       p.telefono AS paciente_telefono,
       pr.nombre AS prestacion_nombre,
-      u.nombre AS profesional_nombre,
-      u.email AS profesional_email
+      COALESCE(pf.nombre_mostrado,u.nombre) AS profesional_nombre,
+      COALESCE(up.email,u.email) AS profesional_email
     FROM turnos t
     LEFT JOIN pacientes p ON p.id = t.paciente_id
     LEFT JOIN prestaciones pr ON pr.id = t.prestacion_id
     LEFT JOIN usuarios u ON u.id = t.profesional_id
+    LEFT JOIN profesionales pf ON pf.id=t.profesional_perfil_id
+    LEFT JOIN usuarios up ON up.id=pf.usuario_id
     ${whereClause}
     ORDER BY ${orderBy}
     LIMIT $${idx} OFFSET $${idx + 1}
@@ -928,18 +970,22 @@ async function listarTurnos({
 
   values.push(limit, offset);
   const dataRes = await pool.query(dataQuery, values);
+  const prestacionesPorTurno = await obtenerPrestacionesPorTurnos(pool, dataRes.rows.map((row) => row.id));
 
   return {
     total,
     page,
     limit,
-    turnos: dataRes.rows.map((row) => ({
+    turnos: dataRes.rows.map((row) => {
+      const prestaciones = prestacionesPorTurno.get(Number(row.id)) || [];
+      const principal = prestaciones[0] || { id: row.prestacion_id, nombre: row.prestacion_nombre };
+      return ({
       id: row.id,
       fecha_hora_inicio: row.fecha_hora_inicio,
       fecha_hora_fin: row.fecha_hora_fin,
       estado: row.estado,
       origen: row.origen,
-      observaciones: row.observaciones,
+      ...(incluirObservaciones ? { observaciones: row.observaciones } : {}),
       solicitud_preferencia: row.solicitud_preferencia,
       solicitud_confirmada_at: row.solicitud_confirmada_at,
       solicitud_rechazada_at: row.solicitud_rechazada_at,
@@ -958,49 +1004,54 @@ async function listarTurnos({
         dni: row.paciente_dni,
         telefono: row.paciente_telefono,
       },
-      prestacion: {
-        id: row.prestacion_id,
-        nombre: row.prestacion_nombre,
-      },
+      prestaciones,
+      prestacion: { id: principal.id, nombre: prestaciones.map((item) => item.nombre).join(' + ') || principal.nombre },
       profesional: {
-        id: row.profesional_id,
+        id: row.profesional_perfil_id || row.profesional_id,
+        perfil_id: row.profesional_perfil_id,
+        referencia: row.profesional_perfil_id ? 'perfil' : 'historica_usuario',
         nombre: row.profesional_nombre,
         email: row.profesional_email,
       },
-    })),
+    }); }),
   };
 }
 
-async function listarProfesionales() {
+async function listarProfesionales({ profesionalPerfilId = null } = {}) {
   const { rows } = await pool.query(`
-    SELECT id, nombre, email
-    FROM usuarios
-    WHERE COALESCE(activo, true) = true
-    ORDER BY nombre ASC, email ASC
-  `);
+    SELECT p.id, p.nombre_mostrado AS nombre, u.email
+    FROM profesionales p
+    JOIN usuarios u ON u.id=p.usuario_id AND COALESCE(u.activo,true)=true
+    JOIN usuarios_roles_vigentes ur ON ur.usuario_id=u.id
+    JOIN roles r ON r.id=ur.rol_id AND r.codigo IN ('odontologo','dueno')
+    WHERE p.activo=true AND p.vinculo_confirmado_at IS NOT NULL
+      AND ($1::int IS NULL OR p.id=$1)
+    ORDER BY p.nombre_mostrado ASC, p.id ASC
+  `, [profesionalPerfilId]);
 
   return rows;
 }
 
-async function consultarDisponibilidad({ profesionalId, fecha, prestacionId, turnoId = null, duracionMinutos = null }) {
+async function consultarDisponibilidad({ profesionalPerfilId, fecha, prestacionId, prestacionIds = null, turnoId = null, duracionMinutos = null }) {
   await asegurarColumnasProfesionalTurnos();
   await asegurarHorariosProfesionales();
 
-  const profesionalFinalId = await normalizarProfesionalId(profesionalId);
+  const profesionalFinalId = await normalizarPerfilProfesionalId(profesionalPerfilId);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) {
     throw new Error('fecha invalida. Use formato YYYY-MM-DD');
   }
 
-  const dia = new Date(`${fecha}T00:00:00`);
+  const dia = new Date(`${fecha}T00:00:00-03:00`);
   if (!esFechaValida(dia)) throw new Error('fecha invalida');
 
-  const prestacionResult = await pool.query(
-    'SELECT id, duracion_minutos FROM prestaciones WHERE id = $1 AND COALESCE(activo, true) = true',
-    [prestacionId],
-  );
-  if (!prestacionResult.rowCount) throw new Error('La prestacion seleccionada no existe o no esta activa');
-
-  const duracion = Number(duracionMinutos) || Number(prestacionResult.rows[0].duracion_minutos);
+  const ids = normalizarPrestacionIds(prestacionIds, prestacionId);
+  const prestaciones = await obtenerPrestacionesCatalogo(pool, ids, { soloActivas: true });
+  let duracionBase = sumarDuraciones(prestaciones);
+  if (turnoId && mismaSeleccion(await obtenerPrestacionesTurno(pool, turnoId), ids)) {
+    const actual = await pool.query('SELECT EXTRACT(EPOCH FROM (fecha_hora_fin-fecha_hora_inicio))/60 AS duracion FROM turnos WHERE id=$1', [turnoId]);
+    duracionBase = Number(actual.rows[0]?.duracion) || duracionBase;
+  }
+  const duracion = Number(duracionMinutos) || duracionBase;
   if (!Number.isFinite(duracion) || duracion < 15) {
     throw new Error('La prestacion no tiene una duracion valida');
   }
@@ -1018,7 +1069,7 @@ async function consultarDisponibilidad({ profesionalId, fecha, prestacionId, tur
     `
       SELECT fecha_hora_inicio, fecha_hora_fin, estado
       FROM turnos
-      WHERE profesional_id = $1
+      WHERE profesional_perfil_id = $1
         AND estado = ANY($2)
         AND fecha_hora_inicio IS NOT NULL
         AND fecha_hora_fin IS NOT NULL
@@ -1072,7 +1123,6 @@ module.exports = {
   existeSolapamiento,
   listarProfesionales,
   consultarDisponibilidad,
-  normalizarProfesionalId,
 };
 
 

@@ -667,7 +667,7 @@ async function buildAvailableDays({ prestacionId, profesionalId = null, maxDays 
   for (let offset = 0; offset < 45 && days.length < maxDays; offset += 1) {
     const date = addDays(today, offset);
     const fecha = formatDateYmd(date);
-    const slots = await consultarDisponibilidad({ profesionalId, fecha, prestacionId });
+    const slots = await consultarDisponibilidad({ profesionalPerfilId: profesionalId, fecha, prestacionId });
     const disponibles = slots.filter((slot) => slot.disponible);
     if (disponibles.length) {
       days.push({
@@ -770,7 +770,7 @@ async function sendSlotsForBlock(session, phone, slots, block, { step = 'SELECT_
 async function sendAvailableTimes(session, phone, selectedDay, { step = 'SELECT_TIME' } = {}) {
   const prestacionId = session.prestacion_id || session.data?.prestacion_id;
   const profesionalId = session.profesional_id || session.data?.profesional_id || null;
-  const slots = await consultarDisponibilidad({ profesionalId, fecha: selectedDay.fecha, prestacionId });
+  const slots = await consultarDisponibilidad({ profesionalPerfilId: profesionalId, fecha: selectedDay.fecha, prestacionId });
   const disponibles = slots.filter((slot) => slot.disponible);
 
   if (!disponibles.length) {
@@ -1485,7 +1485,7 @@ async function isSelectedSlotStillAvailable(session) {
   const profesionalId = session.profesional_id || data.profesional_id || null;
   if (!selectedDay?.fecha || !selectedSlot?.inicio || !prestacionId) return false;
 
-  const slots = await consultarDisponibilidad({ profesionalId, fecha: selectedDay.fecha, prestacionId });
+  const slots = await consultarDisponibilidad({ profesionalPerfilId: profesionalId, fecha: selectedDay.fecha, prestacionId });
   return slots.some((slot) => slot.disponible && slot.inicio === selectedSlot.inicio);
 }
 
@@ -1631,7 +1631,7 @@ async function handleConfirmAppointment(session, phone, body) {
   const turno = await crearTurno({
     pacienteId: session.paciente_id,
     prestacionId: session.prestacion_id,
-    profesionalId: session.profesional_id || data.profesional_id || null,
+    profesionalPerfilId: session.profesional_id || data.profesional_id || null,
     fechaHoraInicio,
     origen: 'autogestion_whatsapp',
     observaciones: 'Turno solicitado por WhatsApp',

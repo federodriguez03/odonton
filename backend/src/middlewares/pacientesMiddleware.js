@@ -12,7 +12,7 @@ function validarEntradaPaciente(req, res, next) {
       if (!String(body.apellido || '').trim()) errores.apellido = 'El apellido es obligatorio';
       if (!String(body.dni || '').trim()) errores.dni = 'El DNI es obligatorio';
     } else {
-      const allowed = ['nombre', 'apellido', 'dni', 'nacionalidad', 'domicilio', 'telefono', 'email', 'fecha_nacimiento', 'observaciones', 'alergias', 'condiciones', 'estado_tratamiento'];
+      const allowed = ['nombre', 'apellido', 'dni', 'nacionalidad', 'domicilio', 'telefono', 'email', 'fecha_nacimiento'];
       if (!allowed.some((key) => Object.prototype.hasOwnProperty.call(body, key))) return res.status(400).json({ mensaje: 'No hay campos para actualizar' });
     }
 
@@ -60,7 +60,7 @@ function validarEntradaPaciente(req, res, next) {
       }
     }
 
-    for (const field of ['nacionalidad', 'domicilio', 'observaciones']) {
+    for (const field of ['nacionalidad', 'domicilio']) {
       if (Object.prototype.hasOwnProperty.call(body, field)) body[field] = String(body[field] || '').trim() || null;
     }
 
