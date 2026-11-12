@@ -1,0 +1,8 @@
+require('dotenv').config();
+const fs=require('fs'); const path=require('path'); const {Client}=require('pg');
+const db=`odonton_bulk_mig_${Date.now()}`; const base={host:process.env.DB_HOST,port:Number(process.env.DB_PORT),user:process.env.DB_USER,password:process.env.DB_PASSWORD}; const admin=new Client({...base,database:'postgres'});
+(async()=>{let test;try{await admin.connect();await admin.query(`CREATE DATABASE "${db}"`);test=new Client({...base,database:db});await test.connect();
+await test.query(`CREATE TABLE usuarios(id SERIAL PRIMARY KEY);CREATE TABLE prestaciones(id SERIAL PRIMARY KEY,nombre TEXT NOT NULL,duracion_minutos INTEGER NOT NULL CHECK(duracion_minutos>0),precio_base NUMERIC,activo BOOLEAN);CREATE TABLE arancel_versiones(id BIGSERIAL PRIMARY KEY);CREATE TABLE arancel_referencias(id BIGSERIAL PRIMARY KEY,version_id BIGINT REFERENCES arancel_versiones(id));`);
+const sql=fs.readFileSync(path.join(__dirname,'../../database/2026-11-10_prestaciones_carga_masiva.sql'),'utf8');await test.query(sql);await test.query(sql);await test.query("INSERT INTO prestaciones(nombre,duracion_minutos,activo) VALUES ('Pendiente',NULL,false)");
+const col=(await test.query("SELECT is_nullable FROM information_schema.columns WHERE table_name='prestaciones' AND column_name='duracion_minutos'")).rows[0];if(col.is_nullable!=='YES')throw new Error('Duracion sigue obligatoria');console.log(JSON.stringify({ok:true,database:db}));
+}finally{if(test)await test.end().catch(()=>{});await admin.query(`DROP DATABASE IF EXISTS "${db}" WITH (FORCE)`).catch(()=>{});await admin.end().catch(()=>{});}})().catch(e=>{console.error(e);process.exitCode=1});

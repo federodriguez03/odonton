@@ -29,6 +29,7 @@ const estadisticasRoutes = require('./routes/estadisticasRoutes');
 const cargosRoutes = require('./routes/cargosRoutes');
 const pagosRoutes = require('./routes/pagosRoutes');
 const configuracionRoutes = require('./routes/configuracionRoutes');
+const usuariosRoutes = require('./routes/usuariosRoutes');
 const whatsappRoutes = require('./routes/whatsapp.routes');
 const { initializeWhatsAppClient } = require('./services/whatsappClient.service');
 
@@ -50,6 +51,7 @@ app.use('/api/estadisticas', estadisticasRoutes);
 app.use('/api/cargos', cargosRoutes);
 app.use('/api/pagos', pagosRoutes);
 app.use('/api/configuracion', configuracionRoutes);
+app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 
 // =========================
