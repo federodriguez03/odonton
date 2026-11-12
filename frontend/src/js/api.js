@@ -15,6 +15,14 @@ export function clearToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+export const getUsuarios = () => request('/api/usuarios');
+export const getPerfilesUsuarios = () => request('/api/usuarios/perfiles');
+export const createUsuario = (payload) => request('/api/usuarios', { method: 'POST', body: JSON.stringify(payload) });
+export const updateUsuario = (id, payload) => request(`/api/usuarios/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+export const linkPerfilUsuario = (id, payload) => request(`/api/usuarios/${id}/perfil`, { method: 'POST', body: JSON.stringify(payload) });
+export const resetUsuarioPassword = (id, passwordTemporal) => request(`/api/usuarios/${id}/restablecer-password`, { method: 'POST', body: JSON.stringify({ passwordTemporal }) });
+export const changeOwnPassword = (payload) => request('/api/auth/cambiar-password', { method: 'POST', body: JSON.stringify(payload) });
+
 async function request(path, options = {}) {
   const token = getToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -33,7 +41,10 @@ async function request(path, options = {}) {
       clearToken();
       window.dispatchEvent(new Event('auth:logout'));
     }
-    const error = new Error(data?.mensaje || `Error ${response.status}`);
+    const fallback = response.status === 401 ? 'La sesion no es valida o vencio'
+      : response.status === 403 ? 'No tiene permiso para realizar esta operacion'
+        : response.status >= 500 ? 'El servicio no esta disponible temporalmente' : `Error ${response.status}`;
+    const error = new Error(data?.mensaje || fallback);
     error.code = data?.codigo;
     error.status = response.status;
     error.fields = data?.errores || null;
@@ -63,7 +74,10 @@ async function requestForm(path, formData, options = {}) {
       clearToken();
       window.dispatchEvent(new Event('auth:logout'));
     }
-    const error = new Error(data?.mensaje || `Error ${response.status}`);
+    const fallback = response.status === 401 ? 'La sesion no es valida o vencio'
+      : response.status === 403 ? 'No tiene permiso para realizar esta operacion'
+        : response.status >= 500 ? 'El servicio no esta disponible temporalmente' : `Error ${response.status}`;
+    const error = new Error(data?.mensaje || fallback);
     error.code = data?.codigo;
     error.status = response.status;
     throw error;
@@ -82,6 +96,10 @@ export function getPacientes(params = {}) {
 
   const suffix = query.toString() ? `?${query.toString()}` : '';
   return request(`/api/pacientes${suffix}`);
+}
+
+export function getPacienteAdministrativo(id) {
+  return request(`/api/pacientes/${id}`);
 }
 
 export function createPaciente(payload) {
@@ -279,6 +297,27 @@ export function activarPrestacion(id) {
 
 export function desactivarPrestacion(id) {
   return request(`/api/prestaciones/${id}/desactivar`, { method: 'PUT' });
+}
+
+export function previewArancelesCsv(formData) {
+  return requestForm('/api/prestaciones/aranceles/vista-previa', formData);
+}
+
+export function confirmArancelesCsv(formData) {
+  return requestForm('/api/prestaciones/aranceles/confirmar', formData);
+}
+
+export function previewCargaCatalogo(versionId = '') {
+  const suffix = versionId ? `?version_id=${encodeURIComponent(versionId)}` : '';
+  return request(`/api/prestaciones/aranceles/carga-catalogo/vista-previa${suffix}`);
+}
+
+export function confirmCargaCatalogo(payload) {
+  return request('/api/prestaciones/aranceles/carga-catalogo/confirmar', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function configurarDuracionPrestaciones(payload) {
+  return request('/api/prestaciones/configurar-duracion', { method: 'PUT', body: JSON.stringify(payload) });
 }
 
 export function getResumenClinicoFinanciero(params = {}) {

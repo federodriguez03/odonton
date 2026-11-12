@@ -20,6 +20,7 @@ const ui = {
 };
 
 let lastReport = null;
+let operationalMode = false;
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -130,8 +131,8 @@ function csvValue(value) {
 
 function buildCsv(report) {
   const financial = report.financiero || {};
-  const clinical = report.clinico || {};
-  const summary = clinical.resumen || {};
+  const activity = operationalMode ? (report.agenda || {}) : (report.clinico || {});
+  const summary = activity.resumen || {};
   const methods = financial.ingresos_por_metodo || {};
   const lines = [
     'Resumen financiero',
@@ -147,24 +148,22 @@ function buildCsv(report) {
     `Tarjeta,${methods.tarjeta || '0.00'}`,
     `Transferencia,${methods.transferencia || '0.00'}`,
     '',
-    'Resumen clínico',
+    operationalMode ? 'Resumen operativo de agenda' : 'Resumen clínico',
     `Total turnos,${summary.total_turnos ?? 0}`,
     `Realizados,${summary.total_realizados ?? 0}`,
     `Cancelados,${summary.total_cancelados ?? 0}`,
     `Reprogramados,${summary.total_reprogramados ?? 0}`,
     `Confirmados,${summary.total_confirmados ?? 0}`,
-    '',
-    'Prestaciones realizadas',
-    'Prestación,Cantidad',
   ];
 
-  (clinical.prestaciones_realizadas || []).forEach((row) => {
-    lines.push(`${csvValue(row.prestacion_nombre)},${row.cantidad}`);
-  });
+  if (!operationalMode) {
+    lines.push('', 'Prestaciones realizadas', 'Prestación,Cantidad');
+    (activity.prestaciones_realizadas || []).forEach((row) => lines.push(`${csvValue(row.prestacion_nombre)},${row.cantidad}`));
+  }
 
-  if (Array.isArray(clinical.turnos)) {
-    lines.push('', 'Detalle clínico', 'Fecha,Paciente,DNI,Prestación,Estado');
-    clinical.turnos.forEach((row) => {
+  if (Array.isArray(activity.turnos)) {
+    lines.push('', operationalMode ? 'Detalle operativo de agenda' : 'Detalle clínico', 'Fecha,Paciente,DNI,Prestación,Estado');
+    activity.turnos.forEach((row) => {
       const patient = `${row.paciente_apellido || ''}, ${row.paciente_nombre || ''}`.trim();
       lines.push([
         csvValue(formatDateTime(row.fecha_hora_inicio)),
@@ -183,15 +182,15 @@ function downloadCsv(report) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = 'resumen_clinico_financiero.csv';
+  link.download = operationalMode ? 'reporte_operativo.csv' : 'resumen_clinico_financiero.csv';
   link.click();
   URL.revokeObjectURL(url);
 }
 
 function printReport(report) {
   const financial = report.financiero || {};
-  const clinical = report.clinico || {};
-  const summary = clinical.resumen || {};
+  const activity = operationalMode ? (report.agenda || {}) : (report.clinico || {});
+  const summary = activity.resumen || {};
   const methods = financial.ingresos_por_metodo || {};
   const rows = [
     ['Ingresos reales', formatCurrency(financial.ingresos_reales)],
@@ -213,7 +212,9 @@ function printReport(report) {
   const tableRows = (values) => values.map(([label, value]) => `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`).join('');
   const reportWindow = window.open('', '_blank', 'width=900,height=800');
   if (!reportWindow) return;
-  reportWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Resumen clínico y financiero</title><style>body{font-family:Arial,sans-serif;color:#172033;margin:28px}h1{margin-bottom:4px}h2{margin-top:24px}p{color:#526173}table{width:100%;border-collapse:collapse}td{border:1px solid #dbe3eb;padding:8px}td:first-child{font-weight:600}</style></head><body><h1>Resumen clínico y financiero</h1><p>${escapeHtml(ui.rangoLabel.textContent)} · Ingresos por fecha de pago; cargos por fecha de cargo.</p><h2>Resumen financiero</h2><table>${tableRows(rows)}</table><h2>Reporte clínico</h2><table>${tableRows(clinicalRows)}</table></body></html>`);
+  const title = operationalMode ? 'Reporte operativo' : 'Resumen clínico y financiero';
+  const activityTitle = operationalMode ? 'Agenda' : 'Reporte clínico';
+  reportWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:Arial,sans-serif;color:#172033;margin:28px}h1{margin-bottom:4px}h2{margin-top:24px}p{color:#526173}table{width:100%;border-collapse:collapse}td{border:1px solid #dbe3eb;padding:8px}td:first-child{font-weight:600}</style></head><body><h1>${title}</h1><p>${escapeHtml(ui.rangoLabel.textContent)} · Ingresos por fecha de pago; cargos por fecha de cargo.</p><h2>Resumen financiero</h2><table>${tableRows(rows)}</table><h2>${activityTitle}</h2><table>${tableRows(clinicalRows)}</table></body></html>`);
   reportWindow.document.close();
   reportWindow.focus();
   reportWindow.print();
@@ -240,9 +241,10 @@ async function generateReport() {
     lastReport = data;
     renderRange(data.rango);
     renderFinancial(data.financiero);
-    renderClinical(data.clinico);
-    renderPrestations(data.clinico?.prestaciones_realizadas || []);
-    const turns = data.clinico?.turnos;
+    const activity = operationalMode ? data.agenda : data.clinico;
+    renderClinical(activity);
+    if (!operationalMode) renderPrestations(activity?.prestaciones_realizadas || []);
+    const turns = activity?.turnos;
     ui.turnosWrap.classList.toggle('d-none', !Array.isArray(turns));
     if (Array.isArray(turns)) renderTurns(turns);
   } catch (error) {
@@ -259,7 +261,15 @@ function setDefaultRange() {
   ui.fechaHasta.value = `${year}-${month}-${day}`;
 }
 
-export async function initReportesView() {
+export async function initReportesView({ operational = false } = {}) {
+  operationalMode = operational;
+  if (operationalMode) {
+    document.getElementById('reportes-actividad-titulo').textContent = 'Agenda operativa';
+    document.getElementById('reportes-actividad-ayuda').textContent = 'Actividad de agenda sin observaciones ni datos clínicos.';
+    document.getElementById('reportes-prestaciones-titulo').classList.add('d-none');
+    document.getElementById('reportes-prestaciones-wrap').classList.add('d-none');
+    document.getElementById('reportes-turnos-titulo').textContent = 'Detalle operativo de turnos';
+  }
   setDefaultRange();
   ui.form.addEventListener('submit', async (event) => {
     event.preventDefault();

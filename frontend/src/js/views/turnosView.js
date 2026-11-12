@@ -15,6 +15,8 @@ import {
 import { renderAlert } from '../components/alerts.js';
 import { checkboxToBoolean } from '../utils/booleans.js';
 
+const CLINIC_TIME_ZONE = 'America/Buenos_Aires';
+
 const state = {
   page: 1,
   limit: 10,
@@ -36,7 +38,12 @@ const state = {
   editSelectedSlot: null,
   editCurrentTurno: null,
   detailCurrentTurno: null,
+  prestacionesCatalogo: [],
+  selectedPrestaciones: [],
+  editSelectedPrestaciones: [],
+  pacienteSearchRequest: { create: 0, edit: 0 },
 };
+let agendaOptions = { propia: false, profesionalPerfilId: null };
 
 const ui = {
   alertContainer: document.getElementById('alert-container'),
@@ -55,8 +62,14 @@ const ui = {
   goPacientesButton: document.getElementById('turno-go-pacientes'),
   createForm: document.getElementById('create-turno-form'),
   pacienteSelect: document.getElementById('turno-paciente-id'),
+  pacienteSearch: document.getElementById('turno-paciente-search'),
+  pacienteResults: document.getElementById('turno-paciente-results'),
   profesionalSelect: document.getElementById('turno-profesional-id'),
   prestacionSelect: document.getElementById('turno-prestacion-id'),
+  prestacionSearch: document.getElementById('turno-prestacion-search'),
+  prestacionResults: document.getElementById('turno-prestacion-results'),
+  prestacionesSelected: document.getElementById('turno-prestaciones-selected'),
+  duracionTotal: document.getElementById('turno-duracion-total'),
   duracionInput: document.getElementById('turno-duracion'),
   fechaDiaInput: document.getElementById('turno-fecha-dia'),
   fechaInicioInput: document.getElementById('turno-fecha-inicio'),
@@ -70,8 +83,14 @@ const ui = {
   editModalLabel: document.getElementById('turno-edit-modal-label'),
   editIdInput: document.getElementById('edit-turno-id'),
   editPacienteSelect: document.getElementById('edit-turno-paciente-id'),
+  editPacienteSearch: document.getElementById('edit-turno-paciente-search'),
+  editPacienteResults: document.getElementById('edit-turno-paciente-results'),
   editProfesionalSelect: document.getElementById('edit-turno-profesional-id'),
   editPrestacionSelect: document.getElementById('edit-turno-prestacion-id'),
+  editPrestacionSearch: document.getElementById('edit-turno-prestacion-search'),
+  editPrestacionResults: document.getElementById('edit-turno-prestacion-results'),
+  editPrestacionesSelected: document.getElementById('edit-turno-prestaciones-selected'),
+  editDuracionTotal: document.getElementById('edit-turno-duracion-total'),
   editFechaDiaInput: document.getElementById('edit-turno-fecha-dia'),
   editFechaInput: document.getElementById('edit-turno-fecha-inicio'),
   editDuracionInput: document.getElementById('edit-turno-duracion'),
@@ -126,6 +145,7 @@ function formatDateTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString('es-AR', {
+    timeZone: CLINIC_TIME_ZONE,
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -138,6 +158,7 @@ function formatDateAr(value, options = {}) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleDateString('es-AR', {
+    timeZone: CLINIC_TIME_ZONE,
     day: '2-digit',
     month: '2-digit',
     year: options.year || undefined,
@@ -148,7 +169,7 @@ function formatDateAr(value, options = {}) {
 function formatTimeAr(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString('es-AR', { timeZone: CLINIC_TIME_ZONE, hour: '2-digit', minute: '2-digit' });
 }
 
 function escapeHtml(value) {
@@ -161,25 +182,34 @@ function escapeHtml(value) {
 }
 
 function formatDateForApi(date) {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function clinicDateTimeParts(value) {
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: CLINIC_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(value));
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
 }
 
 function startOfWeek(date) {
   const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  const day = copy.getDay();
+  copy.setUTCHours(12, 0, 0, 0);
+  const day = copy.getUTCDay();
   const offsetToMonday = day === 0 ? -6 : 1 - day;
-  copy.setDate(copy.getDate() + offsetToMonday);
+  copy.setUTCDate(copy.getUTCDate() + offsetToMonday);
   return copy;
+}
+
+function todayClinicDate() {
+  const [year, month, day] = formatDateForApi(new Date()).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, 12));
 }
 
 function buildWeekDays(weekStart) {
   return Array.from({ length: 7 }, (_, i) => {
     const day = new Date(weekStart);
-    day.setDate(weekStart.getDate() + i);
+    day.setUTCDate(weekStart.getUTCDate() + i);
     return day;
   });
 }
@@ -235,7 +265,7 @@ function formatForDateInput(value) {
 function formatTimeForSlot(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return date.toLocaleTimeString('es-AR', { timeZone: CLINIC_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 function calcularDuracionMinutos(turno) {
@@ -308,6 +338,8 @@ function serializeTurno(turno) {
       pacienteTelefono: turno?.paciente?.telefono,
       prestacionId: turno?.prestacion?.id,
       prestacion: turno?.prestacion || null,
+      prestaciones: turno?.prestaciones || [],
+      prestacionIds: (turno?.prestaciones || []).map((item) => item.id),
       profesionalId: turno?.profesional?.id,
       profesional: turno?.profesional || null,
       fechaHoraInicio: turno.fecha_hora_inicio,
@@ -523,12 +555,12 @@ async function loadTurnos() {
 async function loadWeeklyCalendar() {
   try {
     if (!state.calendarWeekStart) {
-      state.calendarWeekStart = startOfWeek(new Date());
+      state.calendarWeekStart = startOfWeek(todayClinicDate());
     }
 
     const weekStart = new Date(state.calendarWeekStart);
     const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
 
     const data = await getTurnos({
       page: 1,
@@ -548,7 +580,7 @@ async function loadWeeklyCalendar() {
 }
 
 function renderWeeklyCalendar() {
-  const weekStart = state.calendarWeekStart || startOfWeek(new Date());
+  const weekStart = state.calendarWeekStart || startOfWeek(todayClinicDate());
   const weekDays = buildWeekDays(weekStart);
   const weekEnd = weekDays[6];
 
@@ -568,7 +600,8 @@ function renderWeeklyCalendar() {
   (state.calendarTurnos || []).forEach((turno) => {
     const start = new Date(turno.fecha_hora_inicio);
     if (Number.isNaN(start.getTime())) return;
-    const key = `${start.getFullYear()}-${start.getMonth()}-${start.getDate()}-${start.getHours()}`;
+    const parts = clinicDateTimeParts(start);
+    const key = `${parts.year}-${parts.month}-${parts.day}-${Number(parts.hour)}`;
     const current = agendaByStartHour.get(key) || [];
     current.push(turno);
     agendaByStartHour.set(key, current);
@@ -582,7 +615,7 @@ function renderWeeklyCalendar() {
     const hourLabel = `${String(hour).padStart(2, '0')}:00`;
     const dayCells = weekDays
       .map((day) => {
-        const key = `${day.getFullYear()}-${day.getMonth()}-${day.getDate()}-${hour}`;
+        const key = `${formatDateForApi(day)}-${hour}`;
         const items = agendaByStartHour.get(key) || [];
         const todayClass = formatDateForApi(day) === formatDateForApi(new Date()) ? ' calendar-today-cell' : '';
 
@@ -608,23 +641,19 @@ function renderWeeklyCalendar() {
 async function loadDailyCalendar() {
   try {
     if (!state.calendarDay) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      state.calendarDay = today;
+      state.calendarDay = todayClinicDate();
     }
 
     const day = new Date(state.calendarDay);
     const dayDate = formatDateForApi(day);
-    const dayStart = `${dayDate}T00:00:00`;
-    const dayEnd = `${dayDate}T23:59:59`;
 
     const data = await getTurnos({
       page: 1,
       limit: 200,
       estado: state.estado || undefined,
       q: state.pacienteQuery || undefined,
-      fecha_desde: dayStart,
-      fecha_hasta: dayEnd,
+      fecha_desde: dayDate,
+      fecha_hasta: dayDate,
       sort: 'fecha_hora_inicio:asc',
     });
 
@@ -636,7 +665,7 @@ async function loadDailyCalendar() {
 }
 
 function renderDailyCalendar() {
-  const day = state.calendarDay || new Date();
+  const day = state.calendarDay || todayClinicDate();
   ui.calendarDayLabel.textContent = formatDateAr(day, { weekday: 'long', year: 'numeric' });
 
   ui.calendarDayHead.innerHTML = `<tr><th class="calendar-hour-head">Hora</th><th>Turnos del dia</th></tr>`;
@@ -645,7 +674,7 @@ function renderDailyCalendar() {
   (state.calendarDayTurnos || []).forEach((turno) => {
     const start = new Date(turno.fecha_hora_inicio);
     if (Number.isNaN(start.getTime())) return;
-    const key = `${start.getHours()}`;
+    const key = `${Number(clinicDateTimeParts(start).hour)}`;
     const current = agendaByStartHour.get(key) || [];
     current.push(turno);
     agendaByStartHour.set(key, current);
@@ -672,16 +701,23 @@ function renderDailyCalendar() {
   ui.calendarDayBody.innerHTML = rows.join('');
 }
 
-function renderPacientesOptions(pacientes) {
-  const options = (pacientes || [])
-    .map((paciente) => `<option value="${paciente.id}">${paciente.apellido}, ${paciente.nombre} (${paciente.dni})</option>`)
-    .join('');
-  ui.pacienteSelect.innerHTML = `<option value="">Seleccionar paciente</option>${options}`;
-  ui.editPacienteSelect.innerHTML = `<option value="">Seleccionar paciente</option>${options}`;
+function pacienteLabel(paciente) {
+  return `${paciente.apellido}, ${paciente.nombre} (${paciente.dni})`;
+}
+
+async function buscarPacientesTurno(mode, query, requestId) {
+  const results = mode === 'edit' ? ui.editPacienteResults : ui.pacienteResults;
+  if (query.trim().length < 2) { results.innerHTML = ''; return; }
+  const data = await getPacientes({ page: 1, limit: 20, q: query.trim(), sort: 'apellido:asc' });
+  if (requestId !== state.pacienteSearchRequest[mode]) return;
+  results.innerHTML = (data.pacientes || []).map((paciente) =>
+    `<button type="button" class="turno-search-option" data-paciente-id="${paciente.id}" data-paciente-label="${escapeHtml(pacienteLabel(paciente))}">${escapeHtml(pacienteLabel(paciente))}</button>`
+  ).join('') || '<div class="small text-secondary p-2">Sin resultados</div>';
 }
 
 function renderProfesionalesOptions(profesionales) {
-  const options = (profesionales || [])
+  const lista = profesionales || [];
+  const options = lista
     .map((profesional) => {
       const label = profesional.nombre || profesional.email || `Profesional #${profesional.id}`;
       const email = profesional.email && profesional.nombre ? ` (${profesional.email})` : '';
@@ -689,8 +725,18 @@ function renderProfesionalesOptions(profesionales) {
     })
     .join('');
 
-  ui.profesionalSelect.innerHTML = `<option value="">Seleccionar profesional</option>${options}`;
-  ui.editProfesionalSelect.innerHTML = `<option value="">Seleccionar profesional</option>${options}`;
+  const placeholder = lista.length
+    ? 'Seleccionar profesional'
+    : 'No hay perfiles profesionales confirmados y activos';
+  ui.profesionalSelect.innerHTML = `<option value="">${placeholder}</option>${options}`;
+  ui.editProfesionalSelect.innerHTML = `<option value="">${placeholder}</option>${options}`;
+  if (agendaOptions.propia && agendaOptions.profesionalPerfilId) {
+    const perfilId = String(agendaOptions.profesionalPerfilId);
+    ui.profesionalSelect.value = perfilId;
+    ui.editProfesionalSelect.value = perfilId;
+    ui.profesionalSelect.disabled = true;
+    ui.editProfesionalSelect.disabled = true;
+  }
 }
 
 async function loadProfesionalesForSelect() {
@@ -702,14 +748,7 @@ async function loadProfesionalesForSelect() {
   }
 }
 
-async function loadPacientesForSelect() {
-  try {
-    const data = await getPacientes({ page: 1, limit: 100, sort: 'apellido:asc' });
-    renderPacientesOptions(data.pacientes || []);
-  } catch (error) {
-    renderAlert(ui.alertContainer, error.message, 'danger');
-  }
-}
+async function loadPacientesForSelect() {}
 
 function renderPrestacionesOptions(prestaciones) {
   const uniqueByName = new Map();
@@ -719,15 +758,27 @@ function renderPrestacionesOptions(prestaciones) {
     uniqueByName.set(key, prestacion);
   });
 
-  const options = Array.from(uniqueByName.values())
-    .map((prestacion) => {
-      const duracion = prestacion.duracion_minutos ? ` - ${prestacion.duracion_minutos} min` : '';
-      return `<option value="${prestacion.id}">${prestacion.nombre}${duracion}</option>`;
-    })
-    .join('');
+  state.prestacionesCatalogo = Array.from(uniqueByName.values());
+  renderPrestacionPicker('create');
+  renderPrestacionPicker('edit');
+}
 
-  ui.prestacionSelect.innerHTML = `<option value="">Seleccionar prestacion</option>${options}`;
-  ui.editPrestacionSelect.innerHTML = `<option value="">Seleccionar prestacion</option>${options}`;
+function selectedPrestaciones(mode) { return mode === 'edit' ? state.editSelectedPrestaciones : state.selectedPrestaciones; }
+
+function renderPrestacionPicker(mode) {
+  const edit = mode === 'edit';
+  const search = edit ? ui.editPrestacionSearch : ui.prestacionSearch;
+  const results = edit ? ui.editPrestacionResults : ui.prestacionResults;
+  const chips = edit ? ui.editPrestacionesSelected : ui.prestacionesSelected;
+  const total = edit ? ui.editDuracionTotal : ui.duracionTotal;
+  const selected = selectedPrestaciones(mode);
+  const query = normalizeText(search?.value);
+  results.innerHTML = state.prestacionesCatalogo
+    .filter((item) => !selected.some((selectedItem) => Number(selectedItem.id) === Number(item.id)) && (normalizeText(item.nombre).includes(query) || normalizeText(item.codigo).includes(query)))
+    .slice(0, 12)
+    .map((item) => `<button type="button" class="turno-search-option" data-prestacion-id="${item.id}">${item.codigo ? `${escapeHtml(item.codigo)} · ` : ''}${escapeHtml(item.nombre)} · ${item.duracion_minutos} min</button>`).join('');
+  chips.innerHTML = selected.map((item) => `<span class="turno-prestacion-chip">${escapeHtml(item.nombre)} · ${item.duracion_minutos} min <button type="button" aria-label="Quitar ${escapeHtml(item.nombre)}" data-remove-prestacion="${item.id}">×</button></span>`).join('');
+  total.textContent = `${selected.reduce((sum, item) => sum + Number(item.duracion_minutos), 0)} min`;
 }
 
 async function loadPrestacionesForSelect() {
@@ -790,7 +841,7 @@ function renderDisponibilidad() {
 
 async function loadDisponibilidad() {
   const profesionalId = ui.profesionalSelect.value;
-  const prestacionId = ui.prestacionSelect.value;
+  const prestacionIds = state.selectedPrestaciones.map((item) => item.id);
   const fecha = ui.fechaDiaInput.value;
 
   state.selectedSlot = null;
@@ -798,7 +849,7 @@ async function loadDisponibilidad() {
   ui.fechaFinInput.value = '';
   ui.selectedSlotLabel.textContent = 'Selecciona un horario disponible';
 
-  if (!profesionalId || !prestacionId || !fecha) {
+  if (!profesionalId || !prestacionIds.length || !fecha) {
     resetDisponibilidad();
     return;
   }
@@ -807,9 +858,9 @@ async function loadDisponibilidad() {
     state.disponibilidadLoading = true;
     renderDisponibilidad();
     state.disponibilidad = await getDisponibilidadTurnos({
-      profesional_id: profesionalId,
+      profesional_perfil_id: profesionalId,
       fecha,
-      tratamiento_id: prestacionId,
+      prestacion_ids: prestacionIds.join(','),
       duracion_minutos: ui.duracionInput.value || undefined,
     });
   } catch (error) {
@@ -871,7 +922,7 @@ function renderEditDisponibilidad() {
 
 async function loadEditDisponibilidad({ keepCurrentSlot = false } = {}) {
   const profesionalId = ui.editProfesionalSelect.value;
-  const prestacionId = ui.editPrestacionSelect.value;
+  const prestacionIds = state.editSelectedPrestaciones.map((item) => item.id);
   const fecha = ui.editFechaDiaInput.value;
   const turnoId = ui.editIdInput.value;
   const currentTime = keepCurrentSlot ? formatTimeForSlot(state.editCurrentTurno?.fechaHoraInicio) : '';
@@ -880,7 +931,7 @@ async function loadEditDisponibilidad({ keepCurrentSlot = false } = {}) {
   ui.editFechaInput.value = '';
   ui.editSelectedSlotLabel.textContent = 'Selecciona un horario disponible';
 
-  if (!profesionalId || !prestacionId || !fecha) {
+  if (!profesionalId || !prestacionIds.length || !fecha) {
     resetEditDisponibilidad();
     return;
   }
@@ -889,9 +940,9 @@ async function loadEditDisponibilidad({ keepCurrentSlot = false } = {}) {
     state.editDisponibilidadLoading = true;
     renderEditDisponibilidad();
     state.editDisponibilidad = await getDisponibilidadTurnos({
-      profesional_id: profesionalId,
+      profesional_perfil_id: profesionalId,
       fecha,
-      tratamiento_id: prestacionId,
+      prestacion_ids: prestacionIds.join(','),
       turno_id: turnoId,
       duracion_minutos: ui.editDuracionInput.value || undefined,
     });
@@ -948,11 +999,13 @@ async function openEditModal(turno) {
   }
   ui.editIdInput.value = turno.id;
   ui.editPacienteSelect.value = String(turno.pacienteId || '');
+  ui.editPacienteSearch.value = turno.paciente ? pacienteLabel(turno.paciente) : '';
   ui.editProfesionalSelect.value = String(turno.profesionalId || '');
-  ui.editPrestacionSelect.value = String(turno.prestacionId || '');
+  state.editSelectedPrestaciones = (turno.prestaciones || []).map((item) => ({ id: item.id, nombre: item.nombre, duracion_minutos: item.duracion_minutos }));
+  renderPrestacionPicker('edit');
   ui.editFechaDiaInput.value = formatForDateInput(turno.fechaHoraInicio);
   ui.editFechaInput.value = formatForDateTimeLocal(turno.fechaHoraInicio);
-  ui.editDuracionInput.value = calcularDuracionMinutos(turno);
+  ui.editDuracionInput.value = '';
   ui.editObservacionesInput.value = turno.observaciones || '';
   ui.editRecordatorioCheckbox.checked = turno.recordatorioHabilitado !== false;
   ui.editSelectedSlotLabel.textContent = formatTimeForSlot(turno.fechaHoraInicio) || 'Selecciona un horario disponible';
@@ -999,28 +1052,25 @@ function bindFilters() {
 
   ui.quickRangeInput.addEventListener('change', () => {
     const value = ui.quickRangeInput.value;
-    const today = new Date();
+    const today = todayClinicDate();
 
     if (value === 'hoy') {
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
-      const date = `${yyyy}-${mm}-${dd}`;
+      const date = formatDateForApi(today);
       ui.desdeInput.value = date;
       ui.hastaInput.value = date;
       return;
     }
 
     if (value === 'semana') {
-      const day = today.getDay();
+      const day = today.getUTCDay();
       const offsetToMonday = day === 0 ? -6 : 1 - day;
       const monday = new Date(today);
-      monday.setDate(today.getDate() + offsetToMonday);
+      monday.setUTCDate(today.getUTCDate() + offsetToMonday);
       const sunday = new Date(monday);
-      sunday.setDate(monday.getDate() + 6);
+      sunday.setUTCDate(monday.getUTCDate() + 6);
 
       const toDateInput = (d) =>
-        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        formatDateForApi(d);
 
       ui.desdeInput.value = toDateInput(monday);
       ui.hastaInput.value = toDateInput(sunday);
@@ -1051,43 +1101,39 @@ function bindPagination() {
 
 function bindCalendarNav() {
   ui.calendarPrevWeekButton.addEventListener('click', async () => {
-    const newStart = new Date(state.calendarWeekStart || startOfWeek(new Date()));
-    newStart.setDate(newStart.getDate() - 7);
+    const newStart = new Date(state.calendarWeekStart || startOfWeek(todayClinicDate()));
+    newStart.setUTCDate(newStart.getUTCDate() - 7);
     state.calendarWeekStart = newStart;
     await loadWeeklyCalendar();
   });
 
   ui.calendarTodayWeekButton.addEventListener('click', async () => {
-    state.calendarWeekStart = startOfWeek(new Date());
+    state.calendarWeekStart = startOfWeek(todayClinicDate());
     await loadWeeklyCalendar();
   });
 
   ui.calendarNextWeekButton.addEventListener('click', async () => {
-    const newStart = new Date(state.calendarWeekStart || startOfWeek(new Date()));
-    newStart.setDate(newStart.getDate() + 7);
+    const newStart = new Date(state.calendarWeekStart || startOfWeek(todayClinicDate()));
+    newStart.setUTCDate(newStart.getUTCDate() + 7);
     state.calendarWeekStart = newStart;
     await loadWeeklyCalendar();
   });
 
   ui.calendarPrevDayButton.addEventListener('click', async () => {
-    const newDay = new Date(state.calendarDay || new Date());
-    newDay.setDate(newDay.getDate() - 1);
-    newDay.setHours(0, 0, 0, 0);
+    const newDay = new Date(state.calendarDay || todayClinicDate());
+    newDay.setUTCDate(newDay.getUTCDate() - 1);
     state.calendarDay = newDay;
     await loadDailyCalendar();
   });
 
   ui.calendarTodayDayButton.addEventListener('click', async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    state.calendarDay = today;
+    state.calendarDay = todayClinicDate();
     await loadDailyCalendar();
   });
 
   ui.calendarNextDayButton.addEventListener('click', async () => {
-    const newDay = new Date(state.calendarDay || new Date());
-    newDay.setDate(newDay.getDate() + 1);
-    newDay.setHours(0, 0, 0, 0);
+    const newDay = new Date(state.calendarDay || todayClinicDate());
+    newDay.setUTCDate(newDay.getUTCDate() + 1);
     state.calendarDay = newDay;
     await loadDailyCalendar();
   });
@@ -1145,6 +1191,10 @@ function bindOpenCreateModal() {
   ui.openCreateModalButton.addEventListener('click', async () => {
     await Promise.all([loadPacientesForSelect(), loadPrestacionesForSelect(), loadProfesionalesForSelect()]);
     ui.createForm.reset();
+    state.selectedPrestaciones = [];
+    ui.pacienteSelect.value = '';
+    ui.pacienteResults.innerHTML = '';
+    renderPrestacionPicker('create');
     ui.recordatorioCheckbox.checked = true;
     resetDisponibilidad();
     turnoModal?.show();
@@ -1159,8 +1209,57 @@ function bindOpenCreateModal() {
   });
 }
 
+function bindTurnoSearchControls() {
+  const bindPatient = (mode) => {
+    const edit = mode === 'edit';
+    const input = edit ? ui.editPacienteSearch : ui.pacienteSearch;
+    const hidden = edit ? ui.editPacienteSelect : ui.pacienteSelect;
+    const results = edit ? ui.editPacienteResults : ui.pacienteResults;
+    let timer;
+    input.addEventListener('input', () => {
+      hidden.value = '';
+      const requestId = ++state.pacienteSearchRequest[mode];
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => buscarPacientesTurno(mode, input.value, requestId).catch((error) => renderAlert(ui.alertContainer, error.message, 'danger')), 250);
+    });
+    results.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-paciente-id]');
+      if (!button) return;
+      hidden.value = button.dataset.pacienteId;
+      input.value = button.dataset.pacienteLabel;
+      results.innerHTML = '';
+    });
+  };
+  const bindPrestation = (mode) => {
+    const edit = mode === 'edit';
+    const input = edit ? ui.editPrestacionSearch : ui.prestacionSearch;
+    const results = edit ? ui.editPrestacionResults : ui.prestacionResults;
+    const chips = edit ? ui.editPrestacionesSelected : ui.prestacionesSelected;
+    input.addEventListener('input', () => renderPrestacionPicker(mode));
+    results.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-prestacion-id]');
+      if (!button) return;
+      const item = state.prestacionesCatalogo.find((entry) => Number(entry.id) === Number(button.dataset.prestacionId));
+      if (!item) return;
+      selectedPrestaciones(mode).push(item);
+      input.value = '';
+      renderPrestacionPicker(mode);
+      if (edit) loadEditDisponibilidad(); else loadDisponibilidad();
+    });
+    chips.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-remove-prestacion]');
+      if (!button) return;
+      const next = selectedPrestaciones(mode).filter((item) => Number(item.id) !== Number(button.dataset.removePrestacion));
+      if (edit) state.editSelectedPrestaciones = next; else state.selectedPrestaciones = next;
+      renderPrestacionPicker(mode);
+      if (edit) loadEditDisponibilidad(); else loadDisponibilidad();
+    });
+  };
+  bindPatient('create'); bindPatient('edit'); bindPrestation('create'); bindPrestation('edit');
+}
+
 function bindDisponibilidadForm() {
-  [ui.profesionalSelect, ui.prestacionSelect, ui.fechaDiaInput, ui.duracionInput].forEach((input) => {
+  [ui.profesionalSelect, ui.fechaDiaInput, ui.duracionInput].forEach((input) => {
     input?.addEventListener('change', loadDisponibilidad);
   });
 
@@ -1182,7 +1281,7 @@ function bindDisponibilidadForm() {
 }
 
 function bindEditDisponibilidadForm() {
-  [ui.editProfesionalSelect, ui.editPrestacionSelect, ui.editFechaDiaInput, ui.editDuracionInput].forEach((input) => {
+  [ui.editProfesionalSelect, ui.editFechaDiaInput, ui.editDuracionInput].forEach((input) => {
     input?.addEventListener('change', () => loadEditDisponibilidad());
   });
 
@@ -1208,7 +1307,12 @@ function bindCreateForm() {
 
     const formData = new FormData(ui.createForm);
     const payload = Object.fromEntries(formData.entries());
+    payload.prestacionIds = state.selectedPrestaciones.map((item) => item.id);
     payload.recordatorioHabilitado = checkboxToBoolean(ui.recordatorioCheckbox);
+    if (!payload.pacienteId || !payload.prestacionIds.length) {
+      renderAlert(ui.alertContainer, 'Selecciona un paciente y al menos una prestación', 'warning');
+      return;
+    }
     if (!payload.fechaHoraInicio) {
       renderAlert(ui.alertContainer, 'Selecciona un horario disponible para confirmar el turno', 'warning');
       return;
@@ -1242,11 +1346,16 @@ function bindEditForm() {
 
     const formData = new FormData(ui.editForm);
     const payload = Object.fromEntries(formData.entries());
+    payload.prestacionIds = state.editSelectedPrestaciones.map((item) => item.id);
     payload.recordatorioHabilitado = checkboxToBoolean(ui.editRecordatorioCheckbox);
     const id = payload.id;
     delete payload.id;
     delete payload.fechaDia;
 
+    if (!payload.pacienteId || !payload.prestacionIds.length) {
+      renderAlert(ui.alertContainer, 'Selecciona un paciente y al menos una prestación', 'warning');
+      return;
+    }
     if (!payload.fechaHoraInicio) {
       renderAlert(ui.alertContainer, 'Selecciona un horario disponible para guardar los cambios', 'warning');
       return;
@@ -1399,10 +1508,10 @@ function bindTableActions() {
   });
 }
 
-export async function initTurnosView() {
-  state.calendarWeekStart = startOfWeek(new Date());
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+export async function initTurnosView({ agendaPropia = false, profesionalPerfilId = null } = {}) {
+  agendaOptions = { propia: agendaPropia, profesionalPerfilId };
+  state.calendarWeekStart = startOfWeek(todayClinicDate());
+  const today = todayClinicDate();
   state.calendarDay = today;
   state.calendarMode = 'day';
   renderCalendarMode();
@@ -1412,6 +1521,7 @@ export async function initTurnosView() {
   bindCalendarNav();
   bindCalendarTurnoActions();
   bindOpenCreateModal();
+  bindTurnoSearchControls();
   bindDisponibilidadForm();
   bindEditDisponibilidadForm();
   bindCreateForm();

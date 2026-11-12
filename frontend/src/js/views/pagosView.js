@@ -12,6 +12,7 @@ import {
 import { renderAlert } from '../components/alerts.js';
 
 const PAGE_SIZE = 20;
+let annulmentAllowed = true;
 const FRIENDLY_ERRORS = Object.freeze({
   SOBREPAGO: 'El importe supera el saldo disponible del cargo.',
   PAGO_YA_ANULADO: 'El pago ya se encuentra anulado.',
@@ -272,7 +273,7 @@ async function loadPrestations() {
   const data = await getPrestaciones();
   state.prestaciones = Array.isArray(data.prestaciones) ? data.prestaciones : [];
   const options = state.prestaciones.map((prestation) => (
-    `<option value="${escapeHtml(prestation.id)}">${escapeHtml(prestation.nombre)}${prestation.precio_base !== null && prestation.precio_base !== undefined ? ` · ${formatCurrency(prestation.precio_base)}` : ''}</option>`
+    `<option value="${escapeHtml(prestation.id)}">${escapeHtml(prestation.nombre)}${prestation.precio_modalidad === 'fijo' && Number(prestation.precio_base) > 0 ? ` · ${formatCurrency(prestation.precio_base)}` : ''}</option>`
   )).join('');
   ui.cargoPrestacion.innerHTML = `<option value="">Sin prestación asociada</option>${options}`;
 }
@@ -319,13 +320,14 @@ function applyPrestationSuggestion() {
     return;
   }
   if (conceptCanChange) ui.cargoConcepto.value = prestation.nombre || '';
-  if (amountCanChange && prestation.precio_base !== null && prestation.precio_base !== undefined) {
+  const tienePrecioFijo = prestation.precio_modalidad === 'fijo' && Number(prestation.precio_base) > 0;
+  if (amountCanChange && tienePrecioFijo) {
     ui.cargoImporte.value = String(prestation.precio_base);
+  } else if (amountCanChange) {
+    ui.cargoImporte.value = '';
   }
   state.conceptoSugerido = prestation.nombre || '';
-  state.importeSugerido = prestation.precio_base === null || prestation.precio_base === undefined
-    ? ''
-    : String(prestation.precio_base);
+  state.importeSugerido = tienePrecioFijo ? String(prestation.precio_base) : '';
 }
 
 function resetCargoForm() {
@@ -378,7 +380,7 @@ function renderDetail() {
           <td>${escapeHtml(observations || 'Sin observaciones')}</td>
           <td class="text-end text-nowrap">
             <button type="button" class="btn btn-sm btn-outline-primary" data-action="receipt" data-id="${escapeHtml(payment.id)}">Constancia</button>
-            ${annulled ? '' : `<button type="button" class="btn btn-sm btn-outline-danger ms-1" data-action="annul" data-id="${escapeHtml(payment.id)}">Anular</button>`}
+            ${annulled || !annulmentAllowed ? '' : `<button type="button" class="btn btn-sm btn-outline-danger ms-1" data-action="annul" data-id="${escapeHtml(payment.id)}">Anular</button>`}
           </td>
         </tr>
       `;
@@ -685,7 +687,8 @@ function bindReceiptPrint() {
   });
 }
 
-export async function initPagosView() {
+export async function initPagosView({ allowAnnul = true } = {}) {
+  annulmentAllowed = allowAnnul;
   bindFiltersAndPagination();
   bindCargoCreation();
   bindCargoActions();

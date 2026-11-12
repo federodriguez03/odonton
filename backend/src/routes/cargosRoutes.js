@@ -10,13 +10,14 @@ const {
   autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { autorizarFinanzasOperativas } = require('../middlewares/finanzasAutorizacion');
 
 const router = express.Router();
 
 router.post(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarFinanzasOperativas,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'crear_cargo';
@@ -28,7 +29,7 @@ router.post(
 router.get(
   '/',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarFinanzasOperativas,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'listar_cargos';
@@ -40,7 +41,7 @@ router.get(
 router.get(
   '/:id',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarFinanzasOperativas,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_cargo';

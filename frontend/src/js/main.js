@@ -4,8 +4,9 @@ import { initPrestacionesView } from './views/prestacionesView.js';
 import { initPagosView } from './views/pagosView.js';
 import { initReportesView } from './views/reportesView.js';
 import { initConfiguracionView } from './views/configuracionView.js';
+import { initUsuariosView } from './views/usuariosView.js';
 import { loadDashboard } from '../pages/dashboard.js';
-import { clearToken, getMe, getToken, login, setToken } from './api.js';
+import { changeOwnPassword, clearToken, getMe, getToken, login, setToken } from './api.js';
 import { renderAlert } from './components/alerts.js';
 
 const ui = {
@@ -17,6 +18,8 @@ const ui = {
   loginPassword: document.getElementById('login-password'),
   rememberEmail: document.getElementById('remember-email'),
   loginError: document.getElementById('login-error'),
+  passwordScreen: document.getElementById('password-change-screen'),
+  passwordForm: document.getElementById('password-change-form'),
   userName: document.getElementById('user-name'),
   userEmail: document.getElementById('user-email'),
   logoutBtn: document.getElementById('logout-btn'),
@@ -35,6 +38,26 @@ const SECTION_MAP = {
   configuracion: 'section-configuracion',
 };
 let appInitialized = false;
+let usuariosInitialized = false;
+let currentUser = null;
+
+function allowedSections(user) {
+  const allowed = new Set();
+  const permissions = user?.permisos || {};
+  if (permissions.acceso_total) ['dashboard', 'prestaciones', 'configuracion'].forEach((section) => allowed.add(section));
+  if (permissions.turnos) allowed.add('turnos');
+  if (permissions.pacientes_administrativos) allowed.add('pacientes');
+  if (permissions.finanzas_operativas) allowed.add('pagos');
+  if (permissions.reportes_operativos) allowed.add('reportes');
+  return allowed;
+}
+
+function configureNavigation(user) {
+  const allowed = allowedSections(user);
+  document.querySelectorAll('#main-tabs .nav-link').forEach((tab) => {
+    tab.closest('li')?.classList.toggle('d-none', !allowed.has(tab.dataset.section));
+  });
+}
 
 function setLoginMessage(message = '') {
   if (!ui.loginError) return;
@@ -77,8 +100,9 @@ function clearStoredSection() {
 
 function activateSection(requestedSection, { persist = true } = {}) {
   const tabs = Array.from(document.querySelectorAll('#main-tabs .nav-link'));
-  const requestedTab = tabs.find((tab) => tab.dataset.section === requestedSection);
-  const section = requestedTab && SECTION_MAP[requestedSection] ? requestedSection : 'dashboard';
+  const requestedTab = tabs.find((tab) => tab.dataset.section === requestedSection && !tab.closest('li')?.classList.contains('d-none'));
+  const fallback = currentUser?.permisos?.acceso_total ? 'dashboard' : 'turnos';
+  const section = requestedTab && SECTION_MAP[requestedSection] ? requestedSection : fallback;
 
   tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.section === section));
   Object.entries(SECTION_MAP).forEach(([key, id]) => {
@@ -101,11 +125,16 @@ function bindTabs() {
 }
 
 function showLoginScreen(message = '') {
+  ui.passwordScreen?.classList.add('d-none');
   ui.loadingScreen?.classList.add('d-none');
   ui.loginScreen?.classList.remove('d-none');
   ui.appShell?.classList.add('d-none');
   if (ui.loginForm) ui.loginForm.reset();
   setLoginMessage(message);
+}
+
+function showPasswordScreen() {
+  ui.loadingScreen?.classList.add('d-none'); ui.loginScreen?.classList.add('d-none'); ui.appShell?.classList.add('d-none'); ui.passwordScreen?.classList.remove('d-none');
 }
 
 function showLoadingScreen(message = 'Validando sesión...') {
@@ -119,6 +148,10 @@ function showLoadingScreen(message = 'Validando sesión...') {
 }
 
 function showApp(user) {
+  currentUser = user;
+  configureNavigation(user);
+  document.getElementById('configuracion-tab')?.closest('li')?.classList.toggle('d-none', !user?.permisos?.configurar_consultorio);
+  document.getElementById('config-usuarios-card')?.classList.toggle('d-none', !user?.permisos?.administrar_usuarios);
   if (ui.userName) {
     ui.userName.textContent = user?.nombre ? `Hola, ${user.nombre}` : 'Usuario';
   }
@@ -130,22 +163,34 @@ function showApp(user) {
   ui.appShell?.classList.remove('d-none');
 }
 
-async function initAppOnce() {
+async function initAppOnce(user) {
   if (appInitialized) return;
+  currentUser = user;
+  configureNavigation(user);
   bindTabs();
-  activateSection(getStoredSection(), { persist: false });
-  await initPacientesView();
-  await initTurnosView();
-  await initPrestacionesView();
-  await initPagosView();
-  await initReportesView();
-  await initConfiguracionView();
+  const initialize = async (label, callback) => {
+    try { await callback(); }
+    catch (error) { renderAlert(ui.alertContainer, `${label}: ${error.message || 'servicio no disponible'}`, error.status === 403 ? 'warning' : 'danger'); }
+  };
+  if (user?.permisos?.turnos) await initialize('Turnos', () => initTurnosView({ agendaPropia: !user?.permisos?.agenda_general, profesionalPerfilId: user?.profesional_perfil_id }));
+  if (user?.permisos?.pacientes_administrativos) await initialize('Pacientes', () => initPacientesView({ clinicalEnabled: user?.permisos?.pacientes_clinicos === true }));
+  if (user?.permisos?.administrar_catalogo) await initialize('Catalogo', initPrestacionesView);
+  if (user?.permisos?.finanzas_operativas) await initialize('Cargos y pagos', () => initPagosView({ allowAnnul: user?.permisos?.anulaciones_financieras === true }));
+  if (user?.permisos?.reportes_operativos) await initialize('Reportes', () => initReportesView({ operational: !user?.permisos?.acceso_total }));
+  if (user?.permisos?.configurar_consultorio) await initialize('Configuracion', initConfiguracionView);
+  activateSection(getStoredSection() || (user?.permisos?.acceso_total ? 'dashboard' : 'turnos'), { persist: false });
   appInitialized = true;
 }
 
-async function initAuthenticatedApp() {
-  await initAppOnce();
-  try {
+async function initUsuariosForOwner(user) {
+  if (!user?.permisos?.administrar_usuarios || usuariosInitialized) return;
+  await initUsuariosView();
+  usuariosInitialized = true;
+}
+
+async function initAuthenticatedApp(user) {
+  await initAppOnce(user);
+  if (user?.permisos?.acceso_total) try {
     await loadDashboard();
   } catch (_) {
     console.warn('[DASHBOARD] No se pudo completar la carga de indicadores.');
@@ -172,8 +217,10 @@ async function handleLoginSubmit(event) {
     }
     const result = await login({ email, password });
     setToken(result.token);
+    if (result.user?.debe_cambiar_password) { showPasswordScreen(); return; }
     showLoadingScreen('Preparando aplicación...');
-    await initAuthenticatedApp();
+    await initAuthenticatedApp(result.user);
+    await initUsuariosForOwner(result.user);
     showApp(result.user);
     if (ui.loginError) ui.loginError.classList.add('d-none');
     renderAlert(ui.alertContainer, 'Sesión iniciada correctamente.', 'success');
@@ -203,7 +250,9 @@ async function restoreSession() {
   try {
     showLoadingScreen();
     const data = await getMe();
-    await initAuthenticatedApp();
+    if (data.user?.debe_cambiar_password) { showPasswordScreen(); return; }
+    await initAuthenticatedApp(data.user);
+    await initUsuariosForOwner(data.user);
     showApp(data.user);
   } catch (error) {
     clearToken();
@@ -216,13 +265,15 @@ function bindAuthEvents() {
   ui.logoutBtn?.addEventListener('click', () => {
     clearToken();
     clearStoredSection();
-    activateSection('dashboard', { persist: false });
+    window.location.reload();
     showLoginScreen('Sesión cerrada.');
   });
+  document.getElementById('change-password-btn')?.addEventListener('click',showPasswordScreen);
+  document.getElementById('password-change-logout')?.addEventListener('click',()=>{clearToken();clearStoredSection();window.location.reload()});
+  ui.passwordForm?.addEventListener('submit',async(event)=>{event.preventDefault();const error=document.getElementById('password-change-error');try{const result=await changeOwnPassword({passwordActual:document.getElementById('password-current').value,passwordNueva:document.getElementById('password-new').value});setToken(result.token);ui.passwordScreen?.classList.add('d-none');showLoadingScreen('Preparando aplicación...');await initAuthenticatedApp(result.user);await initUsuariosForOwner(result.user);showApp(result.user);ui.passwordForm.reset()}catch(e){if(error){error.textContent=e.message;error.classList.remove('d-none')}}});
   window.addEventListener('auth:logout', () => {
     clearStoredSection();
-    activateSection('dashboard', { persist: false });
-    showLoginScreen('Sesión expirada. Volvé a iniciar sesión.');
+    window.location.reload();
   });
 }
 

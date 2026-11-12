@@ -5,7 +5,8 @@ async function obtenerResumenClinicoFinanciero(req, res) {
     const { fecha_desde: fechaDesde, fecha_hasta: fechaHasta } = req.query;
     const resumenOnly = String(req.query?.resumen || '').toLowerCase() === 'true';
 
-    const reporte = await reportesService.generarReporteClinicoFinanciero({
+    const generar = req.user?.rol === 'recepcion' ? reportesService.generarReporteOperativo : reportesService.generarReporteClinicoFinanciero;
+    const reporte = await generar({
       fechaDesde,
       fechaHasta,
       incluirDetalle: !resumenOnly,

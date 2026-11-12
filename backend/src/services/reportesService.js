@@ -195,7 +195,16 @@ async function generarReporteClinicoFinanciero({ fechaDesde, fechaHasta, incluir
   };
 }
 
+async function generarReporteOperativo({ fechaDesde, fechaHasta, incluirDetalle = true }) {
+  const rango=normalizarRangoFechas(fechaDesde,fechaHasta);
+  const [agenda,ingresos,cargos,turnos]=await Promise.all([
+    obtenerResumenClinico(rango),obtenerIngresosReales(rango),obtenerEstadoCargos(rango),incluirDetalle?obtenerDetalleTurnos(rango):Promise.resolve(null),
+  ]);
+  return {rango:{...rango,ingresos_por:'fecha_pago',cargos_por:'fecha_cargo',inclusivo:true},financiero:{ingresos_reales:ingresos.ingresos_reales,total_adeudado:cargos.total_adeudado,cargos_pendientes:cargos.pendientes,cargos_parciales:cargos.parciales,cargos_pagados:cargos.pagados,ingresos_por_metodo:ingresos.por_metodo,pagos_anulados:ingresos.pagos_anulados},agenda:{resumen:agenda,...(turnos?{turnos:turnos.map(({observaciones,...turno})=>turno)}:{})}};
+}
+
 module.exports = {
   generarReporteClinicoFinanciero,
   normalizarRangoFechas,
+  generarReporteOperativo,
 };

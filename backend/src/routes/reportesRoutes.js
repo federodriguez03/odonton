@@ -7,11 +7,12 @@ const {
   autorizarOdontologo,
   middlewareAuditoria,
 } = require('../middlewares/turnosMiddleware');
+const { autorizarReportesOperativos } = require('../middlewares/finanzasAutorizacion');
 
 router.get(
   '/resumen',
   middlewareAutenticacion,
-  autorizarOdontologo,
+  autorizarReportesOperativos,
   middlewareAuditoria,
   (req, res, next) => {
     req.auditAction = 'ver_reporte_clinico_financiero';
