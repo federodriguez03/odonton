@@ -71,9 +71,13 @@ function assert(ok, message) { if (!ok) throw new Error(message); }
     const direct = await request(`${base}/uploads/documentos/inexistente.pdf`, { headers: headers(tokens.owner) });
     const receptionDownload = await request(`${base}/api/documentos/descargar/999999`, { headers: headers(tokens.recepcion) });
     assert(direct.status === 404 && receptionDownload.status === 403, 'Archivos clinicos sin proteccion');
-    const otherRoute = await request(`${base}/api/prestaciones`, { headers: headers(tokens.recepcion) });
-    assert(otherRoute.status === 403 && otherRoute.body.codigo === 'RUTA_RESERVADA_DUENO', 'Ruta no adaptada habilitada');
-    console.log(JSON.stringify({ ok: true, database: db, administrativo: true, separacion_clinica: true, profesional_confirmado: true, archivos_directos: direct.status, rutas_restantes: otherRoute.status }));
+    const prestacionesAntes = Number((await pool.query('SELECT count(*) n FROM prestaciones')).rows[0].n);
+    const prestacionesOperativas = await request(`${base}/api/prestaciones`, { headers: headers(tokens.recepcion) });
+    assert(prestacionesOperativas.status === 200 && Array.isArray(prestacionesOperativas.body.prestaciones) && prestacionesOperativas.body.prestaciones.every((item) => item.activo === true), 'Recepcion no obtuvo el catalogo operativo de prestaciones activas');
+    const altaCatalogoDenegada = await request(`${base}/api/prestaciones`, { method: 'POST', headers: headers(tokens.recepcion), body: JSON.stringify({ nombre: `No crear ${suffix}`, duracion_minutos: 30 }) });
+    const prestacionesDespues = Number((await pool.query('SELECT count(*) n FROM prestaciones')).rows[0].n);
+    assert(altaCatalogoDenegada.status === 403 && prestacionesAntes === prestacionesDespues, 'Recepcion pudo administrar el catalogo o el rechazo produjo una escritura');
+    console.log(JSON.stringify({ ok: true, database: db, administrativo: true, separacion_clinica: true, profesional_confirmado: true, archivos_directos: direct.status, prestaciones_operativas: prestacionesOperativas.status, administracion_catalogo: altaCatalogoDenegada.status }));
   } finally {
     if (child) { child.kill('SIGKILL'); await new Promise((resolve) => child.once('exit', resolve)); }
     if (ids.tratamientos.length) await pool.query('DELETE FROM tratamientos WHERE id=ANY($1::int[])', [ids.tratamientos]);

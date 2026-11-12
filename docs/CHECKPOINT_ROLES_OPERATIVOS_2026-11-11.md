@@ -18,6 +18,8 @@ Algunos archivos compartidos (`identidadService.js`, `turnosController.js`, `mai
 - Compilacion del frontend aprobada.
 - Matriz HTTP de Dueño, Recepcion y Odontologo aprobada para finanzas, reportes, accesos clinicos directos, contraseña temporal y trazabilidad de anulacion.
 - Pruebas HTTP de agenda propia, perfiles profesionales independientes e inactivos aprobadas.
+- `test-pacientes-autorizacion-http.js` actualizado y aprobado: mantiene rechazos clinicos para Recepcion, verifica respuestas administrativas sin filtraciones, ausencia de escrituras rechazadas y consulta operativa —no administracion— del catalogo.
+- `test-auth-identidad-http.js` actualizado y aprobado: inicia y cierra backends propios en puertos libres, reconoce cambios de rol con el mismo token y falla explicitamente ante un esquema de identidad ausente.
 - No se enviaron mensajes reales de WhatsApp.
 
 No se repitieron estas pruebas durante la creacion del checkpoint porque no hubo cambios funcionales posteriores.
@@ -25,6 +27,4 @@ No se repitieron estas pruebas durante la creacion del checkpoint porque no hubo
 ## Pendientes conocidos
 
 - Revision visual manual de la navegacion por rol. La automatizacion del navegador integrado no estuvo disponible.
-- `test-pacientes-autorizacion-http.js` conserva una expectativa anterior para rutas que ahora estan habilitadas al Odontologo; debe actualizarse antes de volver a usarlo como prueba de regresion.
-- `test-auth-identidad-http.js` depende de un backend externo en el puerto 3000 y debe hacerse autocontenido para evitar falsos negativos de conexion.
 - Confirmar en una etapa de migracion controlada cuales scripts SQL corresponden aplicar fuera de la base aislada. No aplicar automaticamente sobre `odonton_db`.
