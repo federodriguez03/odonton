@@ -318,12 +318,14 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
            hc.odontograma_snapshot,
            t.fecha_hora_inicio AS fecha_atencion,
            t.profesional_id,
-           u.nombre AS profesional_nombre,
+           t.profesional_perfil_id,
+           COALESCE(pf.nombre_mostrado, u.nombre) AS profesional_nombre,
            t.prestacion_id,
            COALESCE((SELECT string_agg(tp.nombre_snapshot, ' + ' ORDER BY tp.orden) FROM turno_prestaciones tp WHERE tp.turno_id=t.id), p.nombre) AS prestacion_nombre
          FROM historias_clinicas hc
          LEFT JOIN turnos t ON t.id = hc.turno_id AND t.paciente_id = hc.paciente_id
          LEFT JOIN usuarios u ON u.id = t.profesional_id
+         LEFT JOIN profesionales pf ON pf.id = t.profesional_perfil_id
          LEFT JOIN prestaciones p ON p.id = t.prestacion_id
          WHERE hc.paciente_id = $1
          ORDER BY hc.created_at DESC LIMIT 50`,
@@ -335,15 +337,20 @@ async function obtenerFichaClinica(pacienteId, { page = 1, limit = 10, estado_tu
          t.id,
          t.fecha_hora_inicio,
          t.profesional_id,
-         u.nombre AS profesional_nombre,
+         t.profesional_perfil_id,
+         COALESCE(pf.nombre_mostrado, u.nombre) AS profesional_nombre,
          t.prestacion_id,
          COALESCE((SELECT string_agg(tp.nombre_snapshot, ' + ' ORDER BY tp.orden) FROM turno_prestaciones tp WHERE tp.turno_id=t.id), p.nombre) AS prestacion_nombre
        FROM turnos t
        LEFT JOIN usuarios u ON u.id = t.profesional_id
+       LEFT JOIN profesionales pf ON pf.id = t.profesional_perfil_id
        LEFT JOIN prestaciones p ON p.id = t.prestacion_id
        WHERE t.paciente_id = $1
-         AND t.estado = 'realizado'
-         AND u.id IS NOT NULL
+         AND (
+           t.estado = 'realizado'
+           OR (t.estado = 'confirmado' AND t.fecha_hora_fin <= CURRENT_TIMESTAMP)
+         )
+         AND (u.id IS NOT NULL OR pf.id IS NOT NULL)
          AND p.id IS NOT NULL
          AND NOT EXISTS (SELECT 1 FROM historias_clinicas hc WHERE hc.turno_id = t.id)
        ORDER BY t.fecha_hora_inicio DESC`,
@@ -417,7 +424,7 @@ async function registrarAtencion({ pacienteId, turnoId, observaciones }) {
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ');
     const turnoRes = await client.query(
-      `SELECT t.id, t.paciente_id, t.estado, t.fecha_hora_inicio,
+      `SELECT t.id, t.paciente_id, t.estado, t.fecha_hora_inicio, t.fecha_hora_fin,
               t.profesional_id, t.profesional_perfil_id, COALESCE(pf.nombre_mostrado,u.nombre) AS profesional_nombre,
               t.prestacion_id, COALESCE((SELECT string_agg(tp.nombre_snapshot, ' + ' ORDER BY tp.orden) FROM turno_prestaciones tp WHERE tp.turno_id=t.id), p.nombre) AS prestacion_nombre
        FROM turnos t
@@ -429,7 +436,13 @@ async function registrarAtencion({ pacienteId, turnoId, observaciones }) {
       [tid, pid]
     );
     if (!turnoRes.rowCount) throw new Error('El turno no pertenece al paciente');
-    if (turnoRes.rows[0].estado !== 'realizado') throw new Error('Solo se puede registrar una atencion para un turno realizado');
+    const turno = turnoRes.rows[0];
+    const confirmadoVencido = turno.estado === 'confirmado'
+      && turno.fecha_hora_fin
+      && new Date(turno.fecha_hora_fin).getTime() <= Date.now();
+    if (turno.estado !== 'realizado' && !confirmadoVencido) {
+      throw new Error('Solo se puede registrar una atención para un turno confirmado cuyo horario haya finalizado');
+    }
     if (!(turnoRes.rows[0].profesional_perfil_id || turnoRes.rows[0].profesional_id) || !turnoRes.rows[0].prestacion_id) {
       throw new Error('El turno no tiene profesional y prestacion validos');
     }
@@ -471,6 +484,13 @@ async function registrarAtencion({ pacienteId, turnoId, observaciones }) {
        RETURNING id, paciente_id, turno_id, descripcion, odontograma_snapshot, created_at`,
       [pid, tid, descripcion, JSON.stringify(snapshot)]
     );
+    if (turno.estado === 'confirmado') {
+      await client.query(
+        `UPDATE turnos SET estado = 'realizado', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1 AND estado = 'confirmado'`,
+        [tid]
+      );
+    }
     await client.query('COMMIT');
     return { ...rows[0], fecha_atencion: turnoRes.rows[0].fecha_hora_inicio };
   } catch (error) {

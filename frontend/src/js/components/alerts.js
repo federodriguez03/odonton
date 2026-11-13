@@ -12,15 +12,20 @@
   };
   const icon = icons[type] || icons.info;
 
+  const persistent = type === 'danger';
+  container.setAttribute('aria-live', persistent ? 'assertive' : 'polite');
+  container.setAttribute('aria-atomic', 'true');
   container.innerHTML = `
-    <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+    <div class="alert alert-${type} alert-dismissible fade show" role="${persistent ? 'alert' : 'status'}">
       <i class="bi ${icon} alert-icon" aria-hidden="true"></i>
       <span class="alert-message">${message}</span>
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar mensaje"></button>
     </div>
   `;
 
   const alertElement = container.querySelector('.alert');
+  if (persistent) return;
+
   const timer = window.setTimeout(() => {
     if (alertElement?.isConnected) {
       const bootstrapAlert = window.bootstrap?.Alert?.getOrCreateInstance(alertElement);
@@ -40,7 +45,6 @@
 const alertTimers = new WeakMap();
 
 function getAlertDuration(type) {
-  if (type === 'danger') return 9000;
   if (type === 'warning') return 7000;
   return 4500;
 }

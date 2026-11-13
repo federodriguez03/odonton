@@ -926,7 +926,7 @@ function renderFichaContent(data) {
                 <div class="card-body">
                   <h3 class="h5">Registrar atención realizada</h3>
                   <div class="row g-3">
-                    <div class="col-12"><label class="form-label" for="atencion-turno">Turno realizado</label><select id="atencion-turno" name="turno_id" class="form-select" required><option value="">Seleccionar turno</option>${turnosAtencion.map((turno) => `<option value="${turno.id}" data-fecha="${escapeHtml(turno.fecha_hora_inicio || '')}" data-profesional="${escapeHtml(turno.profesional_nombre || 'Sin registrar')}" data-prestacion="${escapeHtml(turno.prestacion_nombre || 'Sin registrar')}">${formatDate(turno.fecha_hora_inicio)} · ${escapeHtml(turno.prestacion_nombre || 'Sin registrar')}</option>`).join('')}</select></div>
+                    <div class="col-12"><label class="form-label" for="atencion-turno">Turno finalizado</label><select id="atencion-turno" name="turno_id" class="form-select" required><option value="">Seleccionar turno</option>${turnosAtencion.map((turno) => `<option value="${turno.id}" data-fecha="${escapeHtml(turno.fecha_hora_inicio || '')}" data-profesional="${escapeHtml(turno.profesional_nombre || 'Sin registrar')}" data-prestacion="${escapeHtml(turno.prestacion_nombre || 'Sin registrar')}">${formatDate(turno.fecha_hora_inicio)} · ${escapeHtml(turno.prestacion_nombre || 'Sin registrar')}</option>`).join('')}</select></div>
                     <div class="col-md-4"><label class="form-label">Fecha</label><input id="atencion-fecha" class="form-control" readonly value="Sin registrar" /></div>
                     <div class="col-md-4"><label class="form-label">Profesional</label><input id="atencion-profesional" class="form-control" readonly value="Sin registrar" /></div>
                     <div class="col-md-4"><label class="form-label">Prestación</label><input id="atencion-prestacion" class="form-control" readonly value="Sin registrar" /></div>
@@ -934,7 +934,7 @@ function renderFichaContent(data) {
                     <div class="col-12 d-flex justify-content-end gap-2"><button id="registrar-atencion-cancelar" class="btn btn-outline-secondary" type="button">Cancelar</button><button class="btn btn-primary" type="submit">Guardar atención</button></div>
                   </div>
                 </div>
-              </form>` : '<p class="text-secondary text-end small">No hay turnos realizados pendientes de registrar.</p>'}
+              </form>` : '<p class="text-secondary text-end small">No hay turnos confirmados y finalizados pendientes de registrar.</p>'}
             ${historiasHtml}
           </div>
           <div class="tab-pane fade" id="ficha-odontograma">

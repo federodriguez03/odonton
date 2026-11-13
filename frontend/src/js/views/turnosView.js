@@ -277,7 +277,18 @@ function calcularDuracionMinutos(turno) {
   return Math.max(1, Math.round((fin.getTime() - inicio.getTime()) / 60000));
 }
 
-function getEstadoInfo(estado) {
+function isPendingClinicalRegistration(turno) {
+  if (normalizeText(turno?.estado) !== 'confirmado' || !turno?.fecha_hora_fin) return false;
+  const end = new Date(turno.fecha_hora_fin);
+  return !Number.isNaN(end.getTime()) && end.getTime() < Date.now();
+}
+
+function getEstadoInfo(turnoOrEstado) {
+  const turno = typeof turnoOrEstado === 'object' ? turnoOrEstado : null;
+  if (turno && isPendingClinicalRegistration(turno)) {
+    return { label: 'Pendiente de registrar atención', className: 'confirmado' };
+  }
+  const estado = turno?.estado ?? turnoOrEstado;
   const normalized = normalizeText(estado || 'programado');
   const map = {
     solicitado: { label: 'Solicitado', className: 'solicitado' },
@@ -353,7 +364,7 @@ function serializeTurno(turno) {
 }
 
 function renderCalendarTurnoCard(turno) {
-  const estado = getEstadoInfo(turno.estado);
+  const estado = getEstadoInfo(turno);
   const timeRange = `${formatTimeAr(turno.fecha_hora_inicio)} - ${formatTimeAr(turno.fecha_hora_fin)}`;
   const paciente = formatPaciente(turno);
   const prestacion = turno?.prestacion?.nombre || '-';
@@ -383,7 +394,7 @@ function renderCalendarTurnoCard(turno) {
 function showCalendarTurnoDetail(turno) {
   if (!turno || !ui.detailContent) return;
   state.detailCurrentTurno = turno;
-  const estado = getEstadoInfo(turno.estado);
+  const estado = getEstadoInfo(turno);
   const inicio = turno.fechaHoraInicio || turno.fecha_hora_inicio;
   const fin = turno.fechaHoraFin || turno.fecha_hora_fin;
   const observaciones = turno.observaciones || '-';
@@ -459,7 +470,7 @@ function renderRows(turnos) {
         <td>${turno?.profesional?.nombre || turno?.profesional?.email || '-'}</td>
         <td>${formatDateTime(turno.fecha_hora_inicio)}</td>
         <td>${formatDateTime(turno.fecha_hora_fin)}</td>
-        <td><span class="badge text-bg-light border">${getEstadoInfo(turno.estado).label}</span></td>
+        <td><span class="badge text-bg-light border">${getEstadoInfo(turno).label}</span></td>
         <td>${getRecordatorioBadge(turno)}</td>
         <td class="text-end">
           <div class="btn-group">

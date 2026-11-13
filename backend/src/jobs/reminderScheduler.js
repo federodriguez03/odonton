@@ -1,5 +1,4 @@
 const { processAutomaticReminders } = require('../services/whatsappReminder.service');
-const { marcarTurnosVencidosComoRealizados } = require('../services/turnoLifecycle.service');
 
 let schedulerStarted = false;
 let schedulerHandle = null;
@@ -17,7 +16,6 @@ function startReminderScheduler() {
   const intervalMs = getIntervalMinutes() * 60 * 1000;
   schedulerHandle = setInterval(async () => {
     try {
-      await marcarTurnosVencidosComoRealizados();
       await processAutomaticReminders();
     } catch (error) {
       console.error('[WHATSAPP REMINDERS] Error en scheduler:', error.message);
