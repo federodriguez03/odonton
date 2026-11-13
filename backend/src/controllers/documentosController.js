@@ -3,7 +3,14 @@ const fsPromises = require('fs/promises');
 const path = require('path');
 const documentosService = require('../services/documentosService');
 
-const UPLOADS_BASE_DIR = path.join(__dirname, '..', '..', 'uploads', 'documentos');
+const BACKEND_ROOT = path.resolve(__dirname, '..', '..');
+const UPLOADS_ROOT = path.join(BACKEND_ROOT, 'uploads');
+const configuredUploadsSubdir = process.env.DOCUMENTOS_UPLOAD_SUBDIR || path.join('uploads', 'documentos');
+const UPLOADS_BASE_DIR = path.resolve(BACKEND_ROOT, configuredUploadsSubdir);
+
+if (UPLOADS_BASE_DIR !== UPLOADS_ROOT && !UPLOADS_BASE_DIR.startsWith(`${UPLOADS_ROOT}${path.sep}`)) {
+  throw new Error('DOCUMENTOS_UPLOAD_SUBDIR debe estar dentro de backend/uploads');
+}
 
 function resolveDocumentoPath(rutaArchivo) {
   return path.join(__dirname, '..', '..', rutaArchivo);
@@ -26,7 +33,7 @@ async function subirDocumento(req, res) {
       return res.status(400).json({ mensaje: 'Archivo requerido' });
     }
 
-    const rutaRelativa = path.join('uploads', 'documentos', file.filename);
+    const rutaRelativa = path.relative(BACKEND_ROOT, file.path);
 
     const documento = await documentosService.crearDocumento({
       paciente_id,

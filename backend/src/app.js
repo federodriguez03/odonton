@@ -112,15 +112,22 @@ async function inicializar() {
       process.exit(1);
     }
 
-    if (process.env.WHATSAPP_AUTO_START === 'true') {
+    const demoMode = String(process.env.ODONTON_DEMO_MODE || '').toLowerCase() === 'true';
+    if (!demoMode && process.env.WHATSAPP_AUTO_START === 'true') {
       initializeWhatsAppClient();
     } else {
       console.log(
-        '[WHATSAPP WEB] Inicio automatico desactivado. Inicia WhatsApp desde Configuracion.'
+        demoMode
+          ? '[DEMO] WhatsApp y bot desactivados para este proceso.'
+          : '[WHATSAPP WEB] Inicio automatico desactivado. Inicia WhatsApp desde Configuracion.'
       );
     }
 
-    startReminderScheduler();
+    if (demoMode) {
+      console.log('[DEMO] Scheduler de recordatorios y tareas automaticas desactivado.');
+    } else {
+      startReminderScheduler();
+    }
 
     console.log('[INICIO] Aplicacion lista para recibir solicitudes\n');
   } catch (err) {

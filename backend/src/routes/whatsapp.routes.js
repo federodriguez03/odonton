@@ -19,6 +19,16 @@ const {
 
 const router = express.Router();
 
+router.use((req, res, next) => {
+  if (String(process.env.ODONTON_DEMO_MODE || '').toLowerCase() === 'true') {
+    return res.status(503).json({
+      mensaje: 'WhatsApp y los envios externos estan desactivados en la base demo.',
+      codigo: 'DEMO_EXTERNAL_SENDS_DISABLED',
+    });
+  }
+  return next();
+});
+
 router.use(middlewareAutenticacion, autorizarOdontologo);
 
 router.get('/status', getWhatsAppStatus);
