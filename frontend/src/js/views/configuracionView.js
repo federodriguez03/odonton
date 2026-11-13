@@ -18,6 +18,9 @@ const state = {
   mensajes: [],
   referencias: [],
 };
+let whatsappPollTimer = null;
+let whatsappRequestPending = false;
+let lastRenderedQrAt = null;
 
 const ui = {
   alertContainer: document.getElementById('alert-container'),
@@ -351,6 +354,16 @@ async function loadConfiguracion() {
 function renderWhatsappStatus(status) {
   if (!ui.whatsappStatusBadge || !ui.whatsappStatusText) return;
 
+  const legacyStatus = {
+    CONNECTED: 'READY',
+    WAITING_QR: 'QR_READY',
+    CONNECTING: 'INITIALIZING',
+    AUTHENTICATING: 'AUTHENTICATED',
+    RECONNECTING: 'INITIALIZING',
+    ERROR: 'FAILED',
+  }[status?.status];
+  if (legacyStatus) status = { ...status, status: legacyStatus };
+
   const currentStatus = status?.status || (status?.ready ? 'READY' : status?.has_qr ? 'QR_READY' : status?.initializing ? 'INITIALIZING' : 'DISCONNECTED');
   const badgeMap = {
     READY: ['bg-success', 'Conectado'],
@@ -375,7 +388,12 @@ function renderWhatsappStatus(status) {
     DISCONNECTING: 'Estamos cerrando la conexión de WhatsApp.',
     DISCONNECTED: 'WhatsApp no está conectado actualmente.',
   };
-  const details = [statusMessages[currentStatus] || statusMessages.DISCONNECTED];
+  const diagnosticMode = status?.diagnostic_mode === true;
+  const primaryMessage = diagnosticMode && currentStatus === 'READY'
+    ? 'WhatsApp confirmó la conexión para diagnóstico.'
+    : (statusMessages[currentStatus] || statusMessages.DISCONNECTED);
+  const details = [primaryMessage];
+  if (diagnosticMode) details.push('Bot, recordatorios y todos los envíos permanecen bloqueados.');
   if (currentStatus === 'READY' && status?.connectedNumber) {
     details.push(`Número vinculado: ${status.connectedNumber}`);
   }
@@ -390,7 +408,7 @@ function renderWhatsappStatus(status) {
 
   const showConnect = ['DISCONNECTED', 'FAILED'].includes(currentStatus);
   const showNewQr = currentStatus === 'QR_READY';
-  const showLogout = currentStatus === 'READY';
+  const showLogout = !diagnosticMode && ['READY', 'QR_READY', 'AUTHENTICATED', 'FAILED'].includes(currentStatus);
   ui.whatsappInitBtn?.classList.toggle('d-none', !showConnect);
   ui.whatsappResetBtn?.classList.toggle('d-none', !showNewQr);
   ui.whatsappLogoutBtn?.classList.toggle('d-none', !showLogout);
@@ -404,7 +422,9 @@ function renderWhatsappStatus(status) {
     ui.whatsappInstructions.textContent = currentStatus === 'QR_READY'
       ? 'En tu teléfono: WhatsApp > Dispositivos vinculados > Vincular dispositivo.'
       : currentStatus === 'READY'
-        ? 'La vinculación está activa. Solo necesitás desvincularla si vas a cambiar de teléfono o cuenta.'
+        ? (diagnosticMode
+          ? 'La conexión está lista para diagnóstico. Los mensajes y procesos automáticos siguen bloqueados.'
+          : 'La vinculación está activa. Solo necesitás desvincularla si vas a cambiar de teléfono o cuenta.')
         : 'El botón principal se adapta al estado actual de la conexión.';
   }
 
@@ -423,6 +443,7 @@ async function loadWhatsappQr() {
   try {
     const data = await getWhatsappQr();
     if (!data.qr) throw new Error('QR no disponible');
+    if (data.status?.qrGeneratedAt === lastRenderedQrAt && !ui.whatsappQrCanvas.classList.contains('d-none')) return;
     await QRCode.toCanvas(ui.whatsappQrCanvas, data.qr, {
       width: 240,
       margin: 2,
@@ -433,25 +454,47 @@ async function loadWhatsappQr() {
     });
     ui.whatsappQrCanvas.classList.remove('d-none');
     ui.whatsappQrEmpty.classList.add('d-none');
-  } catch (_) {
+    lastRenderedQrAt = data.status?.qrGeneratedAt || null;
+  } catch (error) {
     ui.whatsappQrCanvas.classList.add('d-none');
     ui.whatsappQrEmpty.classList.remove('d-none');
+    lastRenderedQrAt = null;
+    ui.whatsappQrEmpty.textContent = error?.status === 404
+      ? 'Esperando un codigo QR vigente...'
+      : `No se pudo obtener el QR: ${error.message}`;
   }
 }
 
 async function refreshWhatsappPanel() {
+  if (whatsappRequestPending) return;
+  whatsappRequestPending = true;
   try {
     const status = await getWhatsappStatus();
     renderWhatsappStatus(status);
-    if ((status?.status || '') === 'QR_READY' || status?.hasQr || status?.has_qr) {
+    if (['QR_READY', 'WAITING_QR'].includes(status?.status || '') || status?.hasQr || status?.has_qr) {
       await loadWhatsappQr();
     } else {
       ui.whatsappQrCanvas?.classList.add('d-none');
       ui.whatsappQrEmpty?.classList.remove('d-none');
+      lastRenderedQrAt = null;
     }
   } catch (error) {
     renderAlert(ui.alertContainer, error.message, 'danger');
+  } finally {
+    whatsappRequestPending = false;
   }
+}
+
+export function startWhatsappStatusPolling() {
+  if (whatsappPollTimer) return;
+  refreshWhatsappPanel();
+  whatsappPollTimer = window.setInterval(refreshWhatsappPanel, 2500);
+}
+
+export function stopWhatsappStatusPolling() {
+  if (whatsappPollTimer) window.clearInterval(whatsappPollTimer);
+  whatsappPollTimer = null;
+  whatsappRequestPending = false;
 }
 
 function bindWhatsappPanel() {
@@ -461,8 +504,8 @@ function bindWhatsappPanel() {
     try {
       ui.whatsappInitBtn.disabled = true;
       await initializeWhatsapp();
-      renderWhatsappStatus({ status: 'INITIALIZING' });
-      window.setTimeout(refreshWhatsappPanel, 2500);
+      renderWhatsappStatus({ status: 'CONNECTING' });
+      startWhatsappStatusPolling();
       renderAlert(ui.alertContainer, 'Conectando WhatsApp. El QR aparecerá en unos segundos si hace falta vincularlo.', 'info');
     } catch (error) {
       renderAlert(ui.alertContainer, error.message, 'danger');
@@ -475,8 +518,8 @@ function bindWhatsappPanel() {
     try {
       ui.whatsappResetBtn.disabled = true;
       await resetWhatsapp();
-      renderWhatsappStatus({ status: 'INITIALIZING' });
-      window.setTimeout(refreshWhatsappPanel, 3000);
+      renderWhatsappStatus({ status: 'RECONNECTING' });
+      startWhatsappStatusPolling();
       renderAlert(ui.alertContainer, 'Generando un código QR nuevo.', 'info');
     } catch (error) {
       renderAlert(ui.alertContainer, error.message, 'danger');

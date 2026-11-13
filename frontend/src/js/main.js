@@ -3,7 +3,7 @@ import { initTurnosView } from './views/turnosView.js';
 import { initPrestacionesView } from './views/prestacionesView.js';
 import { initPagosView } from './views/pagosView.js';
 import { initReportesView } from './views/reportesView.js';
-import { initConfiguracionView } from './views/configuracionView.js';
+import { initConfiguracionView, startWhatsappStatusPolling, stopWhatsappStatusPolling } from './views/configuracionView.js';
 import { initUsuariosView } from './views/usuariosView.js';
 import { loadDashboard } from '../pages/dashboard.js';
 import { changeOwnPassword, clearToken, getMe, getToken, login, setToken } from './api.js';
@@ -109,6 +109,9 @@ function activateSection(requestedSection, { persist = true } = {}) {
     const element = document.getElementById(id);
     if (element) element.classList.toggle('d-none', section !== key);
   });
+
+  if (section === 'configuracion' && currentUser?.permisos?.configurar_consultorio) startWhatsappStatusPolling();
+  else stopWhatsappStatusPolling();
 
   if (persist) storeSection(section);
   return section;
@@ -263,15 +266,16 @@ async function restoreSession() {
 function bindAuthEvents() {
   ui.loginForm?.addEventListener('submit', handleLoginSubmit);
   ui.logoutBtn?.addEventListener('click', () => {
+    stopWhatsappStatusPolling();
     clearToken();
     clearStoredSection();
     window.location.reload();
     showLoginScreen('Sesión cerrada.');
   });
-  document.getElementById('change-password-btn')?.addEventListener('click',showPasswordScreen);
   document.getElementById('password-change-logout')?.addEventListener('click',()=>{clearToken();clearStoredSection();window.location.reload()});
   ui.passwordForm?.addEventListener('submit',async(event)=>{event.preventDefault();const error=document.getElementById('password-change-error');try{const result=await changeOwnPassword({passwordActual:document.getElementById('password-current').value,passwordNueva:document.getElementById('password-new').value});setToken(result.token);ui.passwordScreen?.classList.add('d-none');showLoadingScreen('Preparando aplicación...');await initAuthenticatedApp(result.user);await initUsuariosForOwner(result.user);showApp(result.user);ui.passwordForm.reset()}catch(e){if(error){error.textContent=e.message;error.classList.remove('d-none')}}});
   window.addEventListener('auth:logout', () => {
+    stopWhatsappStatusPolling();
     clearStoredSection();
     window.location.reload();
   });

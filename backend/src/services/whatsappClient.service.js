@@ -1,7 +1,7 @@
-const qrcode = require('qrcode-terminal');
 const fs = require('fs/promises');
 const path = require('path');
-const { execFile } = require('child_process');
+const crypto = require('crypto');
+const os = require('os');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { normalizePhoneToChatId } = require('../utils/whatsappPhone');
 
@@ -21,17 +21,58 @@ let lastConnectedAt = null;
 let lastDisconnectedAt = null;
 const processedMessageIds = new Set();
 const recentProcessedFingerprints = new Map();
+let clientGeneration = 0;
+let initializationTimer = null;
+let reconnectTimer = null;
+let reconnectAttempt = 0;
+let voluntaryDisconnect = false;
+let operationQueue = Promise.resolve();
+let sessionLock = null;
+let diagnosticStartedAt = null;
+
+const CONNECTION_STATUS = Object.freeze({
+  DISCONNECTED: 'DISCONNECTED',
+  CONNECTING: 'CONNECTING',
+  WAITING_QR: 'WAITING_QR',
+  AUTHENTICATING: 'AUTHENTICATING',
+  CONNECTED: 'CONNECTED',
+  RECONNECTING: 'RECONNECTING',
+  ERROR: 'ERROR',
+});
+
+function isDiagnosticMode() {
+  return String(process.env.WHATSAPP_DIAGNOSTIC_MODE || '').trim().toLowerCase() === 'true';
+}
+
+function areExternalSendsBlocked() {
+  return isDiagnosticMode()
+    || String(process.env.ODONTON_DEMO_MODE || '').trim().toLowerCase() === 'true'
+    || String(process.env.EXTERNAL_SENDS_ENABLED || 'true').trim().toLowerCase() === 'false';
+}
+
+function logDiagnosticState(status, detail = '') {
+  if (!isDiagnosticMode()) return;
+  const elapsed = diagnosticStartedAt ? Date.now() - diagnosticStartedAt : 0;
+  const safeDetail = String(detail || '').replace(/[\r\n]+/g, ' ').slice(0, 180);
+  console.info(`[WHATSAPP DIAGNOSTICO] estado=${status} elapsed_ms=${elapsed}${safeDetail ? ` detalle=${safeDetail}` : ''}`);
+}
 
 function getSessionName() {
   return process.env.WHATSAPP_SESSION_NAME || 'odonton';
 }
 
 function getSessionPath() {
-  return path.resolve(__dirname, '..', '..', '.wwebjs_auth', `session-${getSessionName()}`);
+  return path.join(getSessionDataPath(), `session-${getSessionName()}`);
 }
 
 function getSessionDataPath() {
-  return path.resolve(__dirname, '..', '..', '.wwebjs_auth');
+  return process.env.WHATSAPP_AUTH_DATA_PATH
+    ? path.resolve(process.env.WHATSAPP_AUTH_DATA_PATH)
+    : path.resolve(__dirname, '..', '..', '.wwebjs_auth');
+}
+
+function getLockPath() {
+  return path.join(getSessionDataPath(), `.${getSessionName()}.owner.lock`);
 }
 
 function getStatus() {
@@ -40,7 +81,7 @@ function getStatus() {
     status: connectionStatus,
     initialized: Boolean(client),
     initializing,
-    isInitializing: initializing || connectionStatus === 'INITIALIZING',
+    isInitializing: initializing || [CONNECTION_STATUS.CONNECTING, CONNECTION_STATUS.RECONNECTING].includes(connectionStatus),
     ready,
     isReady: ready,
     last_qr_at: lastQrAt,
@@ -51,7 +92,6 @@ function getStatus() {
     lastError,
     last_incoming_message: lastIncomingMessage,
     session_name: getSessionName(),
-    session_path: getSessionPath(),
     polling: Boolean(pollHandle),
     connected_user: connectedNumber || client?.info?.wid?._serialized || client?.info?.wid?.user || null,
     connectedNumber: connectedNumber || client?.info?.wid?._serialized || client?.info?.wid?.user || null,
@@ -60,6 +100,8 @@ function getStatus() {
     lastConnectedAt,
     lastDisconnectedAt,
     operationInProgress,
+    diagnostic_mode: isDiagnosticMode(),
+    external_sends_enabled: !areExternalSendsBlocked(),
   };
 }
 
@@ -437,6 +479,8 @@ function execFileAsync(file, args) {
 }
 
 async function cleanupStaleWhatsAppBrowsers() {
+  return { skipped: true, reason: 'global_cleanup_disabled' };
+  /* Implementacion historica deshabilitada: no debe enumerar procesos ni borrar locks.
   if (process.platform !== 'win32') return { skipped: true, reason: 'unsupported_platform' };
   if (String(process.env.WHATSAPP_CLEAN_STALE_BROWSER || 'true').toLowerCase() === 'false') {
     return { skipped: true, reason: 'disabled' };
@@ -483,6 +527,7 @@ async function cleanupStaleWhatsAppBrowsers() {
   }
 
   return { ...result, killed };
+  */
 }
 
 async function initializeWhatsAppClient() {
@@ -535,7 +580,6 @@ async function initializeWhatsAppClient() {
     operationInProgress = false;
     connectionStatus = 'QR_READY';
     console.log('[WhatsApp] QR generado');
-    qrcode.generate(qr, { small: true });
   });
 
   client.on('authenticated', () => {
@@ -702,12 +746,17 @@ async function recoverWhatsAppClientAfterBrowserError(error) {
   lastError = error?.message || String(error || 'Error de navegador de WhatsApp Web');
   console.warn('[WHATSAPP WEB] Cliente inestable, reiniciando:', lastError);
 
-  await destroyWhatsAppClient();
-  await initializeWhatsAppClient();
+  await destroyManagedWhatsAppClient();
+  await initializeManagedWhatsAppClient();
   await waitForWhatsAppReady();
 }
 
 async function sendWhatsAppMessage(phone, message, { retryOnBrowserError = true } = {}) {
+  if (areExternalSendsBlocked()) {
+    const error = new Error('Los envíos de WhatsApp están bloqueados en el modo de diagnóstico local.');
+    error.code = 'WHATSAPP_EXTERNAL_SENDS_DISABLED';
+    throw error;
+  }
   if (!client || !ready) {
     throw new Error('WhatsApp Web no esta listo. Escanea el QR o espera la conexion.');
   }
@@ -728,8 +777,287 @@ async function sendWhatsAppMessage(phone, message, { retryOnBrowserError = true 
   }
 }
 
+// Ciclo de conexion seguro. Se mantiene separado del transporte del bot para no
+// alterar solicitudes, respuestas ni recordatorios en esta etapa.
+function serializeConnectionOperation(operation) {
+  const pending = operationQueue.then(operation, operation);
+  operationQueue = pending.catch(() => null);
+  return pending;
+}
+
+function clearConnectionTimers() {
+  if (initializationTimer) clearTimeout(initializationTimer);
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  initializationTimer = null;
+  reconnectTimer = null;
+}
+
+function isOwnerProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; } catch (error) { return error?.code === 'EPERM'; }
+}
+
+async function acquireConnectionLock() {
+  if (sessionLock) return sessionLock;
+  await fs.mkdir(getSessionDataPath(), { recursive: true });
+  const lockPath = getLockPath();
+  const token = crypto.randomUUID();
+  try {
+    const handle = await fs.open(lockPath, 'wx');
+    await handle.writeFile(JSON.stringify({ pid: process.pid, hostname: os.hostname(), token, createdAt: new Date().toISOString() }), 'utf8');
+    await handle.close();
+    sessionLock = { lockPath, token };
+    return sessionLock;
+  } catch (error) {
+    if (error?.code !== 'EEXIST') throw error;
+    let owner = null;
+    try { owner = JSON.parse(await fs.readFile(lockPath, 'utf8')); } catch (_) { /* lock ambiguo: conservar */ }
+    if (owner?.hostname === os.hostname() && !isOwnerProcessAlive(Number(owner.pid))) {
+      const stalePath = `${lockPath}.stale-${owner.pid}-${Date.now()}`;
+      try {
+        await fs.rename(lockPath, stalePath);
+        await fs.rm(stalePath, { force: true });
+        return acquireConnectionLock();
+      } catch (_) { /* otro proceso resolvio el lock */ }
+    }
+    const lockError = new Error('La sesion de WhatsApp esta siendo utilizada por otro proceso.');
+    lockError.code = 'WHATSAPP_SESSION_IN_USE';
+    throw lockError;
+  }
+}
+
+async function releaseConnectionLock() {
+  const owned = sessionLock;
+  sessionLock = null;
+  if (!owned) return;
+  try {
+    const saved = JSON.parse(await fs.readFile(owned.lockPath, 'utf8'));
+    if (saved?.token === owned.token) await fs.rm(owned.lockPath, { force: true });
+  } catch (_) { /* nunca borrar un lock cuya propiedad no se pudo comprobar */ }
+}
+
+async function destroyCurrentInstance(instance) {
+  if (!instance) return;
+  try { await instance.destroy(); } catch (_) { /* ya puede estar cerrada */ }
+}
+
+function setConnectionError(error) {
+  ready = false;
+  initializing = false;
+  operationInProgress = false;
+  lastError = error?.message || String(error || 'No se pudo iniciar WhatsApp');
+  connectionStatus = CONNECTION_STATUS.ERROR;
+  logDiagnosticState(connectionStatus, lastError);
+}
+
+async function failCurrentGeneration(generation, instance, error) {
+  if (generation !== clientGeneration) return;
+  clientGeneration += 1;
+  clearConnectionTimers();
+  stopMessagePolling();
+  if (client === instance) client = null;
+  setConnectionError(error);
+  await destroyCurrentInstance(instance);
+  await releaseConnectionLock();
+}
+
+function armInitializationTimeout(generation, instance) {
+  if (initializationTimer) clearTimeout(initializationTimer);
+  const configured = Number.parseInt(process.env.WHATSAPP_INIT_TIMEOUT_MS || '60000', 10);
+  const timeoutMs = Number.isFinite(configured) && configured >= 1000 ? configured : 60000;
+  initializationTimer = setTimeout(() => {
+    serializeConnectionOperation(() => failCurrentGeneration(generation, instance, new Error('La conexion excedio el tiempo de espera. Podes reintentar sin perder la sesion.')));
+  }, timeoutMs);
+  initializationTimer.unref?.();
+}
+
+function scheduleLimitedReconnect(reason) {
+  if (voluntaryDisconnect || reconnectTimer) return;
+  const configured = Number.parseInt(process.env.WHATSAPP_RECONNECT_MAX_ATTEMPTS || '3', 10);
+  const maximum = Number.isFinite(configured) && configured >= 0 ? configured : 3;
+  if (reconnectAttempt >= maximum) {
+    setConnectionError(new Error(`La conexion se interrumpio y agoto ${maximum} reintentos.`));
+    releaseConnectionLock();
+    return;
+  }
+  reconnectAttempt += 1;
+  connectionStatus = CONNECTION_STATUS.RECONNECTING;
+  lastError = reason || 'Conexion interrumpida';
+  const delayMs = Math.min(30000, 1000 * (2 ** (reconnectAttempt - 1)));
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    serializeConnectionOperation(() => startManagedClient({ reconnecting: true })).catch(setConnectionError);
+  }, delayMs);
+  reconnectTimer.unref?.();
+}
+
+async function startManagedClient({ reconnecting = false } = {}) {
+  operationInProgress = true;
+  initializing = true;
+  ready = false;
+  lastError = null;
+  lastQr = null;
+  connectionStatus = reconnecting ? CONNECTION_STATUS.RECONNECTING : CONNECTION_STATUS.CONNECTING;
+  voluntaryDisconnect = false;
+  diagnosticStartedAt = Date.now();
+  logDiagnosticState(connectionStatus);
+  await acquireConnectionLock();
+
+  const previous = client;
+  client = null;
+  await destroyCurrentInstance(previous);
+  const generation = ++clientGeneration;
+  const instance = new Client({
+    authStrategy: new LocalAuth({ clientId: getSessionName(), dataPath: getSessionDataPath() }),
+    puppeteer: {
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-extensions'],
+    },
+  });
+  client = instance;
+  const isCurrent = () => generation === clientGeneration && client === instance;
+
+  instance.on('qr', (qr) => {
+    if (!isCurrent()) return;
+    if (initializationTimer) clearTimeout(initializationTimer);
+    initializationTimer = null;
+    lastQrAt = new Date().toISOString();
+    lastQr = qr;
+    ready = false;
+    initializing = false;
+    operationInProgress = false;
+    connectionStatus = CONNECTION_STATUS.WAITING_QR;
+    logDiagnosticState(connectionStatus);
+  });
+  instance.on('authenticated', () => {
+    if (!isCurrent()) return;
+    connectionStatus = CONNECTION_STATUS.AUTHENTICATING;
+    logDiagnosticState(connectionStatus);
+    lastQr = null;
+    armInitializationTimeout(generation, instance);
+  });
+  instance.on('ready', () => {
+    if (!isCurrent()) return;
+    if (initializationTimer) clearTimeout(initializationTimer);
+    initializationTimer = null;
+    ready = true;
+    initializing = false;
+    operationInProgress = false;
+    connectionStatus = CONNECTION_STATUS.CONNECTED;
+    readyAt = new Date().toISOString();
+    lastQr = null;
+    lastError = null;
+    reconnectAttempt = 0;
+    connectedNumber = instance?.info?.wid?._serialized || instance?.info?.wid?.user || null;
+    lastConnectedAt = new Date().toISOString();
+    logDiagnosticState(connectionStatus);
+    if (!isDiagnosticMode()) startMessagePolling();
+  });
+  instance.on('auth_failure', (message) => {
+    if (!isCurrent()) return;
+    voluntaryDisconnect = true;
+    serializeConnectionOperation(() => failCurrentGeneration(generation, instance, new Error(message || 'La sesion fue rechazada. Desvinculala para generar un QR nuevo.')));
+  });
+  instance.on('disconnected', (reason) => {
+    if (!isCurrent()) return;
+    clientGeneration += 1;
+    if (initializationTimer) clearTimeout(initializationTimer);
+    initializationTimer = null;
+    stopMessagePolling();
+    client = null;
+    ready = false;
+    initializing = false;
+    operationInProgress = false;
+    lastQr = null;
+    connectedNumber = null;
+    readyAt = null;
+    lastDisconnectedAt = new Date().toISOString();
+    connectionStatus = CONNECTION_STATUS.RECONNECTING;
+    destroyCurrentInstance(instance).finally(() => scheduleLimitedReconnect(reason));
+  });
+  if (!isDiagnosticMode()) {
+    instance.on('message', (message) => {
+      if (isCurrent()) handleIncomingMessage(message, 'message');
+    });
+  }
+  armInitializationTimeout(generation, instance);
+  Promise.resolve(instance.initialize()).catch((error) => serializeConnectionOperation(() => failCurrentGeneration(generation, instance, error)));
+  return instance;
+}
+
+async function disconnectManagedClient({ preserveSession = true, unlink = false } = {}) {
+  voluntaryDisconnect = true;
+  clearConnectionTimers();
+  const instance = client;
+  clientGeneration += 1;
+  client = null;
+  ready = false;
+  initializing = false;
+  readyAt = null;
+  lastQr = null;
+  connectedNumber = null;
+  stopMessagePolling();
+  if (unlink && instance) {
+    try { await instance.logout(); } catch (_) { /* continuar con destruccion local */ }
+  }
+  await destroyCurrentInstance(instance);
+  if (!preserveSession) await fs.rm(getSessionPath(), { recursive: true, force: true });
+  await releaseConnectionLock();
+  operationInProgress = false;
+  connectionStatus = CONNECTION_STATUS.DISCONNECTED;
+  lastDisconnectedAt = new Date().toISOString();
+  logDiagnosticState(connectionStatus);
+}
+
+function requestManagedConnection({ retry = false } = {}) {
+  const activeStates = [CONNECTION_STATUS.CONNECTING, CONNECTION_STATUS.AUTHENTICATING, CONNECTION_STATUS.RECONNECTING, CONNECTION_STATUS.CONNECTED, CONNECTION_STATUS.WAITING_QR];
+  if (activeStates.includes(connectionStatus) && !retry) return getStatus();
+  connectionStatus = retry ? CONNECTION_STATUS.RECONNECTING : CONNECTION_STATUS.CONNECTING;
+  initializing = true;
+  operationInProgress = true;
+  serializeConnectionOperation(async () => {
+    if (retry) await disconnectManagedClient({ preserveSession: true });
+    await startManagedClient({ reconnecting: retry });
+  }).catch(setConnectionError);
+  return getStatus();
+}
+
+async function initializeManagedWhatsAppClient() {
+  requestManagedConnection({ retry: false });
+  return client;
+}
+
+async function restartManagedWhatsAppClient() {
+  return requestManagedConnection({ retry: true });
+}
+
+async function destroyManagedWhatsAppClient() {
+  return serializeConnectionOperation(() => disconnectManagedClient({ preserveSession: true }));
+}
+
+async function logoutManagedWhatsAppClient({ confirmed = false } = {}) {
+  if (confirmed !== true) {
+    const error = new Error('La desvinculacion requiere confirmacion explicita.');
+    error.code = 'WHATSAPP_UNLINK_CONFIRMATION_REQUIRED';
+    throw error;
+  }
+  await serializeConnectionOperation(() => disconnectManagedClient({ preserveSession: false, unlink: true }));
+  lastQrAt = null;
+  lastError = null;
+  reconnectAttempt = 0;
+  return { session_name: getSessionName(), unlinked: true };
+}
+
+function getManagedLastQr() {
+  return connectionStatus === CONNECTION_STATUS.WAITING_QR ? lastQr : null;
+}
+
+async function cleanupOwnedWhatsAppBrowser() {
+  return { skipped: true, reason: 'managed_client_destroy_only' };
+}
+
 module.exports = {
-  initializeWhatsAppClient,
+  initializeWhatsAppClient: initializeManagedWhatsAppClient,
   getWhatsAppClient,
   sendWhatsAppMessage,
   normalizePhoneToChatId,
@@ -737,10 +1065,10 @@ module.exports = {
   normalizePhoneForStorage,
   resolveIncomingPhoneForStorage,
   getStatus,
-  getLastQr,
-  destroyWhatsAppClient,
-  logoutWhatsAppClient,
-  restartWhatsAppClient,
-  cleanupStaleWhatsAppBrowsers,
+  getLastQr: getManagedLastQr,
+  destroyWhatsAppClient: destroyManagedWhatsAppClient,
+  logoutWhatsAppClient: logoutManagedWhatsAppClient,
+  restartWhatsAppClient: restartManagedWhatsAppClient,
+  cleanupStaleWhatsAppBrowsers: cleanupOwnedWhatsAppBrowser,
   pollRecentMessagesOnce,
 };

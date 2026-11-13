@@ -13,8 +13,21 @@ const {
   processAutomaticReminders,
 } = require('../services/whatsappReminder.service');
 
+function sanitizeConnectionError(value) {
+  return String(value || '')
+    .replace(/[A-Za-z]:\\[^\r\n]+/g, '[ruta local]')
+    .replace(/\b(qr|token|secret|password)=\S+/gi, '$1=[oculto]')
+    .slice(0, 500);
+}
+
+function publicStatus() {
+  const status = getStatus();
+  const safeError = sanitizeConnectionError(status.last_error || status.lastError);
+  return { ...status, last_error: safeError || null, lastError: safeError || null };
+}
+
 async function getWhatsAppStatus(req, res) {
-  return res.status(200).json(getStatus());
+  return res.status(200).json(publicStatus());
 }
 
 
@@ -23,25 +36,25 @@ async function getWhatsAppQr(req, res) {
   if (!qr) {
     return res.status(404).json({
       mensaje: 'QR no disponible para el estado actual de WhatsApp.',
-      status: getStatus(),
+      status: publicStatus(),
     });
   }
-  return res.status(200).json({ qr, status: getStatus() });
+  return res.status(200).json({ qr, status: publicStatus() });
 }
 
 async function initializeWhatsApp(req, res) {
   await initializeWhatsAppClient();
-  return res.status(200).json({
-    mensaje: 'Inicializacion de WhatsApp solicitada.',
-    status: getStatus(),
+  return res.status(202).json({
+    mensaje: 'Inicio de conexion solicitado. El estado conectado se informara solamente cuando WhatsApp confirme que esta listo.',
+    status: publicStatus(),
   });
 }
 
 async function resetWhatsApp(req, res) {
-  const status = await restartWhatsAppClient();
-  return res.status(200).json({
-    mensaje: 'Cliente WhatsApp reiniciado. Espera unos segundos y revisa consola/status para el QR.',
-    status,
+  await restartWhatsAppClient();
+  return res.status(202).json({
+    mensaje: 'Reintento solicitado conservando la sesion guardada.',
+    status: publicStatus(),
   });
 }
 
@@ -49,16 +62,22 @@ async function disconnectWhatsApp(req, res) {
   await destroyWhatsAppClient();
   return res.status(200).json({
     mensaje: 'Cliente WhatsApp desconectado. La sesion local se conserva.',
-    status: getStatus(),
+    status: publicStatus(),
   });
 }
 
 async function logoutWhatsApp(req, res) {
-  const result = await logoutWhatsAppClient();
+  if (req.body?.confirmarDesvinculacion !== true) {
+    return res.status(400).json({
+      mensaje: 'La desvinculacion requiere confirmacion explicita del dueño.',
+      codigo: 'WHATSAPP_UNLINK_CONFIRMATION_REQUIRED',
+    });
+  }
+  const result = await logoutWhatsAppClient({ confirmed: true });
   return res.status(200).json({
     mensaje: 'Sesion de WhatsApp cerrada. Usa Iniciar o Nuevo QR para vincular otra vez.',
     resultado: result,
-    status: getStatus(),
+    status: publicStatus(),
   });
 }
 

@@ -9,6 +9,7 @@ Get-Content -LiteralPath $EnvFile | ForEach-Object {
 
 $env:DB_NAME = 'odonton_demo_2026'
 $env:ODONTON_DEMO_MODE = 'true'
+$env:WHATSAPP_DIAGNOSTIC_MODE = 'true'
 $env:WHATSAPP_AUTO_START = 'false'
 $env:WHATSAPP_POLLING_ENABLED = 'false'
 $env:REMINDERS_ENABLED = 'false'

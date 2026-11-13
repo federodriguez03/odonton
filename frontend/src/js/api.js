@@ -528,5 +528,8 @@ export function disconnectWhatsapp() {
 }
 
 export function logoutWhatsapp() {
-  return request('/api/whatsapp/logout', { method: 'POST' });
+  return request('/api/whatsapp/logout', {
+    method: 'POST',
+    body: JSON.stringify({ confirmarDesvinculacion: true }),
+  });
 }

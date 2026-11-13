@@ -20,11 +20,25 @@ const {
 const router = express.Router();
 
 router.use((req, res, next) => {
-  if (String(process.env.ODONTON_DEMO_MODE || '').toLowerCase() === 'true') {
+  const demoMode = String(process.env.ODONTON_DEMO_MODE || '').toLowerCase() === 'true';
+  const diagnosticMode = String(process.env.WHATSAPP_DIAGNOSTIC_MODE || '').toLowerCase() === 'true';
+  if (demoMode && !diagnosticMode) {
     return res.status(503).json({
       mensaje: 'WhatsApp y los envios externos estan desactivados en la base demo.',
       codigo: 'DEMO_EXTERNAL_SENDS_DISABLED',
     });
+  }
+  if (diagnosticMode) {
+    const allowed = new Set([
+      'GET /status', 'GET /qr',
+      'POST /initialize', 'POST /connect', 'POST /reset', 'POST /restart', 'POST /disconnect',
+    ]);
+    if (!allowed.has(`${req.method} ${req.path}`)) {
+      return res.status(503).json({
+        mensaje: 'El modo diagnóstico permite conexión y estado, pero mantiene bloqueados los envíos y el procesamiento.',
+        codigo: 'WHATSAPP_DIAGNOSTIC_SENDS_DISABLED',
+      });
+    }
   }
   return next();
 });
