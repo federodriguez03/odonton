@@ -8,6 +8,10 @@ Con `WHATSAPP_DIAGNOSTIC_MODE=true` se habilitan únicamente estado, QR, conexi�
 
 Este modo no prueba el despliegue ni habilita bot, solicitudes, recordatorios o notificaciones.
 
+## Recuperación acotada al reconectar
+
+Fuera del modo diagnóstico puede habilitarse `WHATSAPP_RECOVER_MISSED_TURNOS=true`. Después de `ready`, el backend revisa únicamente chats directos y mensajes recientes dentro de `WHATSAPP_RECOVERY_MAX_AGE_MINUTES`. Sólo recupera el comando completo `turno`; frases que simplemente contienen esa palabra no activan el bot. La auditoría del inicio de sesión conserva el identificador del mensaje y evita responder nuevamente después de otra reconexión. Grupos, mensajes propios, archivos, mensajes antiguos y conversaciones ya activas quedan excluidos.
+
 ## Pendientes
 
 - Unificar para Recepción los permisos de listar, confirmar y rechazar solicitudes.

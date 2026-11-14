@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const os = require('os');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { normalizePhoneToChatId } = require('../utils/whatsappPhone');
+const { pool } = require('../config/db');
 
 let client = null;
 let ready = false;
@@ -29,6 +30,8 @@ let voluntaryDisconnect = false;
 let operationQueue = Promise.resolve();
 let sessionLock = null;
 let diagnosticStartedAt = null;
+let missedTurnRecoveryRunning = false;
+let lastMissedTurnRecovery = null;
 
 const CONNECTION_STATUS = Object.freeze({
   DISCONNECTED: 'DISCONNECTED',
@@ -102,6 +105,7 @@ function getStatus() {
     operationInProgress,
     diagnostic_mode: isDiagnosticMode(),
     external_sends_enabled: !areExternalSendsBlocked(),
+    missed_turn_recovery: lastMissedTurnRecovery,
   };
 }
 
@@ -247,6 +251,14 @@ function isWhatsAppDebugEnabled() {
   return String(process.env.WHATSAPP_DEBUG || '').trim().toLowerCase() === 'true';
 }
 
+function isMissedTurnRecoveryEnabled() {
+  return String(process.env.WHATSAPP_RECOVER_MISSED_TURNOS || '').trim().toLowerCase() === 'true';
+}
+
+function isExactTurnKeyword(value) {
+  return String(value || '').trim().toLowerCase() === 'turno';
+}
+
 function getMessageId(message) {
   return message?.id?._serialized || message?.id?.id || null;
 }
@@ -347,6 +359,88 @@ async function pollRecentMessagesOnce({ limitChats = 50, limitMessages = 10, max
     processing_requested: process === true,
     processing_enabled: false,
   };
+}
+
+async function wasMessageAlreadyHandled(messageId) {
+  if (!messageId) return true;
+  const result = await pool.query(
+    `SELECT 1
+       FROM auditoria
+      WHERE accion = 'BOT_SESSION_STARTED'
+        AND metadata ->> 'messageId' = $1
+      LIMIT 1`,
+    [messageId],
+  );
+  return result.rowCount > 0;
+}
+
+async function recoverMissedTurnRequestsOnce(currentClient = client) {
+  if (missedTurnRecoveryRunning) return { skipped: true, reason: 'already_running' };
+  if (!isMissedTurnRecoveryEnabled()) return { skipped: true, reason: 'disabled' };
+  if (isDiagnosticMode() || areExternalSendsBlocked()) return { skipped: true, reason: 'external_processing_disabled' };
+  if (!currentClient) return { skipped: true, reason: 'client_unavailable' };
+
+  missedTurnRecoveryRunning = true;
+  const maxAgeMinutes = Math.max(1, Number.parseInt(process.env.WHATSAPP_RECOVERY_MAX_AGE_MINUTES || '120', 10) || 120);
+  const chatLimit = Math.max(1, Number.parseInt(process.env.WHATSAPP_RECOVERY_CHAT_LIMIT || '30', 10) || 30);
+  const messageLimit = Math.max(1, Number.parseInt(process.env.WHATSAPP_RECOVERY_MESSAGE_LIMIT || '10', 10) || 10);
+  const summary = { checked_chats: 0, candidates: 0, recovered: 0, duplicates: 0, errors: 0, at: new Date().toISOString() };
+
+  try {
+    const chats = (await currentClient.getChats())
+      .filter((chat) => isDirectChatId(chat?.id?._serialized) && !chat?.isGroup)
+      .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0))
+      .slice(0, chatLimit);
+
+    for (const chat of chats) {
+      summary.checked_chats += 1;
+      const messages = await chat.fetchMessages({ limit: messageLimit });
+      const candidate = [...messages]
+        .filter((message) => {
+          const ageMs = Date.now() - Number(message?.timestamp || 0) * 1000;
+          return message?.fromMe !== true
+            && message?.type === 'chat'
+            && isDirectChatId(getPreferredIncomingChatId(message))
+            && isExactTurnKeyword(message?.body)
+            && Number.isFinite(ageMs)
+            && ageMs >= 0
+            && ageMs <= maxAgeMinutes * 60 * 1000;
+        })
+        .sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0))[0];
+
+      if (!candidate || !isAllowedBySafeMode(getPreferredIncomingChatId(candidate))) continue;
+      summary.candidates += 1;
+      const messageId = getMessageId(candidate);
+      try {
+        const { hasActiveAutogestionSession } = require('./whatsappAutogestion.service');
+        if (await hasActiveAutogestionSession(getPreferredIncomingChatId(candidate)) || await wasMessageAlreadyHandled(messageId)) {
+          summary.duplicates += 1;
+          continue;
+        }
+        await handleIncomingMessage(candidate, 'message');
+        summary.recovered += 1;
+      } catch (error) {
+        summary.errors += 1;
+        console.error('[WHATSAPP WEB] Error recuperando solicitud pendiente:', error.message);
+      }
+    }
+    lastMissedTurnRecovery = summary;
+    console.log('[WHATSAPP WEB] Recuperación de solicitudes pendientes completada', summary);
+    return summary;
+  } finally {
+    missedTurnRecoveryRunning = false;
+  }
+}
+
+function scheduleMissedTurnRecovery(currentClient) {
+  if (!isMissedTurnRecoveryEnabled() || isDiagnosticMode() || areExternalSendsBlocked()) return;
+  const timer = setTimeout(() => {
+    recoverMissedTurnRequestsOnce(currentClient).catch((error) => {
+      lastMissedTurnRecovery = { errors: 1, at: new Date().toISOString(), error: error.message };
+      console.error('[WHATSAPP WEB] No se pudo recuperar solicitudes pendientes:', error.message);
+    });
+  }, 2000);
+  timer.unref?.();
 }
 
 function stopMessagePolling() {
@@ -952,6 +1046,7 @@ async function startManagedClient({ reconnecting = false } = {}) {
     lastConnectedAt = new Date().toISOString();
     logDiagnosticState(connectionStatus);
     if (!isDiagnosticMode()) startMessagePolling();
+    scheduleMissedTurnRecovery(instance);
   });
   instance.on('auth_failure', (message) => {
     if (!isCurrent()) return;
@@ -1071,4 +1166,6 @@ module.exports = {
   restartWhatsAppClient: restartManagedWhatsAppClient,
   cleanupStaleWhatsAppBrowsers: cleanupOwnedWhatsAppBrowser,
   pollRecentMessagesOnce,
+  recoverMissedTurnRequestsOnce,
+  isExactTurnKeyword,
 };
