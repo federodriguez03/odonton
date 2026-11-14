@@ -1,14 +1,16 @@
 const { pool } = require('../config/db');
 
+const { requireSchema } = require('./schemaValidationService');
+
 let pacientesClinicosInitDone = false;
 const CAMPOS_ADMIN_SQL = 'id, nombre, apellido, dni, nacionalidad, domicilio, telefono, email, fecha_nacimiento, created_at, updated_at';
 
 async function asegurarColumnasClinicasPacientes() {
 	if (pacientesClinicosInitDone) return;
 
-	await pool.query(`ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS alergias TEXT`);
-	await pool.query(`ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS condiciones TEXT`);
-	await pool.query(`ALTER TABLE pacientes ADD COLUMN IF NOT EXISTS estado_tratamiento TEXT`);
+	await requireSchema('pacientes_clinicos', [
+		'pacientes.alergias', 'pacientes.condiciones', 'pacientes.estado_tratamiento',
+	]);
 
 	pacientesClinicosInitDone = true;
 }

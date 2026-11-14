@@ -8,6 +8,7 @@ const express = require('express');
 const cors = require('cors');
 const { verificarConexion } = require('./config/db');
 const { startReminderScheduler } = require('./jobs/reminderScheduler');
+const { requireRuntimeSchema } = require('./services/schemaValidationService');
 
 const app = express();
 
@@ -111,6 +112,7 @@ async function inicializar() {
       console.error('[FATAL] No se pudo conectar a la base de datos');
       process.exit(1);
     }
+    await requireRuntimeSchema();
 
     const demoMode = String(process.env.ODONTON_DEMO_MODE || '').toLowerCase() === 'true';
     if (!demoMode && process.env.WHATSAPP_AUTO_START === 'true') {

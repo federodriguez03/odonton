@@ -1,32 +1,17 @@
 const { pool } = require('../config/db');
 const { verificarToken } = require('../utils/jwt');
 const { obtenerIdentidadVigente } = require('../services/identidadService');
+const { requireSchema } = require('../services/schemaValidationService');
 
 let auditoriaInitDone = false;
 
 async function asegurarTablaAuditoria() {
   if (auditoriaInitDone) return;
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS auditoria (
-      id BIGSERIAL PRIMARY KEY,
-      usuario_id INTEGER,
-      accion TEXT NOT NULL,
-      recurso TEXT,
-      recurso_id TEXT,
-      status_code INTEGER,
-      metadata JSONB,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS usuario_id INTEGER`);
-  await pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS accion TEXT`);
-  await pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS recurso TEXT`);
-  await pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS recurso_id TEXT`);
-  await pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS status_code INTEGER`);
-  await pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS metadata JSONB`);
-  await pool.query(`ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
+  await requireSchema('auditoria_middleware', [
+    'auditoria.usuario_id', 'auditoria.accion', 'auditoria.recurso', 'auditoria.recurso_id',
+    'auditoria.status_code', 'auditoria.metadata', 'auditoria.created_at',
+  ]);
 
   auditoriaInitDone = true;
 }

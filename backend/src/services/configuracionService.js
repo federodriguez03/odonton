@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { resolverMensajeConfigurado } = require('../utils/whatsappMessageTemplate');
+const { requireSchema } = require('./schemaValidationService');
 
 let configReady = false;
 
@@ -73,45 +74,11 @@ function defaultTimeRange() {
 async function asegurarConfiguracion() {
   if (configReady) return;
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS configuracion_consultorio (
-      id SERIAL PRIMARY KEY,
-      nombre_consultorio VARCHAR(150) NOT NULL DEFAULT 'Odonton',
-      whatsapp_numero VARCHAR(30),
-      autogestion_keywords TEXT NOT NULL DEFAULT '${AUTOGESTION_KEYWORDS_DEFAULT}',
-      timezone VARCHAR(80) NOT NULL DEFAULT 'America/Argentina/Buenos_Aires',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await pool.query(`
-    ALTER TABLE configuracion_consultorio
-    ADD COLUMN IF NOT EXISTS autogestion_keywords TEXT NOT NULL DEFAULT '${AUTOGESTION_KEYWORDS_DEFAULT}'
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS configuracion_horarios_atencion (
-      id SERIAL PRIMARY KEY,
-      dia_semana INTEGER NOT NULL UNIQUE,
-      activo BOOLEAN NOT NULL DEFAULT false,
-      hora_desde TIME,
-      hora_hasta TIME,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS configuracion_mensajes_automaticos (
-      id SERIAL PRIMARY KEY,
-      tipo VARCHAR(60) NOT NULL UNIQUE,
-      contenido TEXT NOT NULL,
-      activo BOOLEAN NOT NULL DEFAULT true,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
+  await requireSchema('configuracion', [
+    'configuracion_consultorio.autogestion_keywords', 'configuracion_consultorio.timezone',
+    'configuracion_horarios_atencion.dia_semana', 'configuracion_horarios_atencion.hora_desde',
+    'configuracion_mensajes_automaticos.tipo', 'configuracion_mensajes_automaticos.contenido',
+  ]);
 
   const consultorioRes = await pool.query('SELECT id FROM configuracion_consultorio LIMIT 1');
   if (!consultorioRes.rowCount) {

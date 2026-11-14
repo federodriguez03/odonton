@@ -1,6 +1,7 @@
 ﻿const { pool } = require('../config/db');
 const { obtenerConfiguracion } = require('./configuracionService');
 const { resolverRecordatorioHabilitado } = require('../domain/recordatorioTurno');
+const { requireSchema } = require('./schemaValidationService');
 
 const {
   cerrarSolicitudesPendientes,
@@ -15,6 +16,12 @@ const ESTADOS_OCUPAN_HORARIO = ['programado', 'reprogramado', 'confirmado'];
 const ESTADOS_EDITABLES = ['programado', 'reprogramado', 'confirmado', 'solicitado', 'reprogramacion_solicitada'];
 const ESTADOS_CANCELABLES = ['programado', 'reprogramado', 'confirmado', 'solicitado', 'reprogramacion_solicitada', 'cancelacion_solicitada'];
 const ESTADOS_RECHAZABLES = ['solicitado', 'reprogramacion_solicitada', 'cancelacion_solicitada'];
+
+function crearErrorDisponibilidad() {
+  const error = new Error('El horario seleccionado ya no esta disponible');
+  error.code = 'AGENDA_CONFLICT';
+  return error;
+}
 
 function timeToMinutes(hora) {
   const [h, m] = String(hora || '').split(':').map(Number);
@@ -38,36 +45,22 @@ function esFechaValida(date) {
 
 async function asegurarColumnasProfesionalTurnos() {
   if (turnosProfesionalColumnsReady) return;
-
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS profesional_id INTEGER`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS solicitud_preferencia TEXT`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS solicitud_confirmada_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS solicitud_rechazada_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE turnos ALTER COLUMN prestacion_id DROP NOT NULL`);
-  await pool.query(`ALTER TABLE turnos ALTER COLUMN fecha_hora_inicio DROP NOT NULL`);
-  await pool.query(`ALTER TABLE turnos ALTER COLUMN fecha_hora_fin DROP NOT NULL`);
-  await pool.query(`ALTER TABLE turnos DROP CONSTRAINT IF EXISTS turnos_estado_check`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_turnos_profesional_inicio ON turnos(profesional_id, fecha_hora_inicio)`);
+  await requireSchema('turnos_profesional', [
+    'turnos.profesional_id', 'turnos.profesional_perfil_id', 'turnos.solicitud_preferencia',
+    'turnos.solicitud_confirmada_at', 'turnos.solicitud_rechazada_at',
+    'turnos.fecha_hora_inicio', 'turnos.fecha_hora_fin', 'turnos.estado',
+  ]);
 
   turnosProfesionalColumnsReady = true;
 }
 
 async function asegurarHorariosProfesionales() {
   if (horariosProfesionalesReady) return;
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS profesionales_horarios_atencion (
-      id SERIAL PRIMARY KEY,
-      profesional_id INTEGER NOT NULL,
-      dia_semana INTEGER NOT NULL,
-      activo BOOLEAN NOT NULL DEFAULT false,
-      hora_desde TIME,
-      hora_hasta TIME,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (profesional_id, dia_semana)
-    )
-  `);
+  await requireSchema('horarios_profesionales', [
+    'profesionales_horarios_atencion.profesional_id', 'profesionales_horarios_atencion.dia_semana',
+    'profesionales_horarios_atencion.activo', 'profesionales_horarios_atencion.hora_desde',
+    'profesionales_horarios_atencion.hora_hasta',
+  ]);
 
   horariosProfesionalesReady = true;
 }
@@ -144,12 +137,10 @@ async function validarHorarioProfesional(profesionalId, fechaInicio, fechaFin) {
 
 async function asegurarColumnasRecordatorioTurnos() {
   if (turnosReminderColumnsReady) return;
-
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS recordatorio_enviado_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS recordatorio_estado TEXT`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS recordatorio_error TEXT`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS respuesta_paciente TEXT`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS respuesta_paciente_at TIMESTAMPTZ`);
+  await requireSchema('turnos_recordatorios', [
+    'turnos.recordatorio_enviado_at', 'turnos.recordatorio_estado', 'turnos.recordatorio_error',
+    'turnos.respuesta_paciente', 'turnos.respuesta_paciente_at',
+  ]);
 
   turnosReminderColumnsReady = true;
 }
@@ -289,7 +280,7 @@ async function crearTurno({
     const duracionFinal = validarDuracionTurno(duracionMinutos, sumarDuraciones(prestaciones));
     const fechaHoraFin = new Date(fechaHoraInicio.getTime() + duracionFinal * 60000);
     await validarHorarioProfesional(profesionalFinalId, fechaHoraInicio, fechaHoraFin);
-    if (await existeSolapamientoPerfil(fechaHoraInicio, fechaHoraFin, null, profesionalFinalId)) throw new Error('El horario seleccionado no esta disponible');
+    if (await existeSolapamientoPerfil(fechaHoraInicio, fechaHoraFin, null, profesionalFinalId)) throw crearErrorDisponibilidad();
     const { rows } = await client.query(
       `INSERT INTO turnos
         (paciente_id, prestacion_id, profesional_id, profesional_perfil_id, fecha_hora_inicio, fecha_hora_fin, estado, origen, observaciones, recordatorio_habilitado)
@@ -377,7 +368,7 @@ async function reprogramarTurno(
     ? await existeSolapamientoPerfil(fechaHoraInicio, fechaHoraFin, turnoId, profesionalId)
     : await existeSolapamiento(fechaHoraInicio, fechaHoraFin, turnoId, profesionalId);
   if (hayConflicto) {
-    throw new Error('El horario seleccionado no esta disponible');
+    throw crearErrorDisponibilidad();
   }
 
   const query = `
@@ -453,7 +444,7 @@ async function editarTurno(
     const profesionalFinalId = await normalizarPerfilProfesionalId(profesionalPerfilId);
     const fechaFin = new Date(fechaInicio.getTime() + duracionFinal * 60000);
     await validarHorarioProfesional(profesionalFinalId, fechaInicio, fechaFin);
-    if (await existeSolapamientoPerfil(fechaInicio, fechaFin, turnoId, profesionalFinalId)) throw new Error('El horario seleccionado no esta disponible');
+    if (await existeSolapamientoPerfil(fechaInicio, fechaFin, turnoId, profesionalFinalId)) throw crearErrorDisponibilidad();
     const recordatorioFinal = resolverRecordatorioHabilitado(recordatorioHabilitado);
     const { rows } = await client.query(
       `UPDATE turnos SET paciente_id=$1, prestacion_id=$2, profesional_id=NULL, profesional_perfil_id=$3,
@@ -585,7 +576,7 @@ async function confirmarSolicitudTurno(
 
   await validarHorarioProfesional(profesionalFinalId, fechaInicio, fechaFin);
   const hayConflicto = await existeSolapamientoPerfil(fechaInicio, fechaFin, turnoId, profesionalFinalId);
-  if (hayConflicto) throw new Error('El horario seleccionado no esta disponible');
+  if (hayConflicto) throw crearErrorDisponibilidad();
 
   const client = await pool.connect();
   try {

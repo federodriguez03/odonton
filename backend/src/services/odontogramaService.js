@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const referenciasService = require('./odontogramaReferenciasService');
+const { requireSchema } = require('./schemaValidationService');
 
 let initDone = false;
 
@@ -11,34 +12,12 @@ function esDienteFDIValido(diente) {
 
 async function asegurarTablas() {
 	if (initDone) return;
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS odontograma (
-      id SERIAL PRIMARY KEY,
-      paciente_id INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
-      diente SMALLINT NOT NULL,
-      cara VARCHAR(20) NOT NULL,
-      estado VARCHAR(50) NOT NULL,
-      fecha TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE (paciente_id, diente, cara)
-    )
-  `);
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS odontograma_meta (
-      id SERIAL PRIMARY KEY,
-      paciente_id INTEGER NOT NULL UNIQUE REFERENCES pacientes(id) ON DELETE CASCADE,
-      sarro BOOLEAN NOT NULL DEFAULT FALSE,
-      periodontal BOOLEAN NOT NULL DEFAULT FALSE,
-      observaciones TEXT,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Asegurar columna observaciones por compatibilidad si la tabla ya existía
-  await pool.query(`ALTER TABLE odontograma_meta ADD COLUMN IF NOT EXISTS observaciones TEXT`);
-
-  initDone = true;
+	await requireSchema('odontograma', [
+		'odontograma.paciente_id', 'odontograma.diente', 'odontograma.cara', 'odontograma.estado',
+		'odontograma_meta.paciente_id', 'odontograma_meta.observaciones',
+	]);
+	initDone = true;
+	return;
 }
 
 function normalizarEstado(estado) {

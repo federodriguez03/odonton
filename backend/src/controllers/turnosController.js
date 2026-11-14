@@ -22,6 +22,14 @@ function parseFechaHora(value) {
   return date;
 }
 
+function responderErrorTurno(res, error, fallback) {
+  const conflicto = error?.code === 'AGENDA_CONFLICT' || error?.code === '23P01';
+  return res.status(conflicto ? 409 : (error?.status || 400)).json({
+    mensaje: conflicto ? 'El horario seleccionado ya no esta disponible' : (error.message || fallback),
+    ...(conflicto ? { codigo: 'AGENDA_CONFLICT' } : {}),
+  });
+}
+
 function aplicarVisibilidadAgenda(turno, req) {
   if (!turno || !req.agenda?.ocultarClinica) return turno;
   const limpio = { ...turno };
@@ -78,7 +86,7 @@ async function registrarTurno(req, res) {
       turno: aplicarVisibilidadAgenda(turnoDetalle, req),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al registrar el turno' });
+    return responderErrorTurno(res, error, 'Error al registrar el turno');
   }
 }
 
@@ -147,7 +155,7 @@ async function editarTurno(req, res) {
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al editar el turno' });
+    return responderErrorTurno(res, error, 'Error al editar el turno');
   }
 }
 
@@ -254,7 +262,7 @@ async function reprogramarTurno(req, res) {
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al reprogramar el turno' });
+    return responderErrorTurno(res, error, 'Error al reprogramar el turno');
   }
 }
 
@@ -355,7 +363,7 @@ async function confirmarSolicitudTurno(req, res) {
       ...(advertencias.length > 0 && { advertencias }),
     });
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al confirmar la solicitud' });
+    return responderErrorTurno(res, error, 'Error al confirmar la solicitud');
   }
 }
 

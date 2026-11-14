@@ -1,16 +1,8 @@
 const { pool } = require('../config/db');
+const { requireSchema } = require('./schemaValidationService');
 
 async function crearTabla() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS protesis_removibles (
-      id SERIAL PRIMARY KEY,
-      paciente_id INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
-      tipo VARCHAR(50) NOT NULL,
-      arcada VARCHAR(20) NOT NULL,
-      descripcion TEXT,
-      fecha TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
+  await requireSchema('protesis_removibles', ['protesis_removibles.paciente_id', 'protesis_removibles.tipo', 'protesis_removibles.arcada']);
 }
 
 async function crear({ paciente_id, tipo, arcada, descripcion, fecha }) {

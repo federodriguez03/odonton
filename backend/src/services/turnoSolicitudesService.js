@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const { requireSchema } = require('./schemaValidationService');
 const { registrarAuditoria } = require('./auditoriaService');
 const { crearPaciente } = require('./pacientesService');
 const {
@@ -38,46 +39,11 @@ function buildObservacionSolicitud({ motivo = null, preferenciaHoraria = null, o
 
 async function asegurarTablaTurnoSolicitudes() {
   if (solicitudesReady) return;
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS turno_solicitudes (
-      id BIGSERIAL PRIMARY KEY,
-      tipo_solicitud VARCHAR(40) NOT NULL,
-      estado VARCHAR(30) NOT NULL DEFAULT 'pendiente',
-      paciente_id INTEGER NULL,
-      nombre_apellido TEXT NULL,
-      dni VARCHAR(20) NOT NULL,
-      telefono VARCHAR(30) NOT NULL,
-      motivo TEXT NULL,
-      preferencia_horaria TEXT NULL,
-      turno_id INTEGER NULL,
-      observaciones TEXT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS tipo_solicitud VARCHAR(40)`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS estado VARCHAR(30) DEFAULT 'pendiente'`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS paciente_id INTEGER NULL`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS nombre_apellido TEXT NULL`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS dni VARCHAR(20)`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS telefono VARCHAR(30)`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS motivo TEXT NULL`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS preferencia_horaria TEXT NULL`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS turno_id INTEGER NULL`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS observaciones TEXT NULL`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()`);
-  await pool.query(`ALTER TABLE turno_solicitudes ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()`);
-  await pool.query(`ALTER TABLE turno_solicitudes ALTER COLUMN estado SET DEFAULT 'pendiente'`);
-  await pool.query(`UPDATE turno_solicitudes SET estado = 'pendiente' WHERE estado IS NULL`);
-  await pool.query(`UPDATE turno_solicitudes SET created_at = NOW() WHERE created_at IS NULL`);
-  await pool.query(`UPDATE turno_solicitudes SET updated_at = NOW() WHERE updated_at IS NULL`);
-  await pool.query(`ALTER TABLE turno_solicitudes ALTER COLUMN estado SET NOT NULL`);
-
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_turno_solicitudes_estado ON turno_solicitudes(estado)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_turno_solicitudes_paciente ON turno_solicitudes(paciente_id)`);
-  await pool.query(`CREATE INDEX IF NOT EXISTS idx_turno_solicitudes_turno ON turno_solicitudes(turno_id)`);
+  await requireSchema('turno_solicitudes', [
+    'turno_solicitudes.tipo_solicitud', 'turno_solicitudes.estado', 'turno_solicitudes.paciente_id',
+    'turno_solicitudes.dni', 'turno_solicitudes.telefono', 'turno_solicitudes.turno_id',
+    'turno_solicitudes.created_at', 'turno_solicitudes.updated_at',
+  ]);
 
   solicitudesReady = true;
 }

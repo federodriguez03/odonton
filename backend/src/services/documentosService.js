@@ -1,25 +1,17 @@
 ﻿const { pool } = require('../config/db');
 
+const { requireSchema } = require('./schemaValidationService');
+
 let initDone = false;
 
 async function asegurarTabla() {
   if (initDone) return;
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS documentos_paciente (
-      id SERIAL PRIMARY KEY,
-      paciente_id INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
-      nombre_archivo TEXT NOT NULL,
-      ruta_archivo TEXT NOT NULL,
-      tipo_archivo VARCHAR(100) NOT NULL,
-      descripcion TEXT,
-      historia_clinica_id INTEGER REFERENCES historias_clinicas(id) ON DELETE SET NULL,
-      fecha_subida TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await pool.query('CREATE INDEX IF NOT EXISTS idx_documentos_paciente_paciente_id ON documentos_paciente (paciente_id)');
-  await pool.query('CREATE INDEX IF NOT EXISTS idx_documentos_paciente_fecha ON documentos_paciente (fecha_subida DESC)');
+  await requireSchema('documentos', [
+    'documentos_paciente.paciente_id', 'documentos_paciente.nombre_archivo',
+    'documentos_paciente.ruta_archivo', 'documentos_paciente.tipo_archivo',
+    'documentos_paciente.historia_clinica_id', 'documentos_paciente.fecha_subida',
+  ]);
 
   initDone = true;
 }

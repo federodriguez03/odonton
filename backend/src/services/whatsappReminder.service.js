@@ -1,4 +1,5 @@
 const { pool } = require('../config/db');
+const { requireSchema } = require('./schemaValidationService');
 const {
   sendWhatsAppMessage,
   normalizePhoneDigits,
@@ -12,30 +13,11 @@ let schemaReady = false;
 
 async function ensureWhatsAppReminderSchema() {
   if (schemaReady) return;
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS whatsapp_reminders (
-      id SERIAL PRIMARY KEY,
-      appointment_id INTEGER NOT NULL,
-      patient_id INTEGER,
-      phone VARCHAR(30) NOT NULL,
-      status VARCHAR(50) NOT NULL DEFAULT 'pending_response',
-      sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      responded_at TIMESTAMP NULL,
-      response_text TEXT NULL,
-      channel VARCHAR(30) NOT NULL DEFAULT 'whatsapp',
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  await pool.query(`ALTER TABLE whatsapp_reminders ADD COLUMN IF NOT EXISTS channel VARCHAR(30) NOT NULL DEFAULT 'whatsapp'`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS recordatorio_procesado_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS recordatorio_enviado_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS recordatorio_estado TEXT`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS recordatorio_error TEXT`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS respuesta_paciente TEXT`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS respuesta_paciente_at TIMESTAMPTZ`);
-  await pool.query(`ALTER TABLE turnos ADD COLUMN IF NOT EXISTS profesional_id INTEGER`);
+  await requireSchema('whatsapp_reminders', [
+    'whatsapp_reminders.appointment_id', 'whatsapp_reminders.phone', 'whatsapp_reminders.status',
+    'whatsapp_reminders.channel', 'turnos.recordatorio_procesado_at', 'turnos.recordatorio_enviado_at',
+    'turnos.recordatorio_estado', 'turnos.respuesta_paciente', 'turnos.profesional_id',
+  ]);
 
   schemaReady = true;
 }

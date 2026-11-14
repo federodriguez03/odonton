@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const FDI_REGEX = /^(?:[1-4][1-8]|[5-8][1-5])$/;
+const { requireSchema } = require('./schemaValidationService');
 
 function validarDiente(diente) {
   const n = Number.parseInt(diente, 10);
@@ -8,17 +9,7 @@ function validarDiente(diente) {
 }
 
 async function crearTabla() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS tratamientos (
-      id SERIAL PRIMARY KEY,
-      paciente_id INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
-      diente SMALLINT NOT NULL,
-      tipo VARCHAR(50) NOT NULL,
-      observaciones TEXT,
-      fecha TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    CREATE INDEX IF NOT EXISTS idx_tratamientos_paciente_fecha ON tratamientos(paciente_id, fecha DESC);
-  `);
+  await requireSchema('tratamientos', ['tratamientos.paciente_id', 'tratamientos.diente', 'tratamientos.tipo', 'tratamientos.fecha']);
 }
 
 async function listar({ pacienteId, diente, desde, hasta }) {

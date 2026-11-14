@@ -1,12 +1,13 @@
 const { pool } = require('../config/db');
 
+const { requireSchema } = require('./schemaValidationService');
+
 let columnasReady = false;
 const CAMPOS = 'id, codigo, nombre, categoria, duracion_minutos, precio_base, precio_modalidad, activo';
 
 async function asegurarColumnasPrestaciones() {
   if (columnasReady) return;
-  await pool.query('ALTER TABLE prestaciones ADD COLUMN IF NOT EXISTS activo BOOLEAN DEFAULT true');
-  await pool.query('ALTER TABLE prestaciones ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ');
+  await requireSchema('prestaciones', ['prestaciones.activo', 'prestaciones.updated_at']);
   columnasReady = true;
 }
 

@@ -1,17 +1,9 @@
 const { pool } = require('../config/db');
 const FDI_REGEX = /^(?:[1-4][1-8]|[5-8][1-5])$/;
+const { requireSchema } = require('./schemaValidationService');
 
 async function crearTabla() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS protesis_fijas (
-      id SERIAL PRIMARY KEY,
-      paciente_id INTEGER NOT NULL REFERENCES pacientes(id) ON DELETE CASCADE,
-      tipo VARCHAR(50) NOT NULL,
-      dientes SMALLINT[] NOT NULL,
-      descripcion TEXT,
-      fecha TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-  `);
+  await requireSchema('protesis_fijas', ['protesis_fijas.paciente_id', 'protesis_fijas.tipo', 'protesis_fijas.dientes']);
 }
 
 function validarDientes(dientes) {
