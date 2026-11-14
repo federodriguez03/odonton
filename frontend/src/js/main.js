@@ -1,5 +1,5 @@
 import { initPacientesView } from './views/pacientesView.js';
-import { initTurnosView } from './views/turnosView.js';
+import { initTurnosView, startTurnosAutoRefresh, stopTurnosAutoRefresh } from './views/turnosView.js';
 import { initPrestacionesView } from './views/prestacionesView.js';
 import { initPagosView } from './views/pagosView.js';
 import { initReportesView } from './views/reportesView.js';
@@ -112,6 +112,8 @@ function activateSection(requestedSection, { persist = true } = {}) {
 
   if (section === 'configuracion' && currentUser?.permisos?.configurar_consultorio) startWhatsappStatusPolling();
   else stopWhatsappStatusPolling();
+  if (section === 'turnos' && currentUser?.permisos?.turnos) startTurnosAutoRefresh();
+  else stopTurnosAutoRefresh();
 
   if (persist) storeSection(section);
   return section;
@@ -267,6 +269,7 @@ function bindAuthEvents() {
   ui.loginForm?.addEventListener('submit', handleLoginSubmit);
   ui.logoutBtn?.addEventListener('click', () => {
     stopWhatsappStatusPolling();
+    stopTurnosAutoRefresh();
     clearToken();
     clearStoredSection();
     window.location.reload();
@@ -276,6 +279,7 @@ function bindAuthEvents() {
   ui.passwordForm?.addEventListener('submit',async(event)=>{event.preventDefault();const error=document.getElementById('password-change-error');try{const result=await changeOwnPassword({passwordActual:document.getElementById('password-current').value,passwordNueva:document.getElementById('password-new').value});setToken(result.token);ui.passwordScreen?.classList.add('d-none');showLoadingScreen('Preparando aplicación...');await initAuthenticatedApp(result.user);await initUsuariosForOwner(result.user);showApp(result.user);ui.passwordForm.reset()}catch(e){if(error){error.textContent=e.message;error.classList.remove('d-none')}}});
   window.addEventListener('auth:logout', () => {
     stopWhatsappStatusPolling();
+    stopTurnosAutoRefresh();
     clearStoredSection();
     window.location.reload();
   });

@@ -44,6 +44,10 @@ const state = {
   pacienteSearchRequest: { create: 0, edit: 0 },
 };
 let agendaOptions = { propia: false, profesionalPerfilId: null };
+let autoRefreshTimer = null;
+let autoRefreshInFlight = false;
+let viewRefreshPromise = null;
+const AUTO_REFRESH_INTERVAL_MS = 25000;
 
 const ui = {
   alertContainer: document.getElementById('alert-container'),
@@ -533,7 +537,7 @@ function renderPagination() {
   ui.nextButton.disabled = state.page >= totalPages;
 }
 
-async function loadTurnos() {
+async function loadTurnos({ silent = false } = {}) {
   try {
     const isPacienteQuery = Boolean(state.pacienteQuery);
     const effectivePage = isPacienteQuery ? 1 : state.page;
@@ -559,11 +563,12 @@ async function loadTurnos() {
     }
     renderPagination();
   } catch (error) {
+    if (silent) throw error;
     renderAlert(ui.alertContainer, error.message, 'danger');
   }
 }
 
-async function loadWeeklyCalendar() {
+async function loadWeeklyCalendar({ silent = false } = {}) {
   try {
     if (!state.calendarWeekStart) {
       state.calendarWeekStart = startOfWeek(todayClinicDate());
@@ -586,6 +591,7 @@ async function loadWeeklyCalendar() {
     state.calendarTurnos = (data.turnos || []).filter((turno) => matchPacienteQuery(turno, state.pacienteQuery));
     renderWeeklyCalendar();
   } catch (error) {
+    if (silent) throw error;
     renderAlert(ui.alertContainer, error.message, 'danger');
   }
 }
@@ -649,7 +655,7 @@ function renderWeeklyCalendar() {
   ui.calendarWeekBody.innerHTML = rows.join('');
 }
 
-async function loadDailyCalendar() {
+async function loadDailyCalendar({ silent = false } = {}) {
   try {
     if (!state.calendarDay) {
       state.calendarDay = todayClinicDate();
@@ -671,6 +677,7 @@ async function loadDailyCalendar() {
     state.calendarDayTurnos = (data.turnos || []).filter((turno) => matchPacienteQuery(turno, state.pacienteQuery));
     renderDailyCalendar();
   } catch (error) {
+    if (silent) throw error;
     renderAlert(ui.alertContainer, error.message, 'danger');
   }
 }
@@ -1192,10 +1199,52 @@ function bindCalendarTurnoActions() {
   });
 }
 
-async function refreshTurnosView() {
-  await loadTurnos();
-  await loadWeeklyCalendar();
-  await loadDailyCalendar();
+async function refreshTurnosView({ silent = false } = {}) {
+  if (viewRefreshPromise) return viewRefreshPromise;
+  viewRefreshPromise = Promise.all([
+      loadTurnos({ silent }),
+      loadWeeklyCalendar({ silent }),
+      loadDailyCalendar({ silent }),
+    ])
+    .finally(() => { viewRefreshPromise = null; });
+  return viewRefreshPromise;
+}
+
+function hasOpenTurnoModal() {
+  return [turnoModalElement, turnoEditModalElement, turnoDetailModalElement]
+    .some((element) => element?.classList.contains('show'));
+}
+
+async function runSilentAutoRefresh() {
+  if (autoRefreshInFlight || document.visibilityState !== 'visible' || hasOpenTurnoModal()) return;
+  const section = document.getElementById('section-turnos');
+  if (!section || section.classList.contains('d-none')) return;
+  autoRefreshInFlight = true;
+  try {
+    await refreshTurnosView({ silent: true });
+  } catch (_) {
+    // La actualización automática vuelve a intentarse sin interrumpir al usuario.
+  } finally {
+    autoRefreshInFlight = false;
+  }
+}
+
+function handleTurnosVisibilityChange() {
+  if (document.visibilityState === 'visible') runSilentAutoRefresh();
+}
+
+export function startTurnosAutoRefresh() {
+  if (!autoRefreshTimer) {
+    autoRefreshTimer = window.setInterval(runSilentAutoRefresh, AUTO_REFRESH_INTERVAL_MS);
+    document.addEventListener('visibilitychange', handleTurnosVisibilityChange);
+  }
+  runSilentAutoRefresh();
+}
+
+export function stopTurnosAutoRefresh() {
+  if (autoRefreshTimer) window.clearInterval(autoRefreshTimer);
+  autoRefreshTimer = null;
+  document.removeEventListener('visibilitychange', handleTurnosVisibilityChange);
 }
 
 function bindOpenCreateModal() {
