@@ -100,6 +100,11 @@ DECLARE
   vigente_rol_id SMALLINT;
   inserted_count INTEGER;
 BEGIN
+  SELECT COUNT(*) INTO owner_count FROM usuarios;
+  IF owner_count = 0 AND owner_email IS NULL THEN
+    RAISE NOTICE 'Base vacia: el primer dueño debe provisionarse de forma controlada antes del uso';
+    RETURN;
+  END IF;
   IF owner_email IS NULL THEN RAISE EXCEPTION 'OWNER_EMAIL_REQUERIDO: configure odonton.owner_email explicitamente'; END IF;
   SELECT COUNT(*),MIN(id) INTO owner_count,owner_id FROM usuarios WHERE LOWER(email)=LOWER(owner_email) AND COALESCE(activo,true)=true;
   IF owner_count<>1 THEN RAISE EXCEPTION 'OWNER_EMAIL_INVALIDO: se esperaba una cuenta activa unica para %',owner_email; END IF;

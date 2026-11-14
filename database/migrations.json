@@ -1,0 +1,18 @@
+{
+  "baseline": "schema_actual.sql",
+  "migrations": [
+    "2026-11-09_atenciones_odontograma_snapshot.sql",
+    "2026-11-09_documentos_por_atencion.sql",
+    "2026-11-09_odontograma_referencias.sql",
+    "2026-11-10_aranceles_importacion_manual.sql",
+    "2026-11-10_declaraciones_salud.sql",
+    "2026-11-10_identidad_roles_canonicos.sql",
+    "2026-11-10_odontograma_corona_completa.sql",
+    "2026-11-10_prestaciones_carga_masiva.sql",
+    "2026-11-10_prestaciones_catalogo_individual.sql",
+    "2026-11-10_turno_prestaciones.sql",
+    "2026-11-10_turnos_identidad_profesional.sql",
+    "2026-11-10_usuarios_gestion.sql",
+    "2026-11-14_runtime_schema_agenda_integrity.sql"
+  ]
+}
