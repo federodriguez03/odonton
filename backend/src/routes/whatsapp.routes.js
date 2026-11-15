@@ -48,7 +48,12 @@ router.use(middlewareAutenticacion, autorizarOdontologo);
 router.get('/status', getWhatsAppStatus);
 router.get('/qr', getWhatsAppQr);
 // Ruta de desarrollo/prueba. No exponer en produccion sin autenticacion.
-router.get('/debug/chats', debugRecentChats);
+router.get('/debug/chats', (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ mensaje: 'Recurso no disponible' });
+  }
+  return next();
+}, debugRecentChats);
 router.post('/initialize', initializeWhatsApp);
 router.post('/connect', initializeWhatsApp);
 router.post('/reset', resetWhatsApp);

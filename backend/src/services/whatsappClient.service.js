@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const os = require('os');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const { normalizePhoneToChatId } = require('../utils/whatsappPhone');
+const { minimalIncomingEvent } = require('../utils/whatsappPrivacy');
 const { pool } = require('../config/db');
 
 let client = null;
@@ -17,7 +18,6 @@ let pollHandle = null;
 let readyAt = null;
 let connectionStatus = 'DISCONNECTED';
 let operationInProgress = false;
-let connectedNumber = null;
 let lastConnectedAt = null;
 let lastDisconnectedAt = null;
 const processedMessageIds = new Set();
@@ -56,8 +56,16 @@ function areExternalSendsBlocked() {
 function logDiagnosticState(status, detail = '') {
   if (!isDiagnosticMode()) return;
   const elapsed = diagnosticStartedAt ? Date.now() - diagnosticStartedAt : 0;
-  const safeDetail = String(detail || '').replace(/[\r\n]+/g, ' ').slice(0, 180);
+  const safeDetail = sanitizeDiagnosticText(detail);
   console.info(`[WHATSAPP DIAGNOSTICO] estado=${status} elapsed_ms=${elapsed}${safeDetail ? ` detalle=${safeDetail}` : ''}`);
+}
+
+function sanitizeDiagnosticText(value) {
+  return String(value || '')
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/\b\d{10,15}\b/g, '[identificador oculto]')
+    .replace(/(qr|token|secret|password|authorization)\s*[=:]\s*[^\s,;]+/gi, '$1=[oculto]')
+    .slice(0, 180);
 }
 
 function getSessionName() {
@@ -96,9 +104,6 @@ function getStatus() {
     last_incoming_message: lastIncomingMessage,
     session_name: getSessionName(),
     polling: Boolean(pollHandle),
-    connected_user: connectedNumber || client?.info?.wid?._serialized || client?.info?.wid?.user || null,
-    connectedNumber: connectedNumber || client?.info?.wid?._serialized || client?.info?.wid?.user || null,
-    pushname: client?.info?.pushname || null,
     ready_at: readyAt,
     lastConnectedAt,
     lastDisconnectedAt,
@@ -314,41 +319,24 @@ async function pollRecentMessagesOnce({ limitChats = 50, limitMessages = 10, max
   const seen = [];
   for (const chat of recentChats) {
     const messages = await chat.fetchMessages({ limit: limitMessages });
-    const mappedMessages = [];
+    let recentMessages = 0;
+    let incomingMessages = 0;
 
     for (const message of messages) {
       const ageMs = Date.now() - Number(message.timestamp || 0) * 1000;
       const isRecent = ageMs <= maxAgeMinutes * 60 * 1000;
 
-      mappedMessages.push({
-        id: getMessageId(message),
-        from: message.from,
-        to: message.to,
-        fromMe: Boolean(message.fromMe),
-        body: message.body || '',
-        timestamp: message.timestamp || null,
-        age_minutes: Number.isFinite(ageMs) ? Math.round(ageMs / 60000) : null,
-        is_recent: isRecent,
-      });
+      if (isRecent) recentMessages += 1;
+      if (!message.fromMe) incomingMessages += 1;
     }
 
     seen.push({
-      id: chat.id?._serialized || null,
-      name: chat.name || chat.pushname || null,
       isGroup: Boolean(chat.isGroup),
       unreadCount: chat.unreadCount || 0,
       timestamp: chat.timestamp || null,
-      lastMessage: chat.lastMessage
-        ? {
-            id: getMessageId(chat.lastMessage),
-            from: chat.lastMessage.from,
-            to: chat.lastMessage.to,
-            fromMe: Boolean(chat.lastMessage.fromMe),
-            body: chat.lastMessage.body || '',
-            timestamp: chat.lastMessage.timestamp || null,
-          }
-        : null,
-      messages: mappedMessages,
+      messages_seen: messages.length,
+      recent_messages: recentMessages,
+      incoming_messages: incomingMessages,
     });
   }
 
@@ -458,7 +446,7 @@ function startMessagePolling() {
       if (!client || !ready) return;
       await pollRecentMessagesOnce({ limitChats: 20, limitMessages: 5, maxAgeMinutes: 30, process: false });
     } catch (error) {
-      const message = error?.message || String(error);
+      const message = sanitizeDiagnosticText(error?.message || String(error));
       lastError = message;
       console.error('[WHATSAPP WEB] Error en polling de mensajes:', message);
       if (error?.stack) console.error(error.stack);
@@ -529,14 +517,7 @@ async function handleIncomingMessage(message, sourceEvent) {
       return;
     }
 
-    lastIncomingMessage = {
-      event: sourceEvent,
-      from,
-      to,
-      fromMe: Boolean(message.fromMe),
-      type: message.type,
-      at: new Date().toISOString(),
-    };
+    lastIncomingMessage = minimalIncomingEvent({ sourceEvent, type: message.type, fromMe: message.fromMe });
 
     console.log('[WHATSAPP WEB] Mensaje recibido', lastIncomingMessage);
 
@@ -555,7 +536,7 @@ async function handleIncomingMessage(message, sourceEvent) {
       fromMe: message?.fromMe,
     });
   } catch (error) {
-    console.error('[WHATSAPP WEB] Error procesando mensaje entrante:', error.message);
+    console.error('[WHATSAPP WEB] Error procesando mensaje entrante:', sanitizeDiagnosticText(error.message));
   }
 }
 
@@ -690,7 +671,6 @@ async function initializeWhatsAppClient() {
     readyAt = new Date().toISOString();
     lastQr = null;
     lastError = null;
-    connectedNumber = client?.info?.wid?._serialized || client?.info?.wid?.user || null;
     lastConnectedAt = new Date().toISOString();
     console.log('[WhatsApp] Cliente listo');
   });
@@ -713,7 +693,6 @@ async function initializeWhatsAppClient() {
     stopMessagePolling();
     lastError = reason || 'Cliente desconectado';
     lastQr = null;
-    connectedNumber = null;
     readyAt = null;
     lastDisconnectedAt = new Date().toISOString();
     connectionStatus = 'DISCONNECTED';
@@ -747,7 +726,6 @@ async function destroyWhatsAppClient() {
   stopMessagePolling();
   client = null;
   lastQr = null;
-  connectedNumber = null;
   if (current) {
     try {
       await current.destroy();
@@ -772,7 +750,6 @@ async function logoutWhatsAppClient() {
   client = null;
   lastQr = null;
   lastQrAt = null;
-  connectedNumber = null;
 
   if (current) {
     try {
@@ -1042,7 +1019,6 @@ async function startManagedClient({ reconnecting = false } = {}) {
     lastQr = null;
     lastError = null;
     reconnectAttempt = 0;
-    connectedNumber = instance?.info?.wid?._serialized || instance?.info?.wid?.user || null;
     lastConnectedAt = new Date().toISOString();
     logDiagnosticState(connectionStatus);
     if (!isDiagnosticMode()) startMessagePolling();
@@ -1064,7 +1040,6 @@ async function startManagedClient({ reconnecting = false } = {}) {
     initializing = false;
     operationInProgress = false;
     lastQr = null;
-    connectedNumber = null;
     readyAt = null;
     lastDisconnectedAt = new Date().toISOString();
     connectionStatus = CONNECTION_STATUS.RECONNECTING;
@@ -1090,7 +1065,6 @@ async function disconnectManagedClient({ preserveSession = true, unlink = false 
   initializing = false;
   readyAt = null;
   lastQr = null;
-  connectedNumber = null;
   stopMessagePolling();
   if (unlink && instance) {
     try { await instance.logout(); } catch (_) { /* continuar con destruccion local */ }

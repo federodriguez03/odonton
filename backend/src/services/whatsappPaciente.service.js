@@ -2,6 +2,7 @@ const { pool } = require('../config/db');
 const { crearPaciente } = require('./pacientesService');
 const { registrarAuditoria } = require('./auditoriaService');
 const { normalizePhoneDigits, normalizePhoneForStorage } = require('./whatsappClient.service');
+const { diagnosticFingerprint } = require('../utils/whatsappPrivacy');
 
 function normalizeDni(value) {
   return String(value || '').replace(/\D/g, '');
@@ -88,7 +89,7 @@ async function createPacienteMinimo({
       recursoId: paciente.id,
       statusCode: 200,
       metadata: {
-        phone: telefono || normalizePhoneDigits(phone),
+        phone_fingerprint: diagnosticFingerprint(telefono || normalizePhoneDigits(phone)),
         conversation_id: conversationId,
       },
     });

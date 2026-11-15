@@ -17,13 +17,37 @@ function sanitizeConnectionError(value) {
   return String(value || '')
     .replace(/[A-Za-z]:\\[^\r\n]+/g, '[ruta local]')
     .replace(/\b(qr|token|secret|password)=\S+/gi, '$1=[oculto]')
+    .replace(/\b\d{10,15}\b/g, '[identificador oculto]')
     .slice(0, 500);
 }
 
 function publicStatus() {
   const status = getStatus();
   const safeError = sanitizeConnectionError(status.last_error || status.lastError);
-  return { ...status, last_error: safeError || null, lastError: safeError || null };
+  return {
+    ok: status.ok === true,
+    status: status.status,
+    initialized: status.initialized === true,
+    initializing: status.initializing === true,
+    isInitializing: status.isInitializing === true,
+    ready: status.ready === true,
+    isReady: status.isReady === true,
+    last_qr_at: status.last_qr_at || null,
+    qrGeneratedAt: status.qrGeneratedAt || null,
+    has_qr: status.has_qr === true,
+    hasQr: status.hasQr === true,
+    last_error: safeError || null,
+    lastError: safeError || null,
+    last_incoming_message: status.last_incoming_message || null,
+    polling: status.polling === true,
+    ready_at: status.ready_at || null,
+    lastConnectedAt: status.lastConnectedAt || null,
+    lastDisconnectedAt: status.lastDisconnectedAt || null,
+    operationInProgress: status.operationInProgress === true,
+    diagnostic_mode: status.diagnostic_mode === true,
+    external_sends_enabled: status.external_sends_enabled === true,
+    missed_turn_recovery: status.missed_turn_recovery || null,
+  };
 }
 
 async function getWhatsAppStatus(req, res) {

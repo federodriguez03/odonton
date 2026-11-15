@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { requireSchema } = require('./schemaValidationService');
+const { diagnosticFingerprint } = require('../utils/whatsappPrivacy');
 const { sendWhatsAppMessage, normalizePhoneDigits, normalizePhoneForStorage } = require('./whatsappClient.service');
 const {
   consultarDisponibilidad,
@@ -220,7 +221,7 @@ async function safeSend(phone, message) {
   const lastSentAt = recentOutgoingMessages.get(key);
 
   if (lastSentAt && now - lastSentAt < OUTGOING_DEDUP_MS) {
-    console.warn('[WHATSAPP AUTOGESTION] Mensaje duplicado omitido:', { phone: normalized });
+    console.warn('[WHATSAPP AUTOGESTION] Mensaje duplicado omitido:', { phone_fingerprint: diagnosticFingerprint(normalized) });
     return null;
   }
 
@@ -521,7 +522,7 @@ async function registerPendingRequestFromSession(session, phone) {
     turnoId: turnoSolicitudId,
     observaciones: data.observaciones || null,
     auditoria: {
-      phone: normalizePhoneDigits(phone),
+      phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)),
       conversation_id: session.id,
       tipo_solicitud: tipoSolicitud,
     },
@@ -816,7 +817,7 @@ async function startAutogestion(phone, { storagePhone = null, auditContext = {} 
     recurso: 'whatsapp_conversations',
     recursoId: session.id,
     metadata: {
-      phone: normalizePhoneDigits(phone),
+      phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)),
       sourceEvent: auditContext.sourceEvent || null,
       messageId: auditContext.messageId || null,
       messageTimestamp: auditContext.messageTimestamp || null,
@@ -1131,7 +1132,7 @@ async function handleGuidedConfirmRequest(session, phone, body) {
     }
     console.error('[WHATSAPP AUTOGESTION] No se pudo guardar la solicitud:', {
       error: error.message,
-      phone: normalizePhoneDigits(phone),
+      phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)),
       conversation_id: session.id,
       step: session.step,
       data: session.data,
@@ -1144,7 +1145,7 @@ async function handleGuidedConfirmRequest(session, phone, body) {
     recurso: 'turno_solicitudes',
     recursoId: solicitud.id,
     statusCode: 201,
-    metadata: { phone: normalizePhoneDigits(phone), conversation_id: session.id, tipo_solicitud: solicitud.tipo_solicitud },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), conversation_id: session.id, tipo_solicitud: solicitud.tipo_solicitud },
   });
 
   const isPrimeraConsulta = solicitud.tipo_solicitud === 'primera_consulta';
@@ -1189,7 +1190,7 @@ async function handleGuidedConfirmCancellation(session, phone, body) {
     recurso: 'turno_solicitudes',
     recursoId: solicitud.id,
     statusCode: 201,
-    metadata: { phone: normalizePhoneDigits(phone), conversation_id: session.id, turno_id: session.turno_id },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), conversation_id: session.id, turno_id: session.turno_id },
   });
 
   await safeSend(
@@ -1334,7 +1335,7 @@ async function handleSelectPrestacion(session, phone, body) {
     accion: 'SERVICE_SELECTED_FROM_WHATSAPP',
     recurso: 'whatsapp_conversations',
     recursoId: session.id,
-    metadata: { phone: normalizePhoneDigits(phone), prestacion_id: prestacion.id },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), prestacion_id: prestacion.id },
   });
 
   await safeSend(phone, `Elegiste: ${prestacion.nombre} ✅`);
@@ -1359,7 +1360,7 @@ async function handleSelectDay(session, phone, body, { reschedule = false } = {}
     accion: 'DAY_SELECTED_FROM_WHATSAPP',
     recurso: 'whatsapp_conversations',
     recursoId: session.id,
-    metadata: { phone: normalizePhoneDigits(phone), fecha: selectedDay.fecha },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), fecha: selectedDay.fecha },
   });
   await sendAvailableTimes(session, phone, selectedDay, {
     step: reschedule ? 'RESCHEDULE_SELECT_TIME' : 'SELECT_TIME',
@@ -1398,7 +1399,7 @@ async function handleSelectBlock(session, phone, body, { reschedule = false } = 
     accion: 'TIME_BLOCK_SELECTED_FROM_WHATSAPP',
     recurso: 'whatsapp_conversations',
     recursoId: session.id,
-    metadata: { phone: normalizePhoneDigits(phone), block },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), block },
   });
 
   await sendSlotsForBlock(session, phone, slots, block, {
@@ -1453,7 +1454,7 @@ async function handleSelectTime(session, phone, body, { reschedule = false } = {
     accion: 'TIME_SELECTED_FROM_WHATSAPP',
     recurso: 'whatsapp_conversations',
     recursoId: session.id,
-    metadata: { phone: normalizePhoneDigits(phone), time: selectedSlot.inicio },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), time: selectedSlot.inicio },
   });
 
   await askAppointmentConfirmation(session, phone, selectedSlot, {
@@ -1520,11 +1521,8 @@ async function handleConfirmRequest(session, phone, body) {
     recursoId: turno.id,
     statusCode: 200,
     metadata: {
-      phone: normalizePhoneDigits(phone),
+      phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)),
       conversation_id: session.id,
-      motivo,
-      dias_preferidos: diasPreferidos,
-      momento_preferido: momentoPreferido,
     },
   });
 
@@ -1575,11 +1573,8 @@ async function handleConfirmRequestV2(session, phone, body) {
     recursoId: turno.id,
     statusCode: 200,
     metadata: {
-      phone: normalizePhoneDigits(phone),
+      phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)),
       conversation_id: session.id,
-      motivo,
-      dias_preferidos: diasPreferidos,
-      momento_preferido: momentoPreferido,
     },
   });
 
@@ -1634,7 +1629,7 @@ async function handleConfirmAppointment(session, phone, body) {
     recurso: 'turnos',
     recursoId: turno.id,
     statusCode: 200,
-    metadata: { phone: normalizePhoneDigits(phone), conversation_id: session.id },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), conversation_id: session.id },
   });
 
   await safeSend(
@@ -1680,7 +1675,7 @@ async function handleConfirmReschedule(session, phone, body) {
     recurso: 'turnos',
     recursoId: turno.id,
     statusCode: 200,
-    metadata: { phone: normalizePhoneDigits(phone), conversation_id: session.id, rescheduled: true },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), conversation_id: session.id, rescheduled: true },
   });
 
   await safeSend(
@@ -1716,7 +1711,7 @@ async function startCancelAppointmentFlow(phone) {
     accion: 'WHATSAPP_CANCEL_FLOW_STARTED',
     recurso: 'turnos',
     recursoId: turno.id,
-    metadata: { phone: normalizePhoneDigits(phone), conversation_id: session.id },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), conversation_id: session.id },
   });
 
   await safeSend(
@@ -1772,7 +1767,7 @@ async function handleManagedCancelConfirm(session, phone, body) {
     recurso: 'turno_solicitudes',
     recursoId: solicitud.id,
     statusCode: 201,
-    metadata: { phone: normalizePhoneDigits(phone), conversation_id: session.id, turno_id: turnoDetallePendiente.id },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), conversation_id: session.id, turno_id: turnoDetallePendiente.id },
   });
   await safeSend(
     phone,
@@ -1813,7 +1808,7 @@ async function processAutogestionMessage(phone, body, {
       accion: 'BOT_SESSION_EXPIRED',
       recurso: 'whatsapp_conversations',
       recursoId: state.expired.id,
-      metadata: { phone: normalizePhoneDigits(phone) },
+      metadata: { phone_fingerprint: diagnosticFingerprint(phone) },
     });
     await safeSend(phone, EXPIRED_MESSAGE);
     return { handled: true, expired: true };
@@ -1854,7 +1849,7 @@ async function processAutogestionMessage(phone, body, {
       recurso: 'whatsapp_conversations',
       recursoId: session.id,
       metadata: {
-        phone: normalizePhoneDigits(phone),
+        phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)),
         command: text,
         sourceEvent,
         messageId,
@@ -1878,7 +1873,7 @@ async function processAutogestionMessage(phone, body, {
       accion: 'BOT_SESSION_CANCELLED',
       recurso: 'whatsapp_conversations',
       recursoId: session.id,
-      metadata: { phone: normalizePhoneDigits(phone), step: session.step },
+      metadata: { phone_fingerprint: diagnosticFingerprint(phone), step: session.step },
     });
     await safeSend(phone, CANCELLED_MESSAGE);
     return { handled: true, cancelled: true };
@@ -1888,7 +1883,7 @@ async function processAutogestionMessage(phone, body, {
     accion: 'WHATSAPP_AUTOGESTION_MESSAGE',
     recurso: 'whatsapp_conversations',
     recursoId: session.id,
-    metadata: { phone: normalizePhoneDigits(phone), step: session.step, body: text },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), step: session.step },
   });
 
   // El paso persistido determina el único handler válido para la respuesta recibida.
@@ -1937,7 +1932,7 @@ async function processAutogestionMessage(phone, body, {
         accion: 'BOT_INVALID_RESPONSE',
         recurso: 'whatsapp_conversations',
         recursoId: session.id,
-        metadata: { phone: normalizePhoneDigits(phone), step: session.step, body: text },
+        metadata: { phone_fingerprint: diagnosticFingerprint(phone), step: session.step },
       });
     }
     return { handled: true, session_id: session.id, ...result };
@@ -1948,7 +1943,7 @@ async function processAutogestionMessage(phone, body, {
       recurso: 'whatsapp_conversations',
       recursoId: session.id,
       statusCode: 500,
-      metadata: { phone: normalizePhoneDigits(phone), step: session.step, error: error.message },
+      metadata: { phone_fingerprint: diagnosticFingerprint(phone), step: session.step, error_code: error.code || 'AUTOGESTION_ERROR' },
     });
     await safeSend(phone, 'Ocurrió un problema al procesar tu solicitud 😕\n\nPor favor intentá nuevamente más tarde o comunicate con el consultorio.');
     return { handled: true, error: true };
@@ -1990,7 +1985,7 @@ async function startRescheduleFlow(phone, appointmentId) {
     recurso: 'turno_solicitudes',
     recursoId: solicitud.id,
     statusCode: 201,
-    metadata: { phone: normalizePhoneDigits(phone), turno_id: turno.id },
+    metadata: { phone_fingerprint: diagnosticFingerprint(phone), turno_id: turno.id },
   });
 
   const pacienteNombre = `${turno.paciente?.nombre || ''} ${turno.paciente?.apellido || ''}`.trim() || 'paciente';

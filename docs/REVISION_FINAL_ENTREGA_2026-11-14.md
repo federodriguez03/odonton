@@ -25,6 +25,15 @@ Las bases previstas y usadas para esta etapa fueron `odonton_tmp_delivery_fresh_
 
 Los demás hallazgos, especialmente B4, B5 e I1-I5 salvo I6, continúan abiertos. Esta actualización no cambia la conclusión general de que aún no corresponde declarar la versión lista para producción.
 
+### Actualización 2026-11-15 — correcciones B5, I1 e I2
+
+- **B5 corregido en el código nuevo:** estado y diagnóstico de WhatsApp ya no exponen teléfonos, nombres, cuerpos ni QR; las auditorías nuevas usan huellas correlacionables y metadatos mínimos. El diagnóstico de chats responde 404 en producción y sólo entrega agregados fuera de producción. No se borraron auditorías históricas ni se inició WhatsApp real. Política y límites: `docs/WHATSAPP_PRIVACIDAD_DIAGNOSTICO_2026-11-15.md`.
+- **I1 corregido:** el componente compartido construye la estructura estática con nodos DOM y asigna mensajes dinámicos mediante `textContent`. Los `innerHTML` revisados que reciben configuración, reportes o agenda remotos escapan sus valores. El ensayo automatizado confirmó que un `img`/`script` malicioso queda como texto y no crea esos nodos. La comprobación adicional en el navegador integrado no pudo completarse por un error de conexión de esa herramienta.
+- **I2 corregido:** las cargas comprueban firma PDF/JPEG/PNG, coherencia con el MIME declarado, límite vigente, nombre UUID y extensión detectada. Lectura, descarga y borrado usan una resolución centralizada confinada a la raíz configurada y rechazan rutas absolutas, `..` y enlaces/junctions fuera de ella. Los temporales rechazados se limpian y no se reescribieron archivos existentes.
+- **Evidencia ejecutada sin PostgreSQL ni transporte externo:** `test-alert-xss.mjs`, `test-document-file-security.js`, `test-whatsapp-privacy.js`, ciclo de conexión simulado, recuperación simulada de mensajes y compilación Vite. Todas pasaron. El ensayo de documentos creó y eliminó sólo fixtures sintéticos propios; no se usaron `odonton_db`, `odonton_ficha_20261109_test` ni `odonton_demo_2026`.
+
+Esta actualización resuelve únicamente B5, I1 e I2. B4 e I3-I5 conservan su estado anterior.
+
 ## Bloqueos de entrega
 
 ### B1. El esquema declarado como canónico no representa al runtime actual

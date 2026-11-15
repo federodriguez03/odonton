@@ -8,6 +8,7 @@ const {
 const { registrarAuditoria } = require('./auditoriaService');
 const { renderizarMensajeAutomatico } = require('./configuracionService');
 const { abrirSolicitudCambioTurno } = require('./turnoSolicitudesService');
+const { diagnosticFingerprint } = require('../utils/whatsappPrivacy');
 
 let schemaReady = false;
 
@@ -309,7 +310,7 @@ async function sendAppointmentReminder(appointmentId, { force = false, automatic
       recurso: 'turnos',
       recursoId: turno.id,
       statusCode: 200,
-      metadata: { phone, message_id: sent?.id?._serialized || sent?.id || null },
+      metadata: { phone_fingerprint: diagnosticFingerprint(phone), message_id: sent?.id?._serialized || sent?.id || null },
     });
 
     return {
@@ -335,7 +336,7 @@ async function sendAppointmentReminder(appointmentId, { force = false, automatic
       recurso: 'turnos',
       recursoId: turno.id,
       statusCode: 500,
-      metadata: { phone: turno.paciente_telefono, error: error.message },
+      metadata: { phone_fingerprint: diagnosticFingerprint(turno.paciente_telefono), error_code: error.code || 'REMINDER_SEND_ERROR' },
     });
 
     throw error;
@@ -471,7 +472,7 @@ async function processPatientReply(phone, body, { replyWhenNoPending = true } = 
   await registrarAuditoria({
     accion: 'WHATSAPP_REPLY_RECEIVED',
     recurso: 'whatsapp_reminders',
-    metadata: { phone: normalizePhoneDigits(phone), body: text },
+    metadata: { phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)) },
   });
 
   const reminder = await findPendingReminderByPhone(phone);
@@ -504,7 +505,7 @@ async function processPatientReply(phone, body, { replyWhenNoPending = true } = 
       recurso: 'whatsapp_reminders',
       recursoId: reminder.id,
       statusCode: 200,
-      metadata: { appointment_id: reminder.appointment_id, phone: normalizePhoneDigits(phone) },
+      metadata: { appointment_id: reminder.appointment_id, phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)) },
     });
 
     const reply = await safeReply(phone, buildConversationCancelledReplyV2());
@@ -608,7 +609,7 @@ async function processPatientReply(phone, body, { replyWhenNoPending = true } = 
       recurso: 'turnos',
       recursoId: reminder.appointment_id,
       statusCode: 200,
-      metadata: { reminder_id: reminder.id, phone: normalizePhoneDigits(phone), response_text: text },
+      metadata: { reminder_id: reminder.id, phone_fingerprint: diagnosticFingerprint(normalizePhoneDigits(phone)) },
     });
 
     // La respuesta externa ocurre después del COMMIT para no revertir la persistencia.
