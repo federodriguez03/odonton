@@ -34,6 +34,15 @@ Los demás hallazgos, especialmente B4, B5 e I1-I5 salvo I6, continúan abiertos
 
 Esta actualización resuelve únicamente B5, I1 e I2. B4 e I3-I5 conservan su estado anterior.
 
+### Actualización 2026-11-15 — correcciones B4, I3 e I4
+
+- **B4 mitigado, con riesgo residual documentado:** se actualizaron de forma dirigida `multer` 2.5.0, `bcrypt` 6.0.0, `whatsapp-web.js` 1.34.8, Vite 8.3.8 y su plugin compatible; se aplicaron únicamente parches transitivos propuestos sin `--force`. Frontend quedó en 0 avisos de audit, tanto total como producción. Backend pasó de 28 a 16 (5 moderados y 11 altos, 0 críticos): todos los restantes pertenecen a la cadena `whatsapp-web.js` → Puppeteer/Chromium/archiver y no tienen una actualización corregida compatible publicada. El riesgo concreto queda en inicialización/automatización del navegador y manejo de archivos internos de esa biblioteca; no corresponde afirmar riesgo cero ni ocultarlo con overrides.
+- **I3 corregido:** CORS usa allowlist exacta por entorno; local conserva puertos 3000/5173 y producción exige configuración explícita. El proxy sólo se confía por cantidad configurada de saltos. Login tiene límite por IP con 429 explícito, el cuerpo JSON/urlencoded tiene límite configurable y Helmet agrega headers/CSP compatible con los CDN actuales. `/health/live` es liveness y `/health/ready` comprueba PostgreSQL y almacenamiento con timeout, sin detalles internos ni dependencia de WhatsApp.
+- **I4 corregido:** SIGTERM/SIGINT inicia un cierre único e idempotente: deja de aceptar solicitudes, detiene y espera el scheduler, drena HTTP, destruye el cliente WhatsApp propio conservando LocalAuth y finalmente cierra el pool. Existe timeout global. La responsabilidad de instancia única y persistencia se documentó en `docs/OPERACION_INSTANCIA_2026-11-15.md`.
+- **Evidencia ejecutada:** `npm audit` total/producción, `npm ci` desde ambos locks en directorios aislados, build Vite 8, carga de la aplicación, pruebas HTTP (CORS, headers, payload, rate limit, proxy y readiness), cierre (orden, idempotencia y timeout), documentos, bcrypt y WhatsApp simulado. No se abrió PostgreSQL, no se inició WhatsApp real y no hubo envíos.
+
+Esta actualización resuelve I3 e I4 y reduce B4 hasta el límite de versiones compatibles disponibles. I5 conserva su estado anterior.
+
 ## Bloqueos de entrega
 
 ### B1. El esquema declarado como canónico no representa al runtime actual

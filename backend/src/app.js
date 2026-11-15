@@ -5,16 +5,20 @@ require('dotenv').config();
 
 const path = require('path');
 const express = require('express');
-const cors = require('cors');
 const { verificarConexion } = require('./config/db');
 const { startReminderScheduler } = require('./jobs/reminderScheduler');
 const { requireRuntimeSchema } = require('./services/schemaValidationService');
+const { checkReadiness } = require('./services/readinessService');
+const { configureTrustedProxy, createCorsMiddleware, createSecurityHeaders, positiveInteger } = require('./config/httpSecurity');
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+configureTrustedProxy(app);
+app.use(createSecurityHeaders());
+app.use(createCorsMiddleware());
+const requestBodyLimit = process.env.JSON_BODY_LIMIT || '1mb';
+app.use(express.json({ limit: requestBodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: requestBodyLimit }));
 
 const authRoutes = require('./routes/authRoutes');
 const turnosRoutes = require('./routes/turnosRoutes');
@@ -66,6 +70,15 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/health/live', (req, res) => {
+  res.status(200).json({ estado: 'ALIVE', timestamp: new Date().toISOString() });
+});
+
+app.get('/health/ready', async (req, res) => {
+  const ready = await checkReadiness({ timeoutMs: positiveInteger(process.env.READINESS_TIMEOUT_MS, 2000) });
+  return res.status(ready ? 200 : 503).json({ estado: ready ? 'READY' : 'NOT_READY' });
+});
+
 // =========================
 // FRONTEND DE PRODUCCION
 // =========================
@@ -92,6 +105,14 @@ app.use((req, res, next) => {
 
 app.use((err, req, res, next) => {
   console.error('[ERROR]', err);
+
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ mensaje: 'El cuerpo de la solicitud supera el tamaño permitido', codigo: 'PAYLOAD_TOO_LARGE' });
+  }
+
+  if (err?.code === 'CORS_ORIGIN_NOT_ALLOWED') {
+    return res.status(403).json({ mensaje: 'Origen no permitido', codigo: err.code });
+  }
 
   res.status(err.status || 500).json({
     mensaje: err.message || 'Error interno del servidor',
