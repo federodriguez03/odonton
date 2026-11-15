@@ -19,14 +19,14 @@ function validate(body, method = 'POST') {
 const valid = validate({
   nombre: '  María-José  ', apellido: 'D’Ángelo', dni: '0012345678',
   telefono: '(351) 555-1234', email: ' Persona@Ejemplo.com ',
-  fecha_nacimiento: '1990-02-28', nacionalidad: 'Argentina', observaciones: '',
+  fecha_nacimiento: '1990-02-28', nacionalidad: 'Argentina',
 });
 assert.equal(valid.nextCalled, true);
 assert.equal(valid.body.nombre, 'María-José');
 assert.equal(valid.body.dni, '0012345678');
 assert.match(valid.body.telefono, /^\d{10,15}$/);
 assert.equal(valid.body.email, 'persona@ejemplo.com');
-assert.equal(valid.body.observaciones, null);
+assert.equal(Object.prototype.hasOwnProperty.call(valid.body, 'observaciones'), false);
 
 const invalid = validate({
   nombre: 'Juan3', apellido: '', dni: '12.345.678', telefono: 'abc',

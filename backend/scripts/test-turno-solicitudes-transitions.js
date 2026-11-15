@@ -26,14 +26,23 @@ function createMockPool() {
     const text = compact(sql);
     log.push({ scope: 'pool', text, params });
 
+    if (text.includes('information_schema.columns')) return result([{ ok: true }]);
+
     if (text === 'SELECT * FROM turnos WHERE id = $1') {
       const turno = findTurno(live, params[0]);
       return result(turno ? [clone(turno)] : []);
     }
-    if (text.includes('SELECT id, duracion_minutos FROM prestaciones WHERE id = $1')) {
-      return result([{ id: Number(params[0]), duracion_minutos: 30 }]);
+    if (text.startsWith('SELECT id FROM turnos') && text.includes('fecha_hora_fin <= NOW()')) {
+      const rows = live.turnos
+        .filter((item) => ['programado', 'confirmado', 'reprogramado'].includes(item.estado) && new Date(item.fecha_hora_fin) <= new Date())
+        .slice(0, Number(params[0]))
+        .map(({ id }) => ({ id }));
+      return result(rows);
     }
-    if (text.includes('SELECT id FROM usuarios WHERE id = $1')) {
+    if (text.includes('FROM prestaciones') && text.includes('ANY($1::int[])')) {
+      return result(params[0].map((id) => ({ id: Number(id), nombre: `Prestacion ${id}`, duracion_minutos: 30 })));
+    }
+    if (text.includes('SELECT p.id FROM profesionales p')) {
       return result([{ id: Number(params[0]) }]);
     }
     if (text.includes('FROM profesionales_horarios_atencion')) {
@@ -44,7 +53,7 @@ function createMockPool() {
         hora_hasta: '23:59',
       }]);
     }
-    if (text.startsWith('SELECT EXISTS (')) return result([{ existe: false }]);
+    if (text.startsWith('SELECT EXISTS')) return result([{ existe: false }]);
     if (text.includes('FROM usuarios') && text.includes('LIMIT 1')) return result([{ id: 20 }]);
     if (text.startsWith('INSERT INTO auditoria')) return result([{ id: 1, created_at: new Date().toISOString() }]);
 
@@ -123,13 +132,17 @@ function createMockPool() {
     if (text.startsWith('UPDATE turnos') && text.includes("estado = 'confirmado'")) {
       const turno = findTurno(transaction, params[0]);
       if (!turno || turno.estado !== 'solicitado') return result();
-      turno.profesional_id = params[1];
+      turno.profesional_id = null;
+      turno.profesional_perfil_id = params[1];
       turno.prestacion_id = params[2];
       turno.fecha_hora_inicio = params[3];
       turno.fecha_hora_fin = params[4];
       turno.estado = 'confirmado';
       return result([clone(turno)]);
     }
+
+    if (text === 'DELETE FROM turno_prestaciones WHERE turno_id = $1') return result();
+    if (text.startsWith('INSERT INTO turno_prestaciones')) return result([{ id: 1 }]);
 
     if (text.startsWith('UPDATE turnos') && text.includes('SET estado = $3')) {
       const turno = findTurno(transaction, params[0]);
@@ -209,7 +222,7 @@ async function confirmarCaso(tipoSolicitud) {
   });
 
   await turnosService.confirmarSolicitudTurno(1, {
-    profesionalId: 20,
+    profesionalPerfilId: 20,
     prestacionId: 10,
     fechaHoraInicio: new Date('2099-08-17T10:00:00-03:00'),
     duracionMinutos: 30,
@@ -217,6 +230,8 @@ async function confirmarCaso(tipoSolicitud) {
 
   const state = mockPool.snapshot();
   assert.equal(state.turnos[0].estado, 'confirmado');
+  assert.equal(state.turnos[0].profesional_id, null);
+  assert.equal(state.turnos[0].profesional_perfil_id, 20);
   assert.equal(state.solicitudes[0].estado, 'resuelta');
 }
 
@@ -263,9 +278,10 @@ async function run() {
   });
   const lifecycle = await marcarTurnosVencidosComoRealizados();
   let state = mockPool.snapshot();
-  assert.equal(lifecycle.processed, 1);
-  assert.equal(state.turnos[0].estado, 'realizado');
-  assert.equal(state.solicitudes[0].estado, 'resuelta');
+  assert.equal(lifecycle.processed, 0);
+  assert.equal(lifecycle.pending_registration, 1);
+  assert.equal(state.turnos[0].estado, 'confirmado');
+  assert.equal(state.solicitudes[0].estado, 'pendiente');
 
   mockPool.reset({
     turnos: [turno(1, 'cancelacion_solicitada')],

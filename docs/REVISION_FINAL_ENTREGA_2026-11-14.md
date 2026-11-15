@@ -43,6 +43,26 @@ Esta actualización resuelve únicamente B5, I1 e I2. B4 e I3-I5 conservan su es
 
 Esta actualización resuelve I3 e I4 y reduce B4 hasta el límite de versiones compatibles disponibles. I5 conserva su estado anterior.
 
+### Cierre de validación 2026-11-15
+
+#### 1. Corregido y probado
+
+- **I5 cerrado:** se actualizaron los mocks de esquema, perfiles profesionales, prestaciones múltiples y recordatorios. La validación de pacientes ya no trata `observaciones` clínicas como campo administrativo. La prueba de solicitudes confirma que un turno vencido permanece `confirmado` y sólo se presenta como pendiente de registrar atención.
+- Pasaron `test-turno-solicitudes-transitions.js` (8 escenarios y rollback), `test-pacientes-validacion.js` y `test-recordatorio-por-turno.js` (10 escenarios, transporte simulado).
+- La matriz HTTP final pasó con Dueño, Recepción y Odontólogo en `odonton_tmp_validation_20261115_final_02`, creada desde cero mediante el manifiesto canónico, backend propio y puerto libre. Verificó altas administrativas por los tres roles; contraseña temporal; cargos, pagos, saldo, constancia, reportes y anulación; bloqueos clínicos/financieros; identidad `usuario_id`/`profesional_perfil_id`; respuestas administrativas sin antecedentes, alergias u observaciones; e inyección clínica, anulación y catálogo rechazados sin escritura.
+- WhatsApp, recordatorios y envíos externos permanecieron desactivados. Los fixtures se eliminaron, se verificó conteo cero y luego se eliminó únicamente la base temporal.
+
+#### 2. Riesgos abiertos
+
+- **B4 residual:** backend conserva 16 nodos vulnerables (11 altos, 5 moderados) en la cadena de producción `whatsapp-web.js`/Puppeteer/archiver. Paquetes, advisories, exposición y mitigaciones están en `docs/RIESGO_DEPENDENCIAS_WHATSAPP_2026-11-15.md`. No existe hoy una versión compatible corregida y no se aplicaron `--force`, downgrades ni overrides.
+- Se mantienen los riesgos o mejoras que este cierre no aceptó expresamente; esta validación no equivale a una garantía de ausencia de defectos ni de entrega exactamente una vez en WhatsApp.
+
+#### 3. Verificaciones manuales pendientes
+
+- Recorrido visual final en navegador desktop y móvil: navegación por rol, foco, modales, responsive y archivos PDF/imágenes.
+- Conexión WhatsApp real controlada: Chromium, QR, autenticación, `ready`, persistencia tras reinicio y entrega. Las pruebas actuales siguen siendo simuladas y no demuestran el despliegue.
+- Ensayo del artefacto en la infraestructura de publicación con TLS, proxy/orígenes reales, volumen persistente, backups/restauración, usuario PostgreSQL sin DDL y una única instancia responsable de WhatsApp/scheduler.
+
 ## Bloqueos de entrega
 
 ### B1. El esquema declarado como canónico no representa al runtime actual

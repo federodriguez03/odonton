@@ -15,19 +15,18 @@ function clone(value) {
 }
 
 function createTurnosPool() {
-  let state = { turnos: [], solicitudes: [] };
+  let state = { turnos: [], solicitudes: [], turnoPrestaciones: [] };
   let nextId = 1;
 
   function execute(target, sql, params = []) {
     const text = compact(sql);
 
-    if (/^(ALTER|CREATE)/.test(text)) return result();
-    if (text.startsWith('UPDATE turnos SET profesional_id = ( SELECT id FROM usuarios')) return result();
+    if (text.includes('information_schema.columns')) return result([{ ok: true }]);
     if (text === 'SELECT id FROM pacientes WHERE id = $1') return result([{ id: params[0] }]);
-    if (text.startsWith('SELECT id, duracion_minutos FROM prestaciones')) {
-      return result([{ id: params[0], duracion_minutos: 30 }]);
+    if (text.includes('FROM prestaciones') && text.includes('ANY($1::int[])')) {
+      return result(params[0].map((id) => ({ id: Number(id), nombre: `Prestacion ${id}`, duracion_minutos: 30 })));
     }
-    if (text.startsWith('SELECT id FROM usuarios WHERE id = $1')) return result([{ id: params[0] }]);
+    if (text.includes('SELECT p.id FROM profesionales p')) return result([{ id: params[0] }]);
     if (text.includes('FROM profesionales_horarios_atencion')) {
       return result([{ dia_semana: 1, activo: true, hora_desde: '00:00', hora_hasta: '23:59' }]);
     }
@@ -38,7 +37,8 @@ function createTurnosPool() {
         id: nextId++,
         paciente_id: params[0],
         prestacion_id: params[1],
-        profesional_id: params[2],
+        profesional_id: null,
+        profesional_perfil_id: params[2],
         fecha_hora_inicio: params[3],
         fecha_hora_fin: params[4],
         estado: 'programado',
@@ -54,12 +54,28 @@ function createTurnosPool() {
       const turno = target.turnos.find((item) => Number(item.id) === Number(params[0]));
       return result(turno ? [clone(turno)] : []);
     }
+    if (text === 'SELECT * FROM turnos WHERE id = $1 FOR UPDATE') {
+      const turno = target.turnos.find((item) => Number(item.id) === Number(params[0]));
+      return result(turno ? [clone(turno)] : []);
+    }
+    if (text.startsWith('SELECT prestacion_id, orden, nombre_snapshot')) {
+      return result(target.turnoPrestaciones.filter((item) => Number(item.turno_id) === Number(params[0])).map(clone));
+    }
+    if (text === 'DELETE FROM turno_prestaciones WHERE turno_id = $1') {
+      target.turnoPrestaciones = target.turnoPrestaciones.filter((item) => Number(item.turno_id) !== Number(params[0]));
+      return result();
+    }
+    if (text.startsWith('INSERT INTO turno_prestaciones')) {
+      target.turnoPrestaciones.push({ turno_id: params[0], prestacion_id: params[1], orden: params[2], nombre_snapshot: params[3], duracion_minutos_snapshot: params[4] });
+      return result([{ id: target.turnoPrestaciones.length }]);
+    }
 
-    if (text.startsWith('UPDATE turnos SET paciente_id = $1')) {
+    if (text.startsWith('UPDATE turnos SET paciente_id=$1')) {
       const turno = target.turnos.find((item) => Number(item.id) === Number(params[7]));
       turno.paciente_id = params[0];
       turno.prestacion_id = params[1];
-      turno.profesional_id = params[2];
+      turno.profesional_id = null;
+      turno.profesional_perfil_id = params[2];
       turno.fecha_hora_inicio = params[3];
       turno.fecha_hora_fin = params[4];
       turno.observaciones = params[5];
@@ -72,10 +88,11 @@ function createTurnosPool() {
       return result(turno ? [{ id: turno.id, estado: turno.estado }] : []);
     }
 
-    if (text.startsWith('UPDATE turnos SET profesional_id = $2')) {
+    if (text.startsWith('UPDATE turnos SET profesional_id = NULL')) {
       const turno = target.turnos.find((item) => Number(item.id) === Number(params[0]));
       if (!turno || turno.estado !== 'solicitado') return result();
-      turno.profesional_id = params[1];
+      turno.profesional_id = null;
+      turno.profesional_perfil_id = params[1];
       turno.prestacion_id = params[2];
       turno.fecha_hora_inicio = params[3];
       turno.fecha_hora_fin = params[4];
@@ -137,6 +154,7 @@ function createTurnosPool() {
         paciente_id: 10,
         prestacion_id: 20,
         profesional_id: null,
+        profesional_perfil_id: null,
         fecha_hora_inicio: null,
         fecha_hora_fin: null,
         estado: 'solicitado',
@@ -178,7 +196,7 @@ async function testPersistenceAndBooleans() {
   const base = {
     pacienteId: 10,
     prestacionId: 20,
-    profesionalId: 30,
+    profesionalPerfilId: 30,
     fechaHoraInicio: future,
   };
   const withTrue = await turnosService.crearTurno({ ...base, recordatorioHabilitado: true });
@@ -198,7 +216,7 @@ async function testPersistenceAndBooleans() {
 
   const solicitudTurnoId = mockPool.seedSolicitud();
   const confirmed = await turnosService.confirmarSolicitudTurno(solicitudTurnoId, {
-    profesionalId: 30,
+    profesionalPerfilId: 30,
     prestacionId: 20,
     fechaHoraInicio: future,
     duracionMinutos: 30,
@@ -219,7 +237,7 @@ async function testScheduler() {
   const reminderPool = {
     async query(sql, params = []) {
       const text = compact(sql);
-      if (/^(ALTER|CREATE)/.test(text)) return result();
+      if (text.includes('information_schema.columns')) return result([{ ok: true }]);
       if (text.startsWith('SELECT t.id FROM turnos')) {
         assert.match(text, /t\.recordatorio_habilitado = TRUE/);
         return result(appointments.filter((item) => item.recordatorio_habilitado).map(({ id }) => ({ id })));
