@@ -15,6 +15,15 @@ const ui = {
   topPrestacionesBody: document.getElementById('estadisticas-prestaciones-tbody'),
 };
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
@@ -34,8 +43,8 @@ function renderResumen(resumen = {}) {
     .map(
       (item) => `
         <div class="report-card border rounded-3 p-3 bg-white">
-          <div class="text-secondary small">${item.label}</div>
-          <div class="fw-semibold">${item.value}</div>
+          <div class="text-secondary small">${escapeHtml(item.label)}</div>
+          <div class="fw-semibold">${escapeHtml(item.value)}</div>
         </div>
       `,
     )
@@ -155,8 +164,8 @@ function renderTopPrestaciones(rows = []) {
     .map(
       (row) => `
         <tr>
-          <td>${row.prestacion_nombre}</td>
-          <td>${row.cantidad}</td>
+          <td>${escapeHtml(row.prestacion_nombre)}</td>
+          <td>${escapeHtml(row.cantidad)}</td>
         </tr>
       `,
     )

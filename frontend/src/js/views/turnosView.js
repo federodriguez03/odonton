@@ -434,7 +434,7 @@ function showCalendarTurnoDetail(turno) {
 
 function getRecordatorioBadge(turno) {
   if (turno.respuesta_paciente) {
-    return `<span class="badge bg-info-subtle text-info-emphasis border">Respondio: ${turno.respuesta_paciente}</span>`;
+    return `<span class="badge bg-info-subtle text-info-emphasis border">Respondio: ${escapeHtml(turno.respuesta_paciente)}</span>`;
   }
 
   if (turno.recordatorio_estado === 'enviado') {
@@ -468,13 +468,13 @@ function renderRows(turnos) {
 
       return `
       <tr>
-        <td>${turno.id}</td>
-        <td>${formatPaciente(turno)}</td>
-        <td>${turno?.prestacion?.nombre || `#${turno?.prestacion?.id || '-'}`}</td>
-        <td>${turno?.profesional?.nombre || turno?.profesional?.email || '-'}</td>
-        <td>${formatDateTime(turno.fecha_hora_inicio)}</td>
-        <td>${formatDateTime(turno.fecha_hora_fin)}</td>
-        <td><span class="badge text-bg-light border">${getEstadoInfo(turno).label}</span></td>
+        <td>${escapeHtml(turno.id)}</td>
+        <td>${escapeHtml(formatPaciente(turno))}</td>
+        <td>${escapeHtml(turno?.prestacion?.nombre || `#${turno?.prestacion?.id || '-'}`)}</td>
+        <td>${escapeHtml(turno?.profesional?.nombre || turno?.profesional?.email || '-')}</td>
+        <td>${escapeHtml(formatDateTime(turno.fecha_hora_inicio))}</td>
+        <td>${escapeHtml(formatDateTime(turno.fecha_hora_fin))}</td>
+        <td><span class="badge text-bg-light border">${escapeHtml(getEstadoInfo(turno).label)}</span></td>
         <td>${getRecordatorioBadge(turno)}</td>
         <td class="text-end">
           <div class="btn-group">
@@ -501,7 +501,7 @@ function renderRows(turnos) {
               class="btn btn-sm btn-outline-warning"
               type="button"
               data-action="rechazar-solicitud"
-              data-id="${turno.id}"
+              data-id="${escapeHtml(turno.id)}"
             >
               <i class="bi bi-x-octagon me-1"></i>Rechazar solicitud
             </button>` : ''}
@@ -509,7 +509,7 @@ function renderRows(turnos) {
               class="btn btn-sm btn-outline-danger"
               type="button"
               data-action="cancelar"
-              data-id="${turno.id}"
+              data-id="${escapeHtml(turno.id)}"
               ${canCancel ? '' : 'disabled'}
             >
               <i class="bi bi-x-circle me-1"></i>${isCancelacionSolicitada ? 'Cancelar turno' : 'Cancelar'}
@@ -519,7 +519,7 @@ function renderRows(turnos) {
               class="btn btn-sm btn-outline-success"
               type="button"
               data-action="whatsapp"
-              data-id="${turno.id}"
+              data-id="${escapeHtml(turno.id)}"
             >
               <i class="bi bi-whatsapp me-1"></i>WhatsApp
             </button>` : ''}

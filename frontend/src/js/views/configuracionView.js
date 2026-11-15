@@ -46,15 +46,24 @@ const ui = {
   referenciaCancelar: document.getElementById('config-referencia-cancelar'),
 };
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 function renderReferencias() {
   if (!ui.referenciasTbody) return;
   ui.referenciasTbody.innerHTML = state.referencias.map((ref) => `
     <tr>
-      <td>${ref.nombre}</td><td><code>${ref.codigo}</code></td>
-      <td><span class="d-inline-block border rounded" style="width:32px;height:20px;background:${ref.color}"></span> <small>${ref.color}</small></td>
+      <td>${escapeHtml(ref.nombre)}</td><td><code>${escapeHtml(ref.codigo)}</code></td>
+      <td><span class="d-inline-block border rounded" style="width:32px;height:20px;background:${escapeHtml(ref.color)}"></span> <small>${escapeHtml(ref.color)}</small></td>
       <td>${ref.alcance === 'pieza' ? 'Pieza' : 'Cara'}</td>
       <td><span class="badge ${ref.activo ? 'bg-success' : 'bg-secondary'}">${ref.activo ? 'Activa' : 'Inactiva'}</span></td>
-      <td class="text-end"><button class="btn btn-sm btn-outline-primary" data-action="editar-referencia" data-id="${ref.id}" type="button">Editar</button> <button class="btn btn-sm btn-outline-secondary" data-action="toggle-referencia" data-id="${ref.id}" type="button">${ref.activo ? 'Inactivar' : 'Activar'}</button></td>
+      <td class="text-end"><button class="btn btn-sm btn-outline-primary" data-action="editar-referencia" data-id="${escapeHtml(ref.id)}" type="button">Editar</button> <button class="btn btn-sm btn-outline-secondary" data-action="toggle-referencia" data-id="${escapeHtml(ref.id)}" type="button">${ref.activo ? 'Inactivar' : 'Activar'}</button></td>
     </tr>`).join('');
 }
 
@@ -165,14 +174,14 @@ function renderHorarios() {
     .map(
       (horario) => `
         <tr>
-          <td>${horario.dia_label}</td>
+          <td>${escapeHtml(horario.dia_label)}</td>
           <td>
             <div class="form-check form-switch mb-0">
               <input
                 class="form-check-input"
                 type="checkbox"
                 data-role="horario-activo"
-                data-dia="${horario.dia_semana}"
+                data-dia="${escapeHtml(horario.dia_semana)}"
                 ${horario.activo ? 'checked' : ''}
               />
             </div>
@@ -182,8 +191,8 @@ function renderHorarios() {
               class="form-control"
               type="time"
               data-role="horario-desde"
-              data-dia="${horario.dia_semana}"
-              value="${horario.hora_desde || ''}"
+              data-dia="${escapeHtml(horario.dia_semana)}"
+              value="${escapeHtml(horario.hora_desde || '')}"
               ${horario.activo ? '' : 'disabled'}
             />
           </td>
@@ -192,8 +201,8 @@ function renderHorarios() {
               class="form-control"
               type="time"
               data-role="horario-hasta"
-              data-dia="${horario.dia_semana}"
-              value="${horario.hora_hasta || ''}"
+              data-dia="${escapeHtml(horario.dia_semana)}"
+              value="${escapeHtml(horario.hora_hasta || '')}"
               ${horario.activo ? '' : 'disabled'}
             />
           </td>
@@ -222,8 +231,8 @@ function renderMensajes() {
           <div class="config-message-card">
             <div class="d-flex align-items-center justify-content-between mb-2">
               <div>
-                <h3 class="h6 mb-0">${meta.title}</h3>
-                <small class="text-secondary">${meta.help}</small>
+                <h3 class="h6 mb-0">${escapeHtml(meta.title)}</h3>
+                <small class="text-secondary">${escapeHtml(meta.help)}</small>
               </div>
               <div class="text-end">
                 <span class="badge ${mensaje.activo ? 'bg-success' : 'bg-secondary'} mb-1">
@@ -234,8 +243,8 @@ function renderMensajes() {
                     class="form-check-input"
                     type="checkbox"
                     data-role="mensaje-activo"
-                    data-tipo="${mensaje.tipo}"
-                    aria-label="Activar o desactivar ${meta.title}"
+                    data-tipo="${escapeHtml(mensaje.tipo)}"
+                    aria-label="Activar o desactivar ${escapeHtml(meta.title)}"
                     ${mensaje.activo ? 'checked' : ''}
                   />
                 </div>
@@ -248,13 +257,13 @@ function renderMensajes() {
               class="form-control"
               rows="5"
               data-role="mensaje-contenido"
-              data-tipo="${mensaje.tipo}"
-            >${mensaje.contenido || ''}</textarea>
+              data-tipo="${escapeHtml(mensaje.tipo)}"
+            >${escapeHtml(mensaje.contenido || '')}</textarea>
             <div class="d-flex flex-wrap gap-1 mt-2">
-              ${meta.placeholders.map((item) => `<button class="btn btn-sm btn-light border" type="button" data-role="insert-placeholder" data-tipo="${mensaje.tipo}" data-placeholder="${item}">${item}</button>`).join('')}
+              ${meta.placeholders.map((item) => `<button class="btn btn-sm btn-light border" type="button" data-role="insert-placeholder" data-tipo="${escapeHtml(mensaje.tipo)}" data-placeholder="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join('')}
             </div>
             ${unsupportedPlaceholders.length > 0
-              ? `<p class="small text-danger mb-0 mt-2">Variables no vigentes: ${unsupportedPlaceholders.join(', ')}. Retiralas antes de usar este mensaje.</p>`
+              ? `<p class="small text-danger mb-0 mt-2">Variables no vigentes: ${escapeHtml(unsupportedPlaceholders.join(', '))}. Retiralas antes de usar este mensaje.</p>`
               : ''}
           </div>
         </div>

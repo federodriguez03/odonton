@@ -15,15 +15,26 @@
   const persistent = type === 'danger';
   container.setAttribute('aria-live', persistent ? 'assertive' : 'polite');
   container.setAttribute('aria-atomic', 'true');
-  container.innerHTML = `
-    <div class="alert alert-${type} alert-dismissible fade show" role="${persistent ? 'alert' : 'status'}">
-      <i class="bi ${icon} alert-icon" aria-hidden="true"></i>
-      <span class="alert-message">${message}</span>
-      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar mensaje"></button>
-    </div>
-  `;
+  const alertElement = document.createElement('div');
+  alertElement.className = `alert alert-${type} alert-dismissible fade show`;
+  alertElement.setAttribute('role', persistent ? 'alert' : 'status');
 
-  const alertElement = container.querySelector('.alert');
+  const iconElement = document.createElement('i');
+  iconElement.className = `bi ${icon} alert-icon`;
+  iconElement.setAttribute('aria-hidden', 'true');
+
+  const messageElement = document.createElement('span');
+  messageElement.className = 'alert-message';
+  messageElement.textContent = String(message ?? '');
+
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'btn-close';
+  closeButton.setAttribute('data-bs-dismiss', 'alert');
+  closeButton.setAttribute('aria-label', 'Cerrar mensaje');
+
+  alertElement.append(iconElement, messageElement, closeButton);
+  container.replaceChildren(alertElement);
   if (persistent) return;
 
   const timer = window.setTimeout(() => {
