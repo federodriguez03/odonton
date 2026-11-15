@@ -1,20 +1,6 @@
-﻿const fs = require('fs');
-const fsPromises = require('fs/promises');
-const path = require('path');
+﻿const fsPromises = require('fs/promises');
 const documentosService = require('../services/documentosService');
-
-const BACKEND_ROOT = path.resolve(__dirname, '..', '..');
-const UPLOADS_ROOT = path.join(BACKEND_ROOT, 'uploads');
-const configuredUploadsSubdir = process.env.DOCUMENTOS_UPLOAD_SUBDIR || path.join('uploads', 'documentos');
-const UPLOADS_BASE_DIR = path.resolve(BACKEND_ROOT, configuredUploadsSubdir);
-
-if (UPLOADS_BASE_DIR !== UPLOADS_ROOT && !UPLOADS_BASE_DIR.startsWith(`${UPLOADS_ROOT}${path.sep}`)) {
-  throw new Error('DOCUMENTOS_UPLOAD_SUBDIR debe estar dentro de backend/uploads');
-}
-
-function resolveDocumentoPath(rutaArchivo) {
-  return path.join(__dirname, '..', '..', rutaArchivo);
-}
+const documentPaths = require('../utils/documentPaths');
 
 async function subirDocumento(req, res) {
   // Multer ya guardó el archivo; cualquier rechazo posterior debe evitar un upload huérfano.
@@ -33,7 +19,7 @@ async function subirDocumento(req, res) {
       return res.status(400).json({ mensaje: 'Archivo requerido' });
     }
 
-    const rutaRelativa = path.relative(BACKEND_ROOT, file.path);
+    const rutaRelativa = documentPaths.toStoredDocumentPath(file.path);
 
     const documento = await documentosService.crearDocumento({
       paciente_id,
@@ -83,10 +69,12 @@ async function descargarDocumento(req, res) {
       return res.status(404).json({ mensaje: 'Documento no encontrado' });
     }
 
-    const archivoPath = resolveDocumentoPath(documento.ruta_archivo);
-
-    if (!fs.existsSync(archivoPath)) {
-      return res.status(404).json({ mensaje: 'Archivo no encontrado en el servidor' });
+    let archivoPath;
+    try {
+      archivoPath = await documentPaths.resolveDocumentPath(documento.ruta_archivo);
+    } catch (error) {
+      if (error.code === 'ENOENT') return res.status(404).json({ mensaje: 'Archivo no encontrado en el servidor' });
+      throw error;
     }
 
     return res.download(archivoPath, documento.nombre_archivo);
@@ -98,14 +86,18 @@ async function descargarDocumento(req, res) {
 async function eliminarDocumento(req, res) {
   try {
     const { id } = req.params;
-    const documento = await documentosService.eliminarDocumentoPorId(id);
+    const existente = await documentosService.obtenerDocumentoPorId(id);
 
-    if (!documento) {
+    if (!existente) {
       return res.status(404).json({ mensaje: 'Documento no encontrado' });
     }
 
-    const archivoPath = resolveDocumentoPath(documento.ruta_archivo);
-    await fsPromises.unlink(archivoPath).catch(() => {});
+    const archivoPath = await documentPaths.resolveDocumentPath(existente.ruta_archivo);
+    const documento = await documentosService.eliminarDocumentoPorId(id);
+    if (!documento) return res.status(404).json({ mensaje: 'Documento no encontrado' });
+    await fsPromises.unlink(archivoPath).catch((error) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
 
     return res.status(200).json({ mensaje: 'Documento eliminado correctamente' });
   } catch (error) {
@@ -118,5 +110,5 @@ module.exports = {
   listarDocumentos,
   descargarDocumento,
   eliminarDocumento,
-  UPLOADS_BASE_DIR,
+  UPLOADS_BASE_DIR: documentPaths.UPLOADS_BASE_DIR,
 };

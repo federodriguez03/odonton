@@ -1,6 +1,6 @@
 ﻿const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const fs = require('fs/promises');
+const crypto = require('crypto');
 const multer = require('multer');
 
 const {
@@ -8,8 +8,9 @@ const {
   listarDocumentos,
   descargarDocumento,
   eliminarDocumento,
-  UPLOADS_BASE_DIR,
 } = require('../controllers/documentosController');
+const { ensureUploadsBaseDir } = require('../utils/documentPaths');
+const { validateAndNormalizeUploadedFile } = require('../utils/documentFileValidation');
 const { middlewareAutenticacion, middlewareAuditoria } = require('../middlewares/turnosMiddleware');
 const { autorizarClinicaPacientes, exigirProfesionalConfirmado } = require('../middlewares/pacientesAutorizacion');
 
@@ -17,21 +18,12 @@ const router = express.Router();
 
 const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
-function ensureUploadDir() {
-  if (!fs.existsSync(UPLOADS_BASE_DIR)) {
-    fs.mkdirSync(UPLOADS_BASE_DIR, { recursive: true });
-  }
-}
-
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    ensureUploadDir();
-    cb(null, UPLOADS_BASE_DIR);
+    ensureUploadsBaseDir().then((dir) => cb(null, dir), cb);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    const safeName = `${Date.now()}_${Math.round(Math.random() * 1e9)}${ext}`;
-    cb(null, safeName);
+    cb(null, `${crypto.randomUUID()}.upload`);
   },
 });
 
@@ -47,8 +39,16 @@ const upload = multer({
 });
 
 function manejarSubida(req, res, next) {
-  upload.single('archivo')(req, res, (err) => {
-    if (!err) return next();
+  upload.single('archivo')(req, res, async (err) => {
+    if (!err) {
+      try {
+        await validateAndNormalizeUploadedFile(req.file);
+        return next();
+      } catch (validationError) {
+        if (req.file?.path) await fs.unlink(req.file.path).catch(() => {});
+        return res.status(400).json({ mensaje: validationError.message || 'Archivo invalido' });
+      }
+    }
 
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ mensaje: 'Archivo demasiado grande. Maximo 10MB' });
