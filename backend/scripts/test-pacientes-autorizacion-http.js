@@ -41,21 +41,40 @@ function assert(ok, message) { if (!ok) throw new Error(message); }
       const login = await request(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, password }) });
       assert(login.status === 200, `Login ${name}: ${JSON.stringify(login)}`); tokens[name] = login.body.token;
     }
-    const dni = String(70000000 + (suffix % 20000000));
-    const create = await request(`${base}/api/pacientes`, { method: 'POST', headers: headers(tokens.recepcion), body: JSON.stringify({ nombre: 'Paciente', apellido: 'Temporal', dni }) });
-    assert(create.status === 201, `Recepcion no pudo crear: ${JSON.stringify(create)}`); ids.pacientes.push(create.body.paciente.id);
+    const dniBase = 70000000 + (suffix % 9999900);
+    const altasPorRol = [
+      ['owner', 'Dueño', String(dniBase)],
+      ['odonto', 'Odontologo', String(dniBase + 1)],
+      ['recepcion', 'Recepcion', String(dniBase + 2)],
+    ];
+    const altas = {};
+    for (const [rol, apellido, dniRol] of altasPorRol) {
+      const alta = await request(`${base}/api/pacientes`, {
+        method: 'POST',
+        headers: headers(tokens[rol]),
+        body: JSON.stringify({ nombre: 'Paciente', apellido, dni: dniRol, telefono: null, email: null, nacionalidad: null, domicilio: null, fecha_nacimiento: null }),
+      });
+      assert(alta.status === 201, `${rol} no pudo crear: ${JSON.stringify(alta)}`);
+      assert(!('observaciones' in alta.body.paciente), `${rol} recibio datos clinicos en el alta administrativa`);
+      ids.pacientes.push(alta.body.paciente.id);
+      altas[rol] = alta;
+    }
+    const dni = String(dniBase + 2);
+    const create = altas.recepcion;
+    assert(create.status === 201, `Recepcion no pudo crear: ${JSON.stringify(create)}`);
     assert(!('observaciones' in create.body.paciente), 'Crear filtro datos clinicos');
     const pid = create.body.paciente.id;
     await pool.query("UPDATE pacientes SET observaciones='secreto', alergias='clinico' WHERE id=$1", [pid]);
-    const list = await request(`${base}/api/pacientes?q=Temporal`, { headers: headers(tokens.recepcion) });
+    const list = await request(`${base}/api/pacientes?q=Recepcion`, { headers: headers(tokens.recepcion) });
     const detail = await request(`${base}/api/pacientes/${pid}`, { headers: headers(tokens.recepcion) });
     assert(list.status === 200 && detail.status === 200, 'Recepcion sin lectura administrativa');
     for (const result of [list.body.pacientes[0], detail.body.paciente]) assert(!('observaciones' in result) && !('alergias' in result), 'Respuesta administrativa filtra clinica');
-    const rejectedCreate = await request(`${base}/api/pacientes`, { method: 'POST', headers: headers(tokens.recepcion), body: JSON.stringify({ nombre: 'No', apellido: 'Crear', dni: String(Number(dni) + 1), observaciones: 'inyectada' }) });
+    const dniRechazado = String(dniBase + 3);
+    const rejectedCreate = await request(`${base}/api/pacientes`, { method: 'POST', headers: headers(tokens.recepcion), body: JSON.stringify({ nombre: 'No', apellido: 'Crear', dni: dniRechazado, observaciones: 'inyectada' }) });
     const rejectedUpdate = await request(`${base}/api/pacientes/${pid}`, { method: 'PUT', headers: headers(tokens.recepcion), body: JSON.stringify({ observaciones: 'inyectada' }) });
     assert(rejectedCreate.status === 400 && rejectedUpdate.status === 400 && rejectedUpdate.body.codigo === 'CAMPOS_CLINICOS_NO_PERMITIDOS', 'Inyeccion clinica no rechazada');
     const unchanged = await pool.query('SELECT observaciones, count(*) OVER() total FROM pacientes WHERE id=$1', [pid]);
-    const notCreated = await pool.query('SELECT id FROM pacientes WHERE dni=$1', [String(Number(dni) + 1)]);
+    const notCreated = await pool.query('SELECT id FROM pacientes WHERE dni=$1', [dniRechazado]);
     assert(unchanged.rows[0].observaciones === 'secreto' && !notCreated.rowCount, 'Un rechazo escribio datos');
     const clinicalPaths = [`/api/pacientes/${pid}/ficha-clinica`, `/api/pacientes/${pid}/declaracion-salud`, `/api/odontograma/${pid}`, `/api/tratamientos?pacienteId=${pid}`, `/api/protesis-fijas?pacienteId=${pid}`, `/api/protesis-removibles?pacienteId=${pid}`, `/api/documentos?paciente_id=${pid}`];
     for (const route of clinicalPaths) { const denied = await request(`${base}${route}`, { headers: headers(tokens.recepcion) }); assert(denied.status === 403, `Recepcion accedio a ${route}: ${denied.status}`); }

@@ -1588,6 +1588,7 @@ export async function initTurnosView({ agendaPropia = false, profesionalPerfilId
   bindEditForm();
   bindDetailModalActions();
   bindTableActions();
+  window.addEventListener('profesionales:actualizados', loadProfesionalesForSelect);
   await loadTurnos();
   await loadWeeklyCalendar();
   await loadDailyCalendar();

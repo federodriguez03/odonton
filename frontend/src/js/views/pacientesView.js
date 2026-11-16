@@ -414,8 +414,19 @@ function openEditModal(paciente) {
   setNacionalidadValue(paciente.nacionalidad);
   ui.createForm.elements.domicilio.value = paciente.domicilio || '';
   ui.createForm.elements.fecha_nacimiento.value = paciente.fecha_nacimiento ? String(paciente.fecha_nacimiento).slice(0, 10) : '';
-  ui.createForm.elements.observaciones.value = paciente.observaciones || '';
   pacienteModal?.show();
+}
+
+function buildPacienteAdministrativoPayload(form) {
+  const formData = new FormData(form);
+  const payload = {};
+  ['nombre', 'apellido', 'dni', 'telefono', 'email', 'domicilio', 'fecha_nacimiento'].forEach((field) => {
+    payload[field] = formData.get(field);
+  });
+  payload.nacionalidad = ui.nacionalidadTipo.value === 'Argentina'
+    ? 'Argentina'
+    : (ui.nacionalidadTipo.value === 'Otra' ? ui.nacionalidadPais.value : null);
+  return payload;
 }
 
 function renderFichaContentLegacy(data) {
@@ -1995,13 +2006,8 @@ function bindCreateForm() {
     event.preventDefault();
     clearPacienteErrors();
 
-    const formData = new FormData(ui.createForm);
-    const payload = Object.fromEntries(formData.entries());
-    const pacienteId = payload.id;
-    delete payload.id;
-    payload.nacionalidad = ui.nacionalidadTipo.value === 'Argentina'
-      ? 'Argentina'
-      : (ui.nacionalidadTipo.value === 'Otra' ? ui.nacionalidadPais.value : null);
+    const pacienteId = ui.pacienteIdInput.value;
+    const payload = buildPacienteAdministrativoPayload(ui.createForm);
 
     const clientErrors = validatePacientePayload(payload);
     if (Object.keys(clientErrors).length) {
@@ -2009,7 +2015,7 @@ function bindCreateForm() {
       return;
     }
 
-    ['telefono', 'email', 'nacionalidad', 'domicilio', 'fecha_nacimiento', 'observaciones'].forEach((field) => {
+    ['telefono', 'email', 'nacionalidad', 'domicilio', 'fecha_nacimiento'].forEach((field) => {
       if (!payload[field] || !String(payload[field]).trim()) payload[field] = null;
     });
 
