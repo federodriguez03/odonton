@@ -119,7 +119,7 @@ const MESSAGE_LABELS = {
   },
   recordatorio_turno: {
     title: 'Recordatorio de turno',
-    help: 'Se envia antes de un turno programado o confirmado.',
+    help: 'Se envía antes de un turno programado o confirmado.',
     placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   confirmacion_turno: {
@@ -251,7 +251,7 @@ function renderMensajes() {
               </div>
             </div>
             <p class="small ${mensaje.activo ? 'text-success' : 'text-secondary'} mb-2">
-              ${mensaje.activo ? 'Se utilizara cuando corresponda este evento.' : 'No se enviara ningun mensaje para este evento.'}
+              ${mensaje.activo ? 'Se utilizará cuando corresponda este evento.' : 'No se enviará ningún mensaje para este evento.'}
             </p>
             <textarea
               class="form-control"
