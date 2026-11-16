@@ -1,7 +1,0 @@
-require('dotenv').config();
-const fs=require('fs'); const path=require('path'); const {Pool}=require('pg');
-const ownerArg=process.argv.find((arg)=>arg.startsWith('--owner-email=')); const ownerEmail=ownerArg?.slice('--owner-email='.length).trim();
-if(!ownerEmail){console.error('Uso: node scripts/apply-identidad-roles-migration.js --owner-email=<email explicito>');process.exit(2);}
-const pool=new Pool({host:process.env.DB_HOST,port:Number(process.env.DB_PORT),user:process.env.DB_USER,password:process.env.DB_PASSWORD,database:process.env.DB_NAME});
-(async()=>{const db=(await pool.query('SELECT current_database() db')).rows[0].db;if(db!=='odonton_ficha_20261109_test')throw new Error(`Base no autorizada: ${db}`);const sql=fs.readFileSync(path.join(__dirname,'../../database/2026-11-10_identidad_roles_canonicos.sql'),'utf8');const client=await pool.connect();try{await client.query('BEGIN');await client.query("SELECT set_config('odonton.owner_email',$1,true)",[ownerEmail]);await client.query(sql);await client.query('COMMIT');}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
-const result=await pool.query(`SELECT u.id,u.email,r.codigo rol,ur.asignado_at,ur.motivo FROM usuarios_roles_vigentes ur JOIN usuarios u ON u.id=ur.usuario_id JOIN roles r ON r.id=ur.rol_id ORDER BY u.id`);console.log(JSON.stringify({ok:true,database:db,roles_canonicos:result.rows},null,2));})().finally(()=>pool.end()).catch(e=>{console.error(e);process.exitCode=1});

@@ -1,2 +1,0 @@
-require('dotenv').config(); const {pool}=require('../src/config/db'); const service=require('../src/services/arancelesImportService');
-(async()=>{const db=(await pool.query('SELECT current_database() db')).rows[0].db;if(db!=='odonton_ficha_20261109_test')throw new Error(`Base no autorizada: ${db}`);const preview=await service.bulkCatalogPreview();console.log(JSON.stringify({database:db,version_id:preview.version.id,resumen:preview.resumen}));})().finally(()=>pool.end()).catch(e=>{console.error(e);process.exitCode=1});
