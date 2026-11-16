@@ -28,7 +28,7 @@ function autorizarClinicaPacientes(req, res, next) {
 function rechazarCamposClinicosEnAdministracion(req, res, next) {
   const encontrados = Object.keys(req.body || {}).filter((campo) => CAMPOS_CLINICOS.has(campo));
   if (encontrados.length) {
-    return res.status(400).json({ mensaje: 'Los datos clinicos no pueden modificarse desde una ruta administrativa', codigo: 'CAMPOS_CLINICOS_NO_PERMITIDOS', campos: encontrados });
+    return res.status(400).json({ mensaje: 'Los datos clínicos no pueden modificarse desde una ruta administrativa', codigo: 'CAMPOS_CLINICOS_NO_PERMITIDOS', campos: encontrados });
   }
   return next();
 }
@@ -36,7 +36,7 @@ function rechazarCamposClinicosEnAdministracion(req, res, next) {
 async function exigirProfesionalConfirmado(req, res, next) {
   try {
     if (req.user?.rol === 'dueno') return next();
-    if (req.user?.rol !== 'odontologo') return denegar(res, 'La operacion requiere un profesional odontologo', 'PROFESIONAL_REQUERIDO');
+    if (req.user?.rol !== 'odontologo') return denegar(res, 'La operación requiere un profesional odontólogo', 'PROFESIONAL_REQUERIDO');
     const { rows } = await pool.query(
       `SELECT id, nombre_mostrado FROM profesionales
        WHERE usuario_id = $1 AND activo = TRUE AND vinculo_confirmado_at IS NOT NULL LIMIT 1`,

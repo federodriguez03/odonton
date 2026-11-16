@@ -460,7 +460,7 @@ async function registerPendingRequestFromSession(session, phone) {
     throw new Error('No se pudo registrar la solicitud porque falta el DNI en la conversacion');
   }
   if (!telefono) {
-    throw new Error('No se pudo registrar la solicitud porque falta el telefono');
+    throw new Error('No se pudo registrar la solicitud porque falta el teléfono');
   }
 
   if (!pacienteId && tipoSolicitud === 'primera_consulta') {
@@ -1005,7 +1005,7 @@ async function handleGuidedDni(session, phone, body) {
         dni,
         telefono: normalizePhoneForStorage(phone) || normalizePhoneDigits(phone),
         turnoId: turno.id,
-        observaciones: `Solicitud de reprogramacion por WhatsApp. Turno actual: ${fecha} ${hora}`,
+        observaciones: `Solicitud de reprogramación por WhatsApp. Turno actual: ${fecha} ${hora}`,
         auditoria: { phone: normalizePhoneDigits(phone), conversation_id: session.id, tipo_solicitud: 'reprogramacion' },
       });
 
@@ -1074,13 +1074,13 @@ async function handleGuidedPreference(session, phone, body) {
   if (tipoSolicitud === 'reprogramacion') {
     await safeSend(
       phone,
-      `Perfecto. Registramos esta solicitud de reprogramacion:\n\n`
+      `Perfecto. Registramos esta solicitud de reprogramación:\n\n`
         + `Paciente: ${nextData.paciente_nombre || '-'}\n`
         + `Turno actual: ${nextData.turno_fecha || '-'} a las ${nextData.turno_hora || '-'}\n`
         + `Nueva preferencia: ${preferencia}\n\n`
-        + 'Recorda que el cambio todavia no queda confirmado. El consultorio revisara la disponibilidad y te enviara la confirmacion correspondiente.\n\n'
+        + 'Recordá que el cambio todavía no queda confirmado. El consultorio revisará la disponibilidad y te enviará la confirmación correspondiente.\n\n'
         + 'Deseas confirmar esta solicitud?\n\n'
-        + '1. Si, confirmar solicitud de reprogramacion\n'
+        + '1. Sí, confirmar solicitud de reprogramación\n'
         + '2. No, cancelar solicitud',
     );
     return { ok: true };
@@ -1100,7 +1100,7 @@ async function handleGuidedPreference(session, phone, body) {
       + `DNI: ${nextData.dni || '-'}\n`
       + `Motivo: ${nextData.motivo || '-'}\n`
       + `Preferencia: ${preferencia}\n\n`
-      + 'Recorda que el turno todavia no queda confirmado. El consultorio revisara la disponibilidad y te enviara la confirmacion correspondiente.\n\n'
+      + 'Recordá que el turno todavía no queda confirmado. El consultorio revisará la disponibilidad y te enviará la confirmación correspondiente.\n\n'
       + 'Deseas confirmar esta solicitud?\n\n'
       + '1. Si, confirmar solicitud\n'
       + '2. No, cancelar solicitud',
@@ -1161,7 +1161,7 @@ async function handleGuidedConfirmRequest(session, phone, body) {
 async function handleGuidedConfirmCancellation(session, phone, body) {
   const option = parseOption(body);
   if (![1, 2].includes(option)) {
-    await safeSend(phone, 'No pude reconocer esa opcion.\n\n1. Si, solicitar cancelacion\n2. No, conservar mi turno');
+    await safeSend(phone, 'No pude reconocer esa opción.\n\n1. Sí, solicitar cancelación\n2. No, conservar mi turno');
     return { ok: false };
   }
 
@@ -1180,7 +1180,7 @@ async function handleGuidedConfirmCancellation(session, phone, body) {
     dni: data.dni,
     telefono: normalizePhoneForStorage(phone) || normalizePhoneDigits(phone),
     turnoId: session.turno_id || data.turno_id || null,
-    observaciones: `Solicitud de cancelacion por WhatsApp. Turno actual: ${data.turno_fecha || '-'} ${data.turno_hora || '-'}`,
+    observaciones: `Solicitud de cancelación por WhatsApp. Turno actual: ${data.turno_fecha || '-'} ${data.turno_hora || '-'}`,
     auditoria: { phone: normalizePhoneDigits(phone), conversation_id: session.id, tipo_solicitud: 'cancelacion' },
   });
 
@@ -1757,7 +1757,7 @@ async function handleManagedCancelConfirm(session, phone, body) {
     dni: turnoDetallePendiente.paciente?.dni || session.data?.dni || 'sin_dni',
     telefono: normalizePhoneForStorage(phone) || normalizePhoneDigits(phone),
     turnoId: turnoDetallePendiente.id,
-    observaciones: `Solicitud de cancelacion por WhatsApp. Turno actual: ${fechaHoraPendiente.fecha} ${fechaHoraPendiente.hora}`,
+    observaciones: `Solicitud de cancelación por WhatsApp. Turno actual: ${fechaHoraPendiente.fecha} ${fechaHoraPendiente.hora}`,
     auditoria: { phone: normalizePhoneDigits(phone), conversation_id: session.id, tipo_solicitud: 'cancelacion' },
   });
 
@@ -1976,7 +1976,7 @@ async function startRescheduleFlow(phone, appointmentId) {
     dni: turno.paciente?.dni || 'sin_dni',
     telefono: normalizePhoneForStorage(phone) || normalizePhoneDigits(phone),
     turnoId: turno.id,
-    observaciones: `Solicitud de reprogramacion por WhatsApp. Turno actual: ${fecha} ${hora}`,
+    observaciones: `Solicitud de reprogramación por WhatsApp. Turno actual: ${fecha} ${hora}`,
     auditoria: { phone: normalizePhoneDigits(phone), appointment_id: turno.id, tipo_solicitud: 'reprogramacion' },
   });
 

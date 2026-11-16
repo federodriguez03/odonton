@@ -22,29 +22,29 @@ const MENSAJES_DEFAULT = {
   confirmacion_turno:
     '¡Perfecto, {paciente}! ✅ Tu turno quedó confirmado.\n\n📅 Fecha: {fecha}\n🕒 Hora: {hora}\n\n¡Te esperamos! 🦷✨',
   cancelacion_turno:
-    'Tu solicitud de cancelacion fue registrada correctamente. El turno todavia no queda cancelado definitivamente. El consultorio revisara la solicitud y te enviara la confirmacion correspondiente.',
+    'Tu solicitud de cancelación fue registrada correctamente. El turno todavía no queda cancelado definitivamente. El consultorio revisará la solicitud y te enviará la confirmación correspondiente.',
   reprogramacion_turno:
-    'Recibimos tu solicitud de reprogramacion. El consultorio revisara la agenda y se comunicara con vos para coordinar un nuevo dia y horario.',
+    'Recibimos tu solicitud de reprogramación. El consultorio revisará la agenda y se comunicará con vos para coordinar un nuevo día y horario.',
 };
 
 const MENSAJES_DEFAULT_ANTERIORES = {
   principal_whatsapp:
-    'Hola {paciente}, somos {consultorio}. Te escribimos por tu atencion odontologica.',
+    'Hola {paciente}, somos {consultorio}. Te escribimos por tu atención odontológica.',
   recordatorio_turno:
-    'Hola {paciente}, te recordamos tu turno odontologico:\nFecha: {fecha}\nHora: {hora}\nPrestacion: {prestacion}\n\nResponde:\n1 para confirmar\n2 para cancelar\n3 para solicitar reprogramacion',
+    'Hola {paciente}, te recordamos tu turno odontológico:\nFecha: {fecha}\nHora: {hora}\nPrestación: {prestacion}\n\nRespondé:\n1 para confirmar\n2 para cancelar\n3 para solicitar reprogramación',
   confirmacion_turno:
     'Tu turno fue confirmado. Te esperamos el {fecha} a las {hora}. Gracias!',
   cancelacion_turno:
     'Tu turno fue cancelado. Gracias por avisarnos.',
   reprogramacion_turno:
-    'Recibimos tu solicitud de reprogramacion. El consultorio se comunicara con vos.',
+    'Recibimos tu solicitud de reprogramación. El consultorio se comunicará con vos.',
 };
 
 const MENSAJES_DEFAULT_ACTUALES = {
   principal_whatsapp:
     '👋 Hola {paciente}, somos {consultorio}. Te escribimos por tu atención odontológica. 🦷',
   recordatorio_turno:
-    'Hola {paciente}, te recordamos tu turno de {prestacion} el {fecha} a las {hora}. Responde CONFIRMAR, CANCELAR o REPROGRAMAR.',
+    'Hola {paciente}, te recordamos tu turno de {prestacion} el {fecha} a las {hora}. Respondé CONFIRMAR, CANCELAR o REPROGRAMAR.',
   confirmacion_turno:
     '✅ Hola {paciente}, tu turno de {prestacion} fue confirmado para el {fecha} a las {hora}. Te esperamos en {consultorio}.',
   cancelacion_turno:
@@ -307,7 +307,7 @@ async function validarHorarioConfigurado(fechaInicio, fechaFin) {
   const horario = await obtenerHorarioParaFecha(fechaInicio);
 
   if (!horario || !horario.activo) {
-    throw new Error('No hay atencion configurada para ese dia');
+    throw new Error('No hay atención configurada para ese día');
   }
 
   const inicioMinutos = fechaInicio.getHours() * 60 + fechaInicio.getMinutes();
@@ -316,7 +316,7 @@ async function validarHorarioConfigurado(fechaInicio, fechaFin) {
   const hastaMinutos = timeToMinutes(horario.hora_hasta);
 
   if (inicioMinutos < desdeMinutos || finMinutos > hastaMinutos) {
-    throw new Error(`Horario invalido. El horario de atencion es de ${horario.hora_desde} a ${horario.hora_hasta}`);
+    throw new Error(`Horario inválido. El horario de atención es de ${horario.hora_desde} a ${horario.hora_hasta}`);
   }
 }
 
@@ -386,7 +386,7 @@ async function renderizarMensajeAutomatico(tipo, payload = {}) {
   });
 
   if (resultado.estado === 'inexistente') {
-    const error = new Error(`No existe configuracion para el mensaje automatico ${tipo}`);
+    const error = new Error(`No existe configuración para el mensaje automático ${tipo}`);
     error.code = 'WHATSAPP_MESSAGE_TYPE_NOT_FOUND';
     throw error;
   }

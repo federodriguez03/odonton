@@ -126,12 +126,12 @@ async function run() {
     await wait(1200);
     assert.equal(instances.length, 5);
 
-    // La limpieza no enumera procesos. Desvincular exige confirmacion.
+    // La limpieza no enumera procesos. Desvincular exige confirmación.
     assert.deepEqual(await service.cleanupStaleWhatsAppBrowsers(), {
       skipped: true,
       reason: 'managed_client_destroy_only',
     });
-    await assert.rejects(() => service.logoutWhatsAppClient(), /confirmacion explicita/);
+    await assert.rejects(() => service.logoutWhatsAppClient(), /confirmación explícita/);
     await service.logoutWhatsAppClient({ confirmed: true });
     await assert.rejects(() => fs.access(sessionPath));
   } finally {
@@ -139,7 +139,7 @@ async function run() {
     await fs.rm(temporaryAuthPath, { recursive: true, force: true });
   }
 
-  console.log('OK: ciclo de conexion WhatsApp validado con cliente y sesion temporales');
+  console.log('OK: ciclo de conexión WhatsApp validado con cliente y sesión temporales');
 }
 
 run().catch((error) => {

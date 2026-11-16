@@ -680,7 +680,7 @@ async function initializeWhatsAppClient() {
     initializing = false;
     operationInProgress = false;
     stopMessagePolling();
-    lastError = message || 'Fallo de autenticacion';
+    lastError = message || 'Fallo de autenticación';
     connectionStatus = 'FAILED';
     client = null;
     console.error('[WhatsApp] Error de autenticación:', lastError);
@@ -829,7 +829,7 @@ async function sendWhatsAppMessage(phone, message, { retryOnBrowserError = true 
     throw error;
   }
   if (!client || !ready) {
-    throw new Error('WhatsApp Web no esta listo. Escanea el QR o espera la conexion.');
+    throw new Error('WhatsApp Web no está listo. Escaneá el QR o esperá la conexión.');
   }
 
   const chatId = normalizePhoneToChatId(phone);
@@ -891,7 +891,7 @@ async function acquireConnectionLock() {
         return acquireConnectionLock();
       } catch (_) { /* otro proceso resolvio el lock */ }
     }
-    const lockError = new Error('La sesion de WhatsApp esta siendo utilizada por otro proceso.');
+    const lockError = new Error('La sesión de WhatsApp está siendo utilizada por otro proceso.');
     lockError.code = 'WHATSAPP_SESSION_IN_USE';
     throw lockError;
   }
@@ -937,7 +937,7 @@ function armInitializationTimeout(generation, instance) {
   const configured = Number.parseInt(process.env.WHATSAPP_INIT_TIMEOUT_MS || '60000', 10);
   const timeoutMs = Number.isFinite(configured) && configured >= 1000 ? configured : 60000;
   initializationTimer = setTimeout(() => {
-    serializeConnectionOperation(() => failCurrentGeneration(generation, instance, new Error('La conexion excedio el tiempo de espera. Podes reintentar sin perder la sesion.')));
+    serializeConnectionOperation(() => failCurrentGeneration(generation, instance, new Error('La conexión excedió el tiempo de espera. Podés reintentar sin perder la sesión.')));
   }, timeoutMs);
   initializationTimer.unref?.();
 }
@@ -947,13 +947,13 @@ function scheduleLimitedReconnect(reason) {
   const configured = Number.parseInt(process.env.WHATSAPP_RECONNECT_MAX_ATTEMPTS || '3', 10);
   const maximum = Number.isFinite(configured) && configured >= 0 ? configured : 3;
   if (reconnectAttempt >= maximum) {
-    setConnectionError(new Error(`La conexion se interrumpio y agoto ${maximum} reintentos.`));
+    setConnectionError(new Error(`La conexión se interrumpió y agotó ${maximum} reintentos.`));
     releaseConnectionLock();
     return;
   }
   reconnectAttempt += 1;
   connectionStatus = CONNECTION_STATUS.RECONNECTING;
-  lastError = reason || 'Conexion interrumpida';
+  lastError = reason || 'Conexión interrumpida';
   const delayMs = Math.min(30000, 1000 * (2 ** (reconnectAttempt - 1)));
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
@@ -1027,7 +1027,7 @@ async function startManagedClient({ reconnecting = false } = {}) {
   instance.on('auth_failure', (message) => {
     if (!isCurrent()) return;
     voluntaryDisconnect = true;
-    serializeConnectionOperation(() => failCurrentGeneration(generation, instance, new Error(message || 'La sesion fue rechazada. Desvinculala para generar un QR nuevo.')));
+    serializeConnectionOperation(() => failCurrentGeneration(generation, instance, new Error(message || 'La sesión fue rechazada. Desvinculala para generar un QR nuevo.')));
   });
   instance.on('disconnected', (reason) => {
     if (!isCurrent()) return;
@@ -1106,7 +1106,7 @@ async function destroyManagedWhatsAppClient() {
 
 async function logoutManagedWhatsAppClient({ confirmed = false } = {}) {
   if (confirmed !== true) {
-    const error = new Error('La desvinculacion requiere confirmacion explicita.');
+    const error = new Error('La desvinculación requiere confirmación explícita.');
     error.code = 'WHATSAPP_UNLINK_CONFIRMATION_REQUIRED';
     throw error;
   }

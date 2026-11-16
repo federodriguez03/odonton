@@ -41,7 +41,7 @@ async function request(path, options = {}) {
       clearToken();
       window.dispatchEvent(new Event('auth:logout'));
     }
-    const fallback = response.status === 401 ? 'La sesion no es valida o vencio'
+    const fallback = response.status === 401 ? 'La sesión no es válida o venció'
       : response.status === 403 ? 'No tiene permiso para realizar esta operacion'
         : response.status >= 500 ? 'El servicio no esta disponible temporalmente' : `Error ${response.status}`;
     const error = new Error(data?.mensaje || fallback);
@@ -74,7 +74,7 @@ async function requestForm(path, formData, options = {}) {
       clearToken();
       window.dispatchEvent(new Event('auth:logout'));
     }
-    const fallback = response.status === 401 ? 'La sesion no es valida o vencio'
+    const fallback = response.status === 401 ? 'La sesión no es válida o venció'
       : response.status === 403 ? 'No tiene permiso para realizar esta operacion'
         : response.status >= 500 ? 'El servicio no esta disponible temporalmente' : `Error ${response.status}`;
     const error = new Error(data?.mensaje || fallback);

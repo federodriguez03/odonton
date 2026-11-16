@@ -274,12 +274,12 @@ async function sendAppointmentReminder(appointmentId, { force = false, automatic
       sent: false,
       appointment_id: appointmentId,
       reason: 'MESSAGE_DISABLED',
-      mensaje: 'El mensaje de recordatorio esta desactivado en Configuracion',
+      mensaje: 'El mensaje de recordatorio está desactivado en Configuración',
     };
   }
 
   const phone = await resolveReminderPhone(turno);
-  if (!phone) throw new Error('El paciente no tiene un telefono valido');
+  if (!phone) throw new Error('El paciente no tiene un teléfono válido');
 
   try {
     const sent = await sendWhatsAppMessage(phone, message);
@@ -431,8 +431,8 @@ function buildRescheduleRequestReply(reminder) {
 async function registerAppointmentRequestFromReminder(reminder, tipoSolicitud, phone) {
   const { fecha, hora } = formatFechaHora(reminder.fecha_hora_inicio);
   const observaciones = tipoSolicitud === 'cancelacion'
-    ? `Solicitud de cancelacion por WhatsApp. Turno actual: ${fecha} ${hora}`
-    : `Solicitud de reprogramacion por WhatsApp. Turno actual: ${fecha} ${hora}`;
+    ? `Solicitud de cancelación por WhatsApp. Turno actual: ${fecha} ${hora}`
+    : `Solicitud de reprogramación por WhatsApp. Turno actual: ${fecha} ${hora}`;
 
   return abrirSolicitudCambioTurno({
     tipoSolicitud,

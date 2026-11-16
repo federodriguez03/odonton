@@ -6,7 +6,7 @@ async function obtenerEstadisticas(req, res) {
     const data = await estadisticasService.generarEstadisticas({ fechaDesde, fechaHasta });
     return res.status(200).json(data);
   } catch (error) {
-    return res.status(400).json({ mensaje: error.message || 'Error al generar estadisticas' });
+    return res.status(400).json({ mensaje: error.message || 'Error al generar estadísticas' });
   }
 }
 

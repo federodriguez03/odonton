@@ -95,7 +95,7 @@ async function editar(id, data, actorId) {
     const rid = await rolId(client, rol);
     if (actual.profesional_id && rol === "recepcion")
       throw new Error(
-        "Una cuenta vinculada a un perfil profesional no puede tener rol recepcion",
+        "Una cuenta vinculada a un perfil profesional no puede tener rol recepción",
       );
     if (actual.rol === "dueno" && (!activo || rol !== "dueno")) {
       const c = await client.query(
@@ -166,7 +166,7 @@ async function vincularPerfil(
     if (!u) throw new Error("Cuenta activa no encontrada");
     if (!["dueno", "odontologo"].includes(u.rol))
       throw new Error(
-        "Solo dueño u odontologo pueden vincular un perfil profesional",
+        "Solo dueño u odontólogo pueden vincular un perfil profesional",
       );
     if (
       (

@@ -74,12 +74,12 @@ function validarEntradaPaciente(req, res, next) {
 function validarConsultaPacientes(req, res, next) {
   try {
     const { page, limit, sort, q, dni } = req.query || {};
-    if (page !== undefined && (Number.isNaN(Number.parseInt(page, 10)) || Number.parseInt(page, 10) < 1)) return res.status(400).json({ mensaje: 'Parametro page invalido. Debe ser un numero >= 1' });
+    if (page !== undefined && (Number.isNaN(Number.parseInt(page, 10)) || Number.parseInt(page, 10) < 1)) return res.status(400).json({ mensaje: 'Parámetro page inválido. Debe ser un número mayor o igual que 1' });
     if (limit !== undefined && (Number.isNaN(Number.parseInt(limit, 10)) || Number.parseInt(limit, 10) < 1 || Number.parseInt(limit, 10) > 100)) return res.status(400).json({ mensaje: 'Parametro limit invalido. Debe estar entre 1 y 100' });
     if (sort !== undefined) {
       const [field, rawDir] = String(sort).split(':');
       if (!['apellido', 'nombre', 'dni', 'created_at', 'updated_at'].includes(field)) return res.status(400).json({ mensaje: 'Parametro sort invalido. Columna no permitida' });
-      if (rawDir !== undefined && !['asc', 'desc'].includes(String(rawDir).toLowerCase())) return res.status(400).json({ mensaje: 'Parametro sort invalido. Direccion permitida: asc o desc' });
+      if (rawDir !== undefined && !['asc', 'desc'].includes(String(rawDir).toLowerCase())) return res.status(400).json({ mensaje: 'Parámetro sort inválido. Dirección permitida: asc o desc' });
     }
     if (q !== undefined && (typeof q !== 'string' || q.length > 120)) return res.status(400).json({ mensaje: 'Parametro q invalido' });
     if (dni !== undefined && !/^[0-9]{7,10}$/.test(String(dni).trim())) return res.status(400).json({ mensaje: 'Parametro dni invalido. Debe contener entre 7 y 10 digitos' });

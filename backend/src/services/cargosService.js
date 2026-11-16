@@ -243,7 +243,7 @@ async function crearCargo({
       );
       prestacion = prestacionRes.rows[0] || null;
       if (!prestacion) {
-        throw crearError('PRESTACION_NO_ENCONTRADA', 'Prestacion no encontrada');
+        throw crearError('PRESTACION_NO_ENCONTRADA', 'Prestación no encontrada');
       }
     }
 
@@ -255,7 +255,7 @@ async function crearCargo({
     ) {
       throw crearError(
         'PRESTACION_TURNO_INCOMPATIBLE',
-        'La prestacion indicada no coincide con la del turno',
+        'La prestación indicada no coincide con la del turno',
       );
     }
 

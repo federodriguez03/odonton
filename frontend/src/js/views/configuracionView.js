@@ -114,7 +114,7 @@ function bindReferencias() {
 const MESSAGE_LABELS = {
   principal_whatsapp: {
     title: 'Mensaje principal',
-    help: 'Plantilla general disponible; actualmente no tiene un envio automatico asociado.',
+    help: 'Plantilla general disponible; actualmente no tiene un envío automático asociado.',
     placeholders: ['{paciente}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   recordatorio_turno: {
@@ -123,23 +123,23 @@ const MESSAGE_LABELS = {
     placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   confirmacion_turno: {
-    title: 'Confirmacion',
+    title: 'Confirmación',
     help: 'Confirma el turno desde el sistema o como respuesta a un recordatorio.',
     placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   cancelacion_turno: {
-    title: 'Cancelacion confirmada',
-    help: 'Informa una cancelacion definitiva realizada desde el sistema.',
+    title: 'Cancelación confirmada',
+    help: 'Informa una cancelación definitiva realizada desde el sistema.',
     placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   reprogramacion_turno: {
-    title: 'Reprogramacion confirmada',
+    title: 'Reprogramación confirmada',
     help: 'Informa la nueva fecha y hora definidas desde el sistema.',
     placeholders: ['{paciente}', '{fecha}', '{hora}', '{prestacion}', '{profesional}', '{turno_id}', '{consultorio}', '{whatsapp_consultorio}'],
   },
   rechazo_solicitud_turno: {
     title: 'Solicitud rechazada',
-    help: 'Informa que el consultorio no pudo aceptar una solicitud de turno, reprogramacion o cancelacion.',
+    help: 'Informa que el consultorio no pudo aceptar una solicitud de turno, reprogramación o cancelación.',
     placeholders: ['{paciente}', '{consultorio}', '{whatsapp_consultorio}'],
   },
 };
@@ -156,7 +156,7 @@ const MESSAGE_ORDER = [
 function getMessageMeta(tipo) {
   return MESSAGE_LABELS[tipo] || {
     title: tipo.replaceAll('_', ' '),
-    help: 'Mensaje automatico.',
+    help: 'Mensaje automático.',
     placeholders: [],
   };
 }
@@ -469,7 +469,7 @@ async function loadWhatsappQr() {
     ui.whatsappQrEmpty.classList.remove('d-none');
     lastRenderedQrAt = null;
     ui.whatsappQrEmpty.textContent = error?.status === 404
-      ? 'Esperando un codigo QR vigente...'
+      ? 'Esperando un código QR vigente...'
       : `No se pudo obtener el QR: ${error.message}`;
   }
 }
@@ -582,12 +582,12 @@ function bindSave() {
 
       const result = await updateConfiguracion(payload);
       hydrateForm(result);
-      renderAlert(ui.alertContainer, result.mensaje || 'Configuracion guardada', 'success');
+      renderAlert(ui.alertContainer, result.mensaje || 'Configuración guardada', 'success');
     } catch (error) {
       renderAlert(ui.alertContainer, error.message, 'danger');
     } finally {
       ui.saveBtn.disabled = false;
-      ui.saveBtn.innerHTML = '<i class="bi bi-save me-1"></i>Guardar configuracion';
+      ui.saveBtn.innerHTML = '<i class="bi bi-save me-1"></i>Guardar configuración';
     }
   });
 }

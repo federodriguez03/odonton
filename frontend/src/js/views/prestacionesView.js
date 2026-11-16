@@ -57,18 +57,18 @@ function syncPrecio() {
   if (!fijo) ui.inputPrecio.value = '';
 }
 function openCreateModal() {
-  state.mode='create'; state.editId=null; ui.form.reset(); ui.modalTitle.textContent='Nueva prestacion'; ui.submitButton.textContent='Guardar';
+  state.mode='create'; state.editId=null; ui.form.reset(); ui.modalTitle.textContent='Nueva prestación'; ui.submitButton.textContent='Guardar';
   ui.inputActiva.checked=true; ui.referencia.classList.add('d-none'); syncPrecio(); modal?.show();
 }
 function openEditModal(p,configure=false) {
-  state.mode=configure?'configure':'edit'; state.editId=p.id; ui.modalTitle.textContent=configure?'Configurar y activar':'Editar prestacion'; ui.submitButton.textContent=configure?'Guardar y activar':'Guardar cambios';
+  state.mode=configure?'configure':'edit'; state.editId=p.id; ui.modalTitle.textContent=configure?'Configurar y activar':'Editar prestación'; ui.submitButton.textContent=configure?'Guardar y activar':'Guardar cambios';
   ui.inputCodigo.value=p.codigo || ''; ui.inputNombre.value=p.nombre || ''; ui.inputCategoria.value=p.categoria || '';
   ui.inputDuracion.value=p.duracion_minutos || ''; ui.inputModalidad.value=p.precio_modalidad || '';
   ui.inputPrecio.value=p.precio_base ?? ''; ui.inputActiva.checked=configure?true:Boolean(p.activo); ui.inputActiva.disabled=configure; syncPrecio();
   if (p.precio_modalidad === 'fijo') ui.inputPrecio.value=p.precio_base ?? '';
   if (p.referencia_arancel) {
     const r=p.referencia_arancel;
-    ui.referencia.innerHTML=`<strong>Referencia vinculada</strong><br>${escapeHtml(r.fuente)} · ${escapeHtml(r.version_documental)} · vigencia ${escapeHtml(r.vigencia)}<br>${escapeHtml(r.codigo)} — ${escapeHtml(r.nombre)}<br>${r.precio === null ? escapeHtml(r.estado_precio) : `${escapeHtml(r.moneda)} ${Number(r.precio).toFixed(2)} · ${escapeHtml(r.estado_precio)}`} · pagina ${escapeHtml(r.pagina_pdf)}`;
+    ui.referencia.innerHTML=`<strong>Referencia vinculada</strong><br>${escapeHtml(r.fuente)} · ${escapeHtml(r.version_documental)} · vigencia ${escapeHtml(r.vigencia)}<br>${escapeHtml(r.codigo)} — ${escapeHtml(r.nombre)}<br>${r.precio === null ? escapeHtml(r.estado_precio) : `${escapeHtml(r.moneda)} ${Number(r.precio).toFixed(2)} · ${escapeHtml(r.estado_precio)}`} · página ${escapeHtml(r.pagina_pdf)}`;
     ui.referencia.classList.remove('d-none');
   } else ui.referencia.classList.add('d-none');
   modal?.show();
@@ -94,8 +94,8 @@ async function loadPrestaciones() {
   try { const data=await getPrestaciones({ estado: state.filtroEstado }); state.prestaciones=data.prestaciones || []; state.selected.clear(); renderRows(state.prestaciones); await loadPendingCount(); }
   catch (error) { renderAlert(ui.alertContainer,error.message,'danger'); }
 }
-async function loadPendingCount(){ const data=await getPrestaciones({estado:'pendientes'}); const count=Number(data.total||0); ui.pendingAlert.classList.toggle('d-none',count===0); ui.pendingText.textContent=`${count} prestaciones pendientes de duracion.`; }
-function openDurationModal(){ const selected=state.prestaciones.filter(p=>state.selected.has(Number(p.id))); ui.bulkDuration.value=''; ui.bulkPreview.innerHTML=`<strong>${selected.length} prestaciones</strong><ul class="small mt-2 mb-0">${selected.map(p=>`<li>${escapeHtml(p.codigo||'Sin codigo')} — ${escapeHtml(p.nombre)}</li>`).join('')}</ul>`; durationModal?.show(); }
+async function loadPendingCount(){ const data=await getPrestaciones({estado:'pendientes'}); const count=Number(data.total||0); ui.pendingAlert.classList.toggle('d-none',count===0); ui.pendingText.textContent=`${count} prestaciones pendientes de duración.`; }
+function openDurationModal(){ const selected=state.prestaciones.filter(p=>state.selected.has(Number(p.id))); ui.bulkDuration.value=''; ui.bulkPreview.innerHTML=`<strong>${selected.length} prestaciones</strong><ul class="small mt-2 mb-0">${selected.map(p=>`<li>${escapeHtml(p.codigo||'Sin código')} — ${escapeHtml(p.nombre)}</li>`).join('')}</ul>`; durationModal?.show(); }
 async function confirmDuration(){ const duration=Number(ui.bulkDuration.value); if(!Number.isInteger(duration)||duration<15){renderAlert(ui.alertContainer,'Ingresá una duración válida de al menos 15 minutos','danger');return;} try{ui.bulkConfirm.disabled=true;const response=await configurarDuracionPrestaciones({ids:[...state.selected],duracion_minutos:duration});durationModal?.hide();renderAlert(ui.alertContainer,`${response.resultado.cantidad} prestaciones configuradas y activadas`,'success');await loadPrestaciones();}catch(error){renderAlert(ui.alertContainer,error.message,'danger');}finally{ui.bulkConfirm.disabled=false;} }
 async function openBulkLoad() {
   ui.cargaSummary.textContent='Preparando vista previa...'; ui.cargaBody.innerHTML=''; ui.cargaConfirm.disabled=true; cargaModal?.show();
@@ -138,7 +138,7 @@ function bindEvents() {
   ui.tbody.addEventListener('click',async(event)=>{ const button=event.target.closest('button[data-action]'); if(!button)return;
     const p=state.prestaciones.find((item)=>String(item.id)===button.dataset.id); if(button.dataset.action==='edit'){ openEditModal(p); return; } if(button.dataset.action==='configure'){openEditModal(p,true);return;}
     try { await desactivarPrestacion(button.dataset.id);
-      renderAlert(ui.alertContainer,'Prestacion desactivada','success'); await loadPrestaciones();
+      renderAlert(ui.alertContainer,'Prestación desactivada','success'); await loadPrestaciones();
     } catch(error){ renderAlert(ui.alertContainer,error.message,'danger'); }
   });
   ui.tbody.addEventListener('change',(event)=>{const checkbox=event.target.closest('[data-select-prestacion]');if(!checkbox)return;const id=Number(checkbox.dataset.selectPrestacion);if(checkbox.checked)state.selected.add(id);else state.selected.delete(id);updateSelection();});
@@ -147,7 +147,7 @@ function bindEvents() {
     precio_base:ui.inputModalidad.value==='fijo'?Number(ui.inputPrecio.value):null, activo:ui.inputActiva.checked };
     if(state.mode==='configure') payload.activo=true;
     try { if(state.mode==='edit'||state.mode==='configure') await updatePrestacion(state.editId,payload); else await createPrestacion(payload);
-      renderAlert(ui.alertContainer,state.mode==='create'?'Prestacion creada':state.mode==='configure'?'Prestacion configurada y activada':'Prestacion actualizada','success'); modal?.hide(); await loadPrestaciones();
+      renderAlert(ui.alertContainer,state.mode==='create'?'Prestación creada':state.mode==='configure'?'Prestación configurada y activada':'Prestación actualizada','success'); modal?.hide(); await loadPrestaciones();
     } catch(error){ renderAlert(ui.alertContainer,error.message,'danger'); }
   });
 }

@@ -51,7 +51,7 @@ function manejarSubida(req, res, next) {
     }
 
     if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ mensaje: 'Archivo demasiado grande. Maximo 10MB' });
+      return res.status(400).json({ mensaje: 'Archivo demasiado grande. Máximo 10 MB' });
     }
 
     return res.status(400).json({ mensaje: err.message || 'Error al subir archivo' });

@@ -295,7 +295,7 @@ function renderRows(pacientes) {
               <div>${formatText(paciente.telefono)}</div>
             </div>
             <div class="d-flex flex-wrap gap-2 mt-auto">
-            <button class="btn btn-sm btn-outline-primary" type="button" data-action="ficha" data-id="${paciente.id}" aria-label="${clinicalAccessEnabled ? 'Ver ficha clinica' : 'Ver ficha administrativa'}">
+            <button class="btn btn-sm btn-outline-primary" type="button" data-action="ficha" data-id="${paciente.id}" aria-label="${clinicalAccessEnabled ? 'Ver ficha clínica' : 'Ver ficha administrativa'}">
               <i class="bi bi-journal-medical me-1"></i>Ver ficha
             </button>
             <button class="btn btn-sm btn-outline-secondary" type="button" data-action="edit" data-id="${paciente.id}" data-paciente="${pacienteData}" aria-label="Editar paciente">
@@ -322,7 +322,7 @@ function getPacienteFromRowButton(button) {
 
 function renderPagination() {
   const totalPages = Math.max(1, Math.ceil(state.total / state.limit));
-  ui.paginationMeta.textContent = `Pagina ${state.page} de ${totalPages} | Total: ${state.total}`;
+  ui.paginationMeta.textContent = `Página ${state.page} de ${totalPages} | Total: ${state.total}`;
   ui.prevButton.disabled = state.page <= 1;
   ui.nextButton.disabled = state.page >= totalPages;
 }
@@ -545,7 +545,7 @@ function renderFichaContentLegacy(data) {
         <tbody id="ficha-documentos-tbody"></tbody>
       </table>
     </div>
-    <small class="text-secondary">Tipos permitidos: PDF, JPG, PNG. Maximo 10MB.</small>
+    <small class="text-secondary">Tipos permitidos: PDF, JPG, PNG. Máximo 10 MB.</small>
   `;
 
   const estadoSelect = document.getElementById('ficha-estado-filter');

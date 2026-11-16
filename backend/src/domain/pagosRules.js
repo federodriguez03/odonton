@@ -32,7 +32,7 @@ function convertirImporteACentavos(value, { campo, permitirCero }) {
   if (!coincidencia) {
     throw crearError(
       'IMPORTE_INVALIDO',
-      `${campo} debe ser positivo y tener como maximo dos decimales`,
+      `${campo} debe ser positivo y tener como máximo dos decimales`,
     );
   }
 
@@ -132,7 +132,7 @@ function normalizarFechaAdministrativa(value, { campo = 'fecha' } = {}) {
     || parsed.getUTCMonth() !== month - 1
     || parsed.getUTCDate() !== day
   ) {
-    throw crearError('FECHA_INVALIDA', `${campo} no es una fecha valida`);
+    throw crearError('FECHA_INVALIDA', `${campo} no es una fecha válida`);
   }
 
   return texto;
@@ -143,7 +143,7 @@ function obtenerFechaAdministrativaActual(hoy = new Date()) {
     return normalizarFechaAdministrativa(hoy, { campo: 'hoy' });
   }
   if (!(hoy instanceof Date) || Number.isNaN(hoy.getTime())) {
-    throw crearError('FECHA_INVALIDA', 'hoy no es una fecha valida');
+    throw crearError('FECHA_INVALIDA', 'hoy no es una fecha válida');
   }
 
   const year = hoy.getFullYear();

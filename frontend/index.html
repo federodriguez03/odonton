@@ -107,7 +107,7 @@
           </li>
             <li class="nav-item" role="presentation">
               <button class="nav-link" id="configuracion-tab" data-section="configuracion" type="button">
-                <i class="bi bi-gear-fill"></i> Configuracion
+                <i class="bi bi-gear-fill"></i> Configuración
               </button>
             </li>
           </ul>
@@ -184,7 +184,7 @@
               <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-2">
                   <h3 class="h6 mb-0">Atenciones por mes</h3>
-                  <span class="text-secondary small">Ultimos 6 meses</span>
+                  <span class="text-secondary small">Últimos 6 meses</span>
                 </div>
                 <canvas id="chart-atenciones" height="140"></canvas>
               </div>
@@ -194,8 +194,8 @@
             <div class="card border-0 shadow-sm h-100">
               <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-2">
-                  <h3 class="h6 mb-0">Tratamientos mas realizados</h3>
-                  <span class="text-secondary small">Ultimos 6 meses</span>
+                  <h3 class="h6 mb-0">Tratamientos más realizados</h3>
+                  <span class="text-secondary small">Últimos 6 meses</span>
                 </div>
                 <canvas id="chart-tratamientos" height="200"></canvas>
               </div>
@@ -318,7 +318,7 @@
                   <tr>
                     <th>ID</th>
                     <th>Paciente</th>
-                    <th>Prestacion</th>
+                    <th>Prestación</th>
                     <th>Profesional</th>
                       <th>Inicio</th>
                       <th>Fin</th>
@@ -394,21 +394,21 @@
             <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
               <h2 class="h5 mb-0">Prestaciones disponibles</h2>
               <div class="d-flex flex-wrap align-items-center gap-2">
-                <label class="visually-hidden" for="prestaciones-busqueda">Buscar por nombre o codigo</label>
-                <input class="form-control" id="prestaciones-busqueda" type="search" placeholder="Buscar nombre o codigo" style="min-width: 220px;" />
+                <label class="visually-hidden" for="prestaciones-busqueda">Buscar por nombre o código</label>
+                <input class="form-control" id="prestaciones-busqueda" type="search" placeholder="Buscar nombre o código" style="min-width: 220px;" />
                 <label class="visually-hidden" for="prestaciones-filtro-estado">Filtrar prestaciones</label>
                 <select class="form-select" id="prestaciones-filtro-estado">
                   <option value="activas">Activas</option><option value="inactivas">Inactivas</option>
-                  <option value="pendientes">Pendientes de duracion</option><option value="todas">Todas</option>
+                  <option value="pendientes">Pendientes de duración</option><option value="todas">Todas</option>
                 </select>
                 <button class="btn btn-primary" type="button" id="open-prestacion-modal">
-                  + Nueva prestacion
+                  + Nueva prestación
                 </button>
                 <div class="dropdown">
                   <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Administrar aranceles</button>
                   <ul class="dropdown-menu dropdown-menu-end">
-                    <li><button class="dropdown-item" type="button" id="open-arancel-import-modal">Importar CSV y revisar version</button></li>
-                    <li><button class="dropdown-item" type="button" id="open-carga-catalogo-modal">Revisar referencias y cargar catalogo</button></li>
+                    <li><button class="dropdown-item" type="button" id="open-arancel-import-modal">Importar CSV y revisar versión</button></li>
+                    <li><button class="dropdown-item" type="button" id="open-carga-catalogo-modal">Revisar referencias y cargar catálogo</button></li>
                   </ul>
                 </div>
               </div>
@@ -419,7 +419,7 @@
               <button class="btn btn-sm btn-link py-0" type="button" id="prestaciones-ver-pendientes">Ver pendientes</button>
             </div>
             <div class="d-flex align-items-center gap-2 mb-2">
-              <button class="btn btn-sm btn-outline-success" type="button" id="prestaciones-configurar-seleccion" disabled>Asignar duracion y activar</button>
+              <button class="btn btn-sm btn-outline-success" type="button" id="prestaciones-configurar-seleccion" disabled>Asignar duración y activar</button>
               <span class="small text-secondary" id="prestaciones-seleccion-contador">0 seleccionadas</span>
             </div>
 
@@ -428,10 +428,10 @@
                 <thead>
                   <tr>
                     <th><input class="form-check-input" type="checkbox" id="prestaciones-seleccionar-todas" aria-label="Seleccionar prestaciones visibles" /></th>
-                    <th>Codigo</th>
+                    <th>Código</th>
                     <th>Nombre</th>
-                    <th>Categoria</th>
-                    <th>Duracion</th>
+                    <th>Categoría</th>
+                    <th>Duración</th>
                     <th>Precio del consultorio</th>
                     <th>Estado</th>
                     <th class="text-end">Acciones</th>
@@ -545,7 +545,7 @@
           <div class="card-body">
             <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
               <div>
-                <h2 class="h5 mb-1">Estadisticas del consultorio</h2>
+                <h2 class="h5 mb-1">Estadísticas del consultorio</h2>
                 <small id="estadisticas-rango" class="text-secondary"></small>
               </div>
             </div>
@@ -560,7 +560,7 @@
                 <input id="estadisticas-hasta" type="date" class="form-control" required />
               </div>
               <div class="col-md-3 d-grid">
-                <button class="btn btn-primary" type="submit">Generar estadisticas</button>
+                <button class="btn btn-primary" type="submit">Generar estadísticas</button>
               </div>
             </form>
 
@@ -585,7 +585,7 @@
                   <table class="table align-middle">
                     <thead>
                       <tr>
-                        <th>Prestacion</th>
+                        <th>Prestación</th>
                         <th>Cantidad</th>
                       </tr>
                     </thead>
@@ -727,8 +727,8 @@
               <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                   <div>
-                    <h2 class="h5 mb-1">Dias y horarios de atencion</h2>
-                    <p class="text-secondary small mb-0">Se aplican al alta y reprogramacion de turnos.</p>
+                    <h2 class="h5 mb-1">Días y horarios de atención</h2>
+                    <p class="text-secondary small mb-0">Se aplican al alta y reprogramación de turnos.</p>
                   </div>
                 </div>
                 <div class="table-responsive">
@@ -800,14 +800,14 @@
               <div class="card-body">
                 <div class="d-flex align-items-center justify-content-between mb-3">
                   <div>
-                    <h2 class="h5 mb-1">Mensajes automaticos</h2>
+                    <h2 class="h5 mb-1">Mensajes automáticos</h2>
                     <p class="text-secondary small mb-0">Cada mensaje muestra solamente las variables vigentes para ese evento. Las variables sin dato se resuelven de forma segura.</p>
                   </div>
                 </div>
                 <div id="config-mensajes-wrap" class="row g-3"></div>
                 <div class="d-flex justify-content-end mt-4">
                   <button id="config-save-btn" class="btn btn-primary" type="button">
-                    <i class="bi bi-save me-1"></i>Guardar configuracion
+                    <i class="bi bi-save me-1"></i>Guardar configuración
                   </button>
                 </div>
               </div>
@@ -1047,7 +1047,7 @@
               </div>
               <div class="mb-2">
                 <label class="form-label" for="turno-prestacion-search">Prestaciones</label>
-                <input id="turno-prestacion-search" class="form-control" autocomplete="off" placeholder="Buscar por nombre o codigo" />
+                <input id="turno-prestacion-search" class="form-control" autocomplete="off" placeholder="Buscar por nombre o código" />
                 <select id="turno-prestacion-id" class="d-none" multiple></select>
                 <div id="turno-prestacion-results" class="turno-search-results"></div>
                 <div id="turno-prestaciones-selected" class="d-flex flex-wrap gap-2 mt-2"></div>
@@ -1127,7 +1127,7 @@
               </div>
               <div class="mb-2">
                 <label class="form-label" for="edit-turno-prestacion-search">Prestaciones</label>
-                <input id="edit-turno-prestacion-search" class="form-control" autocomplete="off" placeholder="Buscar por nombre o codigo" />
+                <input id="edit-turno-prestacion-search" class="form-control" autocomplete="off" placeholder="Buscar por nombre o código" />
                 <select id="edit-turno-prestacion-id" class="d-none" multiple></select>
                 <div id="edit-turno-prestacion-results" class="turno-search-results"></div>
                 <div id="edit-turno-prestaciones-selected" class="d-flex flex-wrap gap-2 mt-2"></div>
@@ -1389,14 +1389,14 @@
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h2 class="modal-title fs-5" id="prestacion-modal-label">Nueva prestacion</h2>
+            <h2 class="modal-title fs-5" id="prestacion-modal-label">Nueva prestación</h2>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <form id="prestacion-form">
             <div class="modal-body">
               <div class="row g-2 mb-2">
                 <div class="col-md-4">
-                  <label class="form-label" for="prestacion-codigo">Codigo (opcional)</label>
+                  <label class="form-label" for="prestacion-codigo">Código (opcional)</label>
                   <input id="prestacion-codigo" class="form-control" maxlength="50" />
                 </div>
                 <div class="col-md-8">
@@ -1405,11 +1405,11 @@
                 </div>
               </div>
               <div class="mb-2">
-                <label class="form-label" for="prestacion-categoria">Categoria</label>
+                <label class="form-label" for="prestacion-categoria">Categoría</label>
                 <input id="prestacion-categoria" class="form-control" maxlength="100" />
               </div>
               <div class="mb-2">
-                <label class="form-label" for="prestacion-duracion">Duracion (minutos)</label>
+                <label class="form-label" for="prestacion-duracion">Duración (minutos)</label>
                 <input id="prestacion-duracion" type="number" min="15" class="form-control" required />
               </div>
               <div class="mb-2">
@@ -1425,7 +1425,7 @@
               </div>
               <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" id="prestacion-activa" checked />
-                <label class="form-check-label" for="prestacion-activa">Prestacion activa</label>
+                <label class="form-check-label" for="prestacion-activa">Prestación activa</label>
               </div>
               <div class="alert alert-light border mt-3 d-none" id="prestacion-referencia-arancel"></div>
             </div>
@@ -1446,7 +1446,7 @@
             <form id="arancel-import-form" class="row g-3">
               <div class="col-12"><label class="form-label" for="arancel-archivo">Archivo CSV</label><input class="form-control" id="arancel-archivo" name="archivo" type="file" accept=".csv,text/csv" required /></div>
               <div class="col-md-6"><label class="form-label" for="arancel-fuente">Fuente</label><input class="form-control" id="arancel-fuente" name="fuente" required /></div>
-              <div class="col-md-6"><label class="form-label" for="arancel-version">Version documental</label><input class="form-control" id="arancel-version" name="version_documental" required /></div>
+              <div class="col-md-6"><label class="form-label" for="arancel-version">Versión documental</label><input class="form-control" id="arancel-version" name="version_documental" required /></div>
               <div class="col-md-4"><label class="form-label" for="arancel-moneda">Moneda</label><input class="form-control" id="arancel-moneda" name="moneda" value="ARS" required /></div>
               <div class="col-md-4"><label class="form-label" for="arancel-vigencia">Vigencia</label><input class="form-control" id="arancel-vigencia" name="vigencia" type="date" required /><div class="form-text">Ingresar la fecha informada por la fuente.</div></div>
               <div class="col-12"><button class="btn btn-primary" type="submit" id="arancel-preview-btn">Revisar vista previa</button></div>
@@ -1455,20 +1455,20 @@
               <div id="arancel-preview-summary" class="alert alert-info"></div>
               <div id="arancel-preview-errors"></div>
               <div class="table-responsive border rounded" style="max-height: 45vh; overflow: auto;">
-                <table class="table table-sm align-middle mb-0"><thead class="sticky-top bg-white"><tr><th>Fila</th><th>Codigo</th><th>Nombre</th><th>Categoria</th><th>Referencia</th><th>Estado</th><th>Pagina</th><th>Correspondencia confirmada</th></tr></thead><tbody id="arancel-preview-body"></tbody></table>
+                <table class="table table-sm align-middle mb-0"><thead class="sticky-top bg-white"><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Categoría</th><th>Referencia</th><th>Estado</th><th>Página</th><th>Correspondencia confirmada</th></tr></thead><tbody id="arancel-preview-body"></tbody></table>
               </div>
             </div>
           </div>
-          <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button><button type="button" class="btn btn-success d-none" id="arancel-confirm-btn">Confirmar importacion</button></div>
+          <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cerrar</button><button type="button" class="btn btn-success d-none" id="arancel-confirm-btn">Confirmar importación</button></div>
         </div>
       </div>
     </div>
 
     <div class="modal fade" id="configurar-duracion-modal" tabindex="-1" aria-labelledby="configurar-duracion-label" aria-hidden="true">
       <div class="modal-dialog"><div class="modal-content">
-        <div class="modal-header"><h2 class="modal-title fs-5" id="configurar-duracion-label">Asignar duracion y activar</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-header"><h2 class="modal-title fs-5" id="configurar-duracion-label">Asignar duración y activar</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
         <div class="modal-body">
-          <label class="form-label" for="configurar-duracion-minutos">Duracion comun (minutos)</label>
+          <label class="form-label" for="configurar-duracion-minutos">Duración común (minutos)</label>
           <input class="form-control" id="configurar-duracion-minutos" type="number" min="15" step="1" required />
           <div class="form-text">Se aplicará únicamente a las prestaciones seleccionadas. Los precios no cambiarán.</div>
           <div class="mt-3" id="configurar-duracion-preview"></div>
@@ -1479,12 +1479,12 @@
 
     <div class="modal fade" id="carga-catalogo-modal" tabindex="-1" aria-labelledby="carga-catalogo-label" aria-hidden="true">
       <div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content">
-        <div class="modal-header"><h2 class="modal-title fs-5" id="carga-catalogo-label">Cargar referencias al catalogo</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
+        <div class="modal-header"><h2 class="modal-title fs-5" id="carga-catalogo-label">Cargar referencias al catálogo</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button></div>
         <div class="modal-body">
           <div id="carga-catalogo-summary" class="alert alert-info">Preparando vista previa...</div>
           <p class="small text-secondary">Las referencias sin posibles duplicados se crearán inactivas y con duración pendiente. Las sugerencias requieren una decisión explícita.</p>
           <div class="table-responsive border rounded" style="max-height: 55vh; overflow: auto;"><table class="table table-sm align-middle mb-0">
-            <thead class="sticky-top bg-white"><tr><th>Codigo</th><th>Referencia</th><th>Estado documental</th><th>Posible duplicado</th><th>Resolucion</th></tr></thead><tbody id="carga-catalogo-body"></tbody>
+            <thead class="sticky-top bg-white"><tr><th>Código</th><th>Referencia</th><th>Estado documental</th><th>Posible duplicado</th><th>Resolución</th></tr></thead><tbody id="carga-catalogo-body"></tbody>
           </table></div>
         </div>
         <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-success" id="carga-catalogo-confirm" disabled>Confirmar carga</button></div>

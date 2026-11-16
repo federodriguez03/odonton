@@ -179,10 +179,10 @@ async function initAppOnce(user) {
   };
   if (user?.permisos?.turnos) await initialize('Turnos', () => initTurnosView({ agendaPropia: !user?.permisos?.agenda_general, profesionalPerfilId: user?.profesional_perfil_id }));
   if (user?.permisos?.pacientes_administrativos) await initialize('Pacientes', () => initPacientesView({ clinicalEnabled: user?.permisos?.pacientes_clinicos === true }));
-  if (user?.permisos?.administrar_catalogo) await initialize('Catalogo', initPrestacionesView);
+  if (user?.permisos?.administrar_catalogo) await initialize('Catálogo', initPrestacionesView);
   if (user?.permisos?.finanzas_operativas) await initialize('Cargos y pagos', () => initPagosView({ allowAnnul: user?.permisos?.anulaciones_financieras === true }));
   if (user?.permisos?.reportes_operativos) await initialize('Reportes', () => initReportesView({ operational: !user?.permisos?.acceso_total }));
-  if (user?.permisos?.configurar_consultorio) await initialize('Configuracion', initConfiguracionView);
+  if (user?.permisos?.configurar_consultorio) await initialize('Configuración', initConfiguracionView);
   activateSection(getStoredSection() || (user?.permisos?.acceso_total ? 'dashboard' : 'turnos'), { persist: false });
   appInitialized = true;
 }

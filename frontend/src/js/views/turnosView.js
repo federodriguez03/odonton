@@ -532,7 +532,7 @@ function renderRows(turnos) {
 
 function renderPagination() {
   const totalPages = Math.max(1, Math.ceil(state.total / state.limit));
-  ui.paginationMeta.textContent = `Pagina ${state.page} de ${totalPages} | Total: ${state.total}`;
+  ui.paginationMeta.textContent = `Página ${state.page} de ${totalPages} | Total: ${state.total}`;
   ui.prevButton.disabled = state.page <= 1;
   ui.nextButton.disabled = state.page >= totalPages;
 }
@@ -1456,7 +1456,7 @@ function bindEditForm() {
 async function cancelTurnoFromUi(turnoId) {
   if (!turnoId) return;
 
-  const confirmed = window.confirm('Deseas cancelar este turno?');
+  const confirmed = window.confirm('¿Deseás cancelar este turno?');
   if (!confirmed) return;
   const enviarMensaje = window.confirm('Enviar mensaje de WhatsApp al paciente?');
 
@@ -1524,7 +1524,7 @@ function bindTableActions() {
       const turnoId = button.dataset.id;
       if (!turnoId) return;
       const observaciones = window.prompt('Motivo u observaciones del rechazo (opcional):') || '';
-      const confirmed = window.confirm('Deseas rechazar esta solicitud de turno?');
+      const confirmed = window.confirm('¿Deseás rechazar esta solicitud de turno?');
       if (!confirmed) return;
 
       try {
@@ -1549,7 +1549,7 @@ function bindTableActions() {
       const turnoId = button.dataset.id;
       if (!turnoId) return;
 
-      const confirmed = window.confirm('Deseas enviar un recordatorio por WhatsApp para este turno?');
+      const confirmed = window.confirm('¿Deseás enviar un recordatorio por WhatsApp para este turno?');
       if (!confirmed) return;
 
       try {

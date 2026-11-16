@@ -122,7 +122,7 @@ async function validarHorarioProfesional(profesionalId, fechaInicio, fechaFin) {
   const horario = await obtenerHorarioProfesionalParaFecha(profesionalId, fechaInicio);
 
   if (!horario || !horario.activo) {
-    throw new Error('No hay atencion configurada para ese profesional en ese dia');
+    throw new Error('No hay atención configurada para ese profesional en ese día');
   }
 
   const inicioMinutos = fechaInicio.getHours() * 60 + fechaInicio.getMinutes();
@@ -176,10 +176,10 @@ async function existeSolapamiento(fechaInicio, fechaFin, turnoId = null, profesi
 function validarDuracionTurno(duracionMinutos, fallback = null) {
   const duracionFinal = Number(duracionMinutos) || Number(fallback) || null;
   if (!duracionFinal || duracionFinal <= 0) {
-    throw new Error('Debe indicar una duracion valida');
+    throw new Error('Debe indicar una duración válida');
   }
   if (duracionFinal < 15) {
-    throw new Error('La duracion minima para un turno es 15 minutos');
+    throw new Error('La duración mínima para un turno es de 15 minutos');
   }
   return duracionFinal;
 }
@@ -188,7 +188,7 @@ function normalizarPrestacionIds(prestacionIds, prestacionId = null) {
   const raw = Array.isArray(prestacionIds) && prestacionIds.length ? prestacionIds : (prestacionId ? [prestacionId] : []);
   const ids = raw.map(Number);
   if (!ids.length || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
-    throw new Error('Debe seleccionar al menos una prestacion valida');
+    throw new Error('Debe seleccionar al menos una prestación válida');
   }
   if (new Set(ids).size !== ids.length) throw new Error('No se permiten prestaciones duplicadas');
   return ids;
@@ -205,7 +205,7 @@ async function obtenerPrestacionesCatalogo(client, ids, { soloActivas = false } 
   return ids.map((id, index) => {
     const row = byId.get(id);
     const duracion = Number(row.duracion_minutos);
-    if (!Number.isFinite(duracion) || duracion <= 0) throw new Error(`La prestacion ${row.nombre} no tiene una duracion valida`);
+    if (!Number.isFinite(duracion) || duracion <= 0) throw new Error(`La prestación ${row.nombre} no tiene una duración válida`);
     return { prestacion_id: id, orden: index + 1, nombre_snapshot: row.nombre, duracion_minutos_snapshot: duracion };
   });
 }
@@ -312,7 +312,7 @@ async function crearSolicitudTurno({
 
   if (prestacionId) {
     const prestacionResult = await pool.query('SELECT id FROM prestaciones WHERE id = $1', [prestacionId]);
-    if (prestacionResult.rowCount === 0) throw new Error('La prestacion seleccionada no existe');
+    if (prestacionResult.rowCount === 0) throw new Error('La prestación seleccionada no existe');
   }
 
   const { rows } = await pool.query(
@@ -413,7 +413,7 @@ async function editarTurno(
 ) {
   await asegurarColumnasProfesionalTurnos();
   if (!pacienteId) throw new Error('El paciente es obligatorio');
-  if (!(prestacionIds?.length || prestacionId)) throw new Error('La prestacion es obligatoria');
+  if (!(prestacionIds?.length || prestacionId)) throw new Error('La prestación es obligatoria');
 
   const fechaInicio = new Date(fechaHoraInicio);
   if (Number.isNaN(fechaInicio.getTime())) {
@@ -1044,7 +1044,7 @@ async function consultarDisponibilidad({ profesionalPerfilId, fecha, prestacionI
   }
   const duracion = Number(duracionMinutos) || duracionBase;
   if (!Number.isFinite(duracion) || duracion < 15) {
-    throw new Error('La prestacion no tiene una duracion valida');
+    throw new Error('La prestación no tiene una duración válida');
   }
 
   const horario = await obtenerHorarioProfesionalParaFecha(profesionalFinalId, dia);
